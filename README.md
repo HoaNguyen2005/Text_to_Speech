@@ -1,84 +1,86 @@
 # Hệ Thống Sinh Bài Giảng Tự Động (Voice Cloning TTS)
 
-Chào mừng bạn đến với dự án Hệ Thống Sinh Bài Giảng Tự Động áp dụng công nghệ nhân bản giọng nói và chuyển đổi văn bản thành giọng nói.
+Dự án niên luận: hệ thống chuyển văn bản thành bài giảng dạng âm thanh bằng công nghệ
+TTS tiếng Việt và nhân bản âm sắc (Voice Cloning), với tài khoản người dùng và trang
+quản trị dành cho admin.
 
-Dự án này được thiết kế theo mô hình Microservices với 3 thành phần chính hoạt động song song để mang lại hiệu năng và trải nghiệm tốt nhất.
+Hệ thống được thiết kế theo mô hình Microservices với 3 thành phần chính:
 
-## Kiến Trúc Hệ Thống 
+## Kiến Trúc Hệ Thống
 
-1. **Frontend (Vue.js 3 + Vite):** 
-   - Giao diện người dùng (UI) mượt mà, hỗ trợ tạo kịch bản, chọn giọng đọc mẫu và phong cách đọc.
-   - Thư mục: `frontend/`
-   - Cổng mặc định: `5173`
+1. **Frontend (Vue.js 3 + Vite):**
+   - Giao diện người dùng: tạo bài giảng từ văn bản hoặc file (.txt/.docx/.pdf), chọn
+     giọng đọc mẫu và phong cách đọc, nghe kết quả ngay trên trình duyệt.
+   - Trang **Sách Nói AI**: upload sách, Gemini tóm tắt và tự chọn giọng nam/nữ phù hợp.
+   - Trang **Quản Trị** (chỉ admin): quản lý người dùng (role, trạng thái) và giọng đọc mẫu.
+   - Thư mục: `frontend/` — Cổng mặc định: `5173`
 
 2. **Backend Gateway (Node.js + Express):**
-   - Đóng vai trò làm cầu nối (Gateway) điều hướng dữ liệu từ Frontend sang Engine xử lý AI, đồng thời là máy chủ lưu trữ (Host) tĩnh cho các file âm thanh kết quả.
-   - Hỗ trợ kết nối cơ sở dữ liệu (Supabase) để quản lý tài khoản người dùng.
-   - Thư mục: `backend/`
-   - Cổng mặc định: `3000`
+   - Cầu nối giữa Frontend và AI Engine, đồng thời host tĩnh các file âm thanh kết quả.
+   - Xác thực JWT, phân quyền `user`/`admin`, lưu trữ dữ liệu trên **MongoDB** (Mongoose).
+   - Tích hợp Google Gemini cho tính năng tóm tắt sách.
+   - Thư mục: `backend/` — Cổng mặc định: `3000` (cấu hình qua biến `PORT`)
 
 3. **AI Engine (Python + FastAPI):**
-   - Trái tim của hệ thống. Chịu trách nhiệm tổng hợp giọng nói tiếng Việt chuẩn xác bằng **Edge-TTS** và nhân bản âm sắc cá nhân (Voice Cloning) bằng **OpenVoice V2**.
-   - Thư mục: `engine/`
-   - Cổng mặc định: `8000`
+   - Sinh giọng nói tiếng Việt bằng **Edge-TTS** (fallback gTTS) và nhân bản âm sắc
+     bằng **OpenVoice V2** (ToneColorConverter), hỗ trợ GPU CUDA.
+   - Thư mục: `engine/` — Cổng mặc định: `8000`
 
----
+```
+Frontend (5173) ──► Backend Gateway (3000) ──► AI Engine (8000)
+                        │                          │
+                        ▼                          ▼
+                    MongoDB                 Edge-TTS + OpenVoice V2
+                                            └─ Gemini (gọi từ Backend)
+```
 
-## Hướng Dẫn Cài Đặt & Khởi Chạy 
+## Hướng Dẫn Cài Đặt & Khởi Chạy
 
-Để hệ thống hoạt động hoàn chỉnh, bạn cần khởi chạy đồng thời cả 3 dịch vụ trên 3 terminal (cửa sổ dòng lệnh) khác nhau.
+Cần khởi chạy đồng thời cả 3 dịch vụ trên 3 terminal khác nhau.
+
+### Bước 0: Cấu hình biến môi trường
+- `backend/`: copy `backend/.env.example` thành `backend/.env` và điền `MONGODB_URI`,
+  `JWT_SECRET`, `GEMINI_API_KEY`.
+- `frontend/`: copy `frontend/.env.example` thành `frontend/.env` (đổi `VITE_API_URL`
+  nếu backend chạy cổng khác 3000).
 
 ### Bước 1: Khởi chạy AI Engine (Python)
-Mở Terminal 1 và đi tới thư mục `engine`:
 ```bash
 cd engine
-# Nếu chạy lần đầu, hãy xem hướng dẫn cài đặt chi tiết trong thư mục engine/README.md
-# Bao gồm việc tạo venv và pip install -r requirements.txt
-
-# Kích hoạt môi trường ảo (trên Windows)
+# Lần đầu: xem hướng dẫn chi tiết trong engine/README.md (tạo venv, cài FFmpeg)
 .\venv\Scripts\activate
-
-# Khởi chạy server AI
 python main.py
 ```
-*(Trong lần chạy đầu tiên, Engine sẽ tự động tải các trọng số mô hình AI cần thiết).*
+*Lần chạy đầu tiên, Engine tự tải trọng số OpenVoice V2 (~260MB) từ HuggingFace.*
 
 ### Bước 2: Khởi chạy Backend (Node.js)
-Mở Terminal 2 và đi tới thư mục `backend`:
 ```bash
 cd backend
-
-# Cài đặt thư viện (nếu chạy lần đầu)
 npm install
-
-# Khởi chạy Backend Server
 node server.js
 ```
+*Tạo tài khoản admin đầu tiên: `node create_admin.js` (theo hướng dẫn trong file).*
 
 ### Bước 3: Khởi chạy Frontend (Vue.js)
-Mở Terminal 3 và đi tới thư mục `frontend`:
 ```bash
 cd frontend
-
-# Cài đặt thư viện (nếu chạy lần đầu)
 npm install
-
-# Khởi chạy giao diện web
 npm run dev
 ```
 
----
-
 ## Cách Sử Dụng
-1. Mở trình duyệt và truy cập vào đường dẫn: `http://localhost:5173`
-2. Nhập văn bản kịch bản bài giảng bạn muốn tạo.
-3. Lựa chọn giọng giảng viên (Nam/Nữ) và phong cách đọc (Bản tin / Tiểu thuyết).
-4. Bấm **Tạo Bài Giảng** và chờ AI xử lý (khoảng 3-5 giây tùy độ dài văn bản).
-5. Nghe thử ngay trên trình duyệt!
+1. Mở trình duyệt truy cập `http://localhost:5173` và đăng ký/đăng nhập.
+2. Ở trang **Tạo Bài Giảng**: nhập kịch bản (hoặc upload file .txt/.docx/.pdf),
+   chọn giọng đọc và phong cách, bấm tạo và nghe thử.
+3. Ở trang **Sách Nói AI**: upload sách, hệ thống tóm tắt bằng Gemini và sinh audio
+   với giọng được đề xuất tự động.
+4. **Admin** truy cập `/admin` để quản lý người dùng và thêm/xóa giọng đọc mẫu.
 
 ## Thêm Giọng Đọc Mẫu
-Để thêm một giọng đọc mới cho hệ thống, bạn chỉ cần copy file ghi âm mẫu (`.wav`) vào thư mục `backend/public/audio/samples/`. 
-*(Vui lòng đặt tên file chứa từ `male` nếu đó là giọng nam, hệ thống sẽ tự động điều chỉnh giọng gốc phù hợp nhất).* Sau đó, cập nhật danh sách hiển thị trong mã nguồn `frontend/src/App.vue`.
+- **Qua giao diện (khuyến nghị):** Admin thêm tại trang `/admin`, hoặc người dùng
+  tự thêm giọng mẫu riêng (chỉ mình họ nhìn thấy) ngay tại trang tạo bài giảng.
+- Yêu cầu: file ghi âm mẫu (`.wav`/`.m4a`), tên mã giọng nên chứa `male` nếu là
+  giọng nam để hệ thống chọn giọng gốc Edge-TTS phù hợp.
 
 ---
 *Dự án Niên Luận được xây dựng với mục tiêu tối ưu hóa trải nghiệm học tập và số hóa bài giảng.*

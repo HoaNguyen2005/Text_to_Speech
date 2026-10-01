@@ -27,6 +27,10 @@ class OpenVoiceConverter:
         
         self.tone_color_converter = ToneColorConverter(os.path.join(self.ckpt_converter, 'config.json'), device=self.device)
         self.tone_color_converter.load_ckpt(os.path.join(self.ckpt_converter, 'checkpoint.pth'))
+
+        # Cache vector âm sắc (SE) theo file giọng mẫu → không phải extract lại mỗi lần sinh
+        self._se_cache = {}
+
         print(f"  [OPENVOICE INIT] Nạp mô hình thành công!")
         
     def _ensure_weights(self):
@@ -38,11 +42,11 @@ class OpenVoiceConverter:
             from huggingface_hub import hf_hub_download
             import shutil
             
-            print("  -> Đang tải config.json...")
+            print("  -> Đang tải config.json")
             config_path = hf_hub_download(repo_id="myshell-ai/OpenVoiceV2", filename="converter/config.json")
             shutil.copy(config_path, os.path.join(self.ckpt_converter, 'config.json'))
             
-            print("  -> Đang tải checkpoint.pth (có thể mất vài phút, ~260MB)...")
+            print("  -> Đang tải checkpoint.pth")
             ckpt_path = hf_hub_download(repo_id="myshell-ai/OpenVoiceV2", filename="converter/checkpoint.pth")
             shutil.copy(ckpt_path, os.path.join(self.ckpt_converter, 'checkpoint.pth'))
             
@@ -63,11 +67,14 @@ class OpenVoiceConverter:
         from openvoice import se_extractor
         
         print("    -> [OPENVOICE] Đang phân tích âm sắc giọng mẫu...")
-        # Trích xuất đặc trưng âm sắc (tone color) của file tham chiếu
-        target_se, audio_name = se_extractor.get_se(reference_audio_path, self.tone_color_converter, vad=True)
+        # Trích xuất đặc trưng âm sắc (tone color) của file tham chiếu (có cache)
+        if reference_audio_path in self._se_cache:
+            target_se = self._se_cache[reference_audio_path]
+            print(f"    -> [OPENVOICE] Dùng cache âm sắc có sẵn cho: {os.path.basename(reference_audio_path)}")
+        else:
+            target_se, audio_name = se_extractor.get_se(reference_audio_path, self.tone_color_converter, vad=True)
+            self._se_cache[reference_audio_path] = target_se
         
-        # Vì ta dùng Edge TTS làm base, nó đã được tối ưu, nhưng ta cũng cần tone color của nó để tính toán delta
-        # Tuy nhiên OpenVoice yêu cầu source_se. Với Edge TTS (nhiều giọng), ta có thể lấy chính base_audio_path làm source_se
         print(f"    -> [OPENVOICE] Đang tính toán Vector của âm thanh gốc...")
         try:
             source_se, _ = se_extractor.get_se(base_audio_path, self.tone_color_converter, vad=True)

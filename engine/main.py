@@ -6,8 +6,12 @@ if sys.stdout.encoding.lower() != 'utf-8':
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 import os
+import glob
 import time
 from tts_pipeline import LectureTTSPipeline
+
+# URL public của Backend Gateway để trả về link audio cho client
+PUBLIC_BACKEND_URL = os.getenv("PUBLIC_BACKEND_URL", "http://localhost:3000")
 
 app = FastAPI(title="Text-to-Speech Engine API")
 
@@ -30,10 +34,12 @@ def generate_audio(request: GenerateRequest):
     
     base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     
-    # Map teacher_id to reference audio
-    reference_audio = os.path.join(base_dir, "backend", "public", "audio", "samples", f"{request.teacher_id}.wav")
-    if not os.path.exists(reference_audio):
+    # Map teacher_id to reference audio (chấp nhận mọi định dạng: .wav, .m4a, .mp3...)
+    sample_pattern = os.path.join(base_dir, "backend", "public", "audio", "samples", f"{request.teacher_id}.*")
+    matches = [f for f in glob.glob(sample_pattern) if not f.endswith(".json")]
+    if not matches:
         raise HTTPException(status_code=400, detail=f"Không tìm thấy file mẫu cho giọng: {request.teacher_id}")
+    reference_audio = matches[0]
         
     # Map style_id to style audio (Giả sử dùng chính giọng mẫu làm style nếu chưa có)
     style_audio = reference_audio 
@@ -53,7 +59,7 @@ def generate_audio(request: GenerateRequest):
         )
         return {
             "status": "success", 
-            "audio_url": f"http://localhost:3000/public/audio/generated/{output_filename}"
+            "audio_url": f"{PUBLIC_BACKEND_URL}/public/audio/generated/{output_filename}"
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Lỗi tạo âm thanh: {str(e)}")

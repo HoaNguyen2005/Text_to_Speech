@@ -1,7 +1,12 @@
 import os
+import re
 import uuid
 import tempfile
 import subprocess
+
+# Độ dài tối đa mỗi đoạn gửi cho Edge-TTS (ký tự) — văn bản dài được chia nhỏ
+MAX_CHUNK_LENGTH = 1500
+
 
 class EdgeTTSModel:
     def __init__(self, voice="vi-VN-HoaiMyNeural"):
@@ -15,40 +20,128 @@ class EdgeTTSModel:
         os.makedirs(self.tmp_dir, exist_ok=True)
         print(f"  [EDGE-TTS INIT] Khởi tạo Base TTS (Giọng mặc định: {self.default_voice})")
 
+    # ---------- Tiền xử lý ----------
+
+    @staticmethod
+    def _sanitize(text: str) -> str:
+        """Dọn văn bản để tránh lỗi NoAudioReceived / ngắt nhịp của Edge-TTS."""
+        text = text.replace('...', '.').replace('..', '.')
+        # Biến gạch nối thành dấu phẩy để ngắt nhịp tự nhiên thay vì khựng lại
+        text = text.replace('-', ', ').replace('—', ', ')
+        # Xóa các loại dấu ngoặc và ngoặc kép — Edge-TTS rất dễ crash hoặc ngừng với ký tự này
+        for ch in ['"', '“', '”', '«', '»', '(', ')', '[', ']']:
+            text = text.replace(ch, '')
+        return re.sub(r'\s+', ' ', text).strip()
+
+    @staticmethod
+    def _split_chunks(text: str, max_length: int = MAX_CHUNK_LENGTH):
+        """
+        Chia văn bản dài thành các đoạn nhỏ tại ranh giới câu để Edge-TTS xử lý ổn định.
+        """
+        if len(text) <= max_length:
+            return [text]
+
+        # Cắt tại dấu kết thúc câu (., !, ?) gần giới hạn nhất
+        sentences = re.split(r'(?<=[.!?])\s+', text)
+        chunks, current = [], ""
+        for sentence in sentences:
+            if len(current) + len(sentence) + 1 > max_length and current:
+                chunks.append(current.strip())
+                current = sentence
+            else:
+                current = f"{current} {sentence}".strip()
+
+        # Câu đơn lẻ dài quá giới hạn → cắt cứng theo dấu phẩy/khoảng trắng
+        while len(current) > max_length:
+            cut = current.rfind(',', 0, max_length)
+            if cut < max_length // 2:
+                cut = current.rfind(' ', 0, max_length)
+            if cut <= 0:
+                cut = max_length
+            chunks.append(current[:cut].strip())
+            current = current[cut:].strip()
+        if current:
+            chunks.append(current.strip())
+        return [c for c in chunks if c]
+
+    # ---------- Sinh audio ----------
+
+    def _run_edge_tts(self, text: str, voice: str, output_path: str, rate: str = None) -> bool:
+        """Gọi Edge-TTS qua CLI (tránh xung đột asyncio với FastAPI). Trả về True nếu thành công."""
+        import sys
+        cmd = [
+            sys.executable, "-m", "edge_tts",
+            "--text", text,
+            "--voice", voice,
+            "--write-media", output_path
+        ]
+        if rate:
+            cmd.append(f"--rate={rate}")
+
+        result = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8")
+        if result.returncode == 0 and os.path.exists(output_path):
+            return True
+        print(f"    -> [EDGE-TTS ERROR] {result.stderr.strip()}")
+        return False
+
+    def _run_gtts(self, text: str, output_path: str) -> bool:
+        """Fallback Google TTS khi Edge-TTS bị chặn."""
+        try:
+            from gtts import gTTS
+            gTTS(text, lang='vi').save(output_path)
+            print("    -> [DEBUG - ENGINE] Đã sử dụng: gTTS (Google TTS)")
+            return True
+        except Exception as e:
+            print(f"    -> [GTTS ERROR] {e}")
+            return False
+
     def synthesize(self, text: str, voice: str = None, style_id: str = None) -> str:
         """
-        Tạo audio từ văn bản.
+        Tạo audio từ văn bản (tự chia chunk nếu văn bản dài).
         Trả về đường dẫn tới file âm thanh tạm thời (.mp3).
         """
         if not voice:
             voice = self.default_voice
-            
-        print(f"    -> [EDGE-TTS] Đang sinh âm thanh gốc (Giọng: {voice}, Style: {style_id})...")
-        
-        tmp_file = os.path.join(self.tmp_dir, f"base_{uuid.uuid4().hex}.mp3")
-        
-        # Gọi edge-tts qua CLI để tránh xung đột asyncio với FastAPI
-        import sys
-        python_exe = sys.executable
-            
-        cmd = [
-            python_exe, "-m", "edge_tts",
-            "--text", text,
-            "--voice", voice,
-            "--write-media", tmp_file
-        ]
-        
-        # Tùy chỉnh tốc độ và cao độ dựa trên style_id
+
+        clean_text = self._sanitize(text)
+        chunks = self._split_chunks(clean_text)
+        if len(chunks) > 1:
+            print(f"    -> [EDGE-TTS] Văn bản dài ({len(clean_text)} ký tự) → chia thành {len(chunks)} đoạn")
+
+        # Phong cách đọc điều khiển bằng tham số rate của Edge-TTS (thay vì FFmpeg atempo)
+        rate = None
         if style_id == "news":
-            # Đọc bản tin: Nhanh hơn, cao hơn một chút, dứt khoát
-            cmd.extend(["--rate=+15%", "--pitch=+5Hz"])
-        elif style_id == "novel" or style_id == "story":
-            # Đọc tiểu thuyết/kể chuyện: Chậm rãi, truyền cảm, trầm hơn
-            cmd.extend(["--rate=-15%", "--pitch=-5Hz"])
-        
-        result = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8")
-        if result.returncode != 0:
-            print(f"    -> [EDGE-TTS ERROR] {result.stderr}")
-            raise Exception("Lỗi khi chạy edge-tts")
-            
+            rate = "+12%"   # Bản tin: đọc nhanh hơn, dứt khoát
+        elif style_id in ("story", "novel"):
+            rate = "-8%"    # Đọc truyện: chậm rãi, sâu lắng
+
+        part_files = []
+        for i, chunk in enumerate(chunks):
+            part_file = os.path.join(self.tmp_dir, f"base_{uuid.uuid4().hex}.mp3")
+
+            # Thử lần 1: Edge-TTS kèm rate; lần 2: Edge-TTS thường; lần 3: gTTS
+            if not self._run_edge_tts(chunk, voice, part_file, rate=rate):
+                print(f"    -> [FALLBACK] Đoạn {i + 1}: thử lại Edge-TTS không kèm tham số style...")
+                if not self._run_edge_tts(chunk, voice, part_file):
+                    print(f"    -> [FALLBACK] Đoạn {i + 1}: chuyển sang gTTS...")
+                    if not self._run_gtts(chunk, part_file):
+                        # Dọn các phần đã tạo rồi mới báo lỗi
+                        for p in part_files:
+                            os.remove(p)
+                        raise Exception("Lỗi tạo âm thanh: edge-tts và gTTS đều thất bại")
+
+            part_files.append(part_file)
+
+        # Gộp các phần mp3 (cùng codec/giọng → nối nhị phân là đủ, OpenVoice sẽ encode lại sau)
+        tmp_file = part_files[0]
+        if len(part_files) > 1:
+            tmp_file = os.path.join(self.tmp_dir, f"merged_{uuid.uuid4().hex}.mp3")
+            with open(tmp_file, 'wb') as out:
+                for p in part_files:
+                    with open(p, 'rb') as f:
+                        out.write(f.read())
+                    os.remove(p)
+            print(f"    -> [EDGE-TTS] Đã gộp {len(part_files)} đoạn âm thanh")
+
+        print(f"    -> [DEBUG - ENGINE] Đã sử dụng: Edge-TTS (Microsoft Neural)")
         return tmp_file
