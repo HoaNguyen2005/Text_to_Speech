@@ -1,4 +1,8 @@
 const Voice = require('../models/voice.model');
+const path = require('path');
+const fs = require('fs');
+const crypto = require('crypto');
+const storage = require('../services/storage.service');
 
 // Lấy danh sách giọng mẫu
 // - Chưa đăng nhập (req.user = null): chỉ thấy giọng global
@@ -32,13 +36,33 @@ exports.createVoice = async (req, res) => {
         if (!voice_id || !name || !req.file) {
             return res.status(400).json({ error: "Vui lòng nhập đủ thông tin và upload file âm thanh" });
         }
+        if (!/^[a-zA-Z0-9_-]{1,80}$/.test(voice_id)) {
+            return res.status(400).json({ error: "Mã giọng chỉ được chứa chữ, số, dấu gạch ngang và gạch dưới" });
+        }
 
-        const file_path = `public/audio/samples/${req.file.filename}`;
+        const ext = path.extname(req.file.originalname).toLowerCase() || '.wav';
+        const contentTypes = {
+            '.wav': 'audio/wav', '.mp3': 'audio/mpeg', '.m4a': 'audio/mp4',
+            '.flac': 'audio/flac', '.ogg': 'audio/ogg', '.webm': 'audio/webm'
+        };
+        const fileName = `${voice_id}.${crypto.randomUUID()}${ext}`;
+        let file_path;
 
-        const newVoice = new Voice({ 
-            voice_id, 
-            name, 
-            gender: gender || 'male', 
+        if (storage.isR2Enabled()) {
+            file_path = `samples/${fileName}`;
+            await storage.uploadBuffer(req.file.buffer, file_path, contentTypes[ext]);
+        } else {
+            // Chế độ local (dev chưa cấu hình R2): ghi ra đĩa như cũ
+            const localDir = path.join(__dirname, '../../public/audio/samples');
+            fs.mkdirSync(localDir, { recursive: true });
+            fs.writeFileSync(path.join(localDir, fileName), req.file.buffer);
+            file_path = `public/audio/samples/${fileName}`;
+        }
+
+        const newVoice = new Voice({
+            voice_id,
+            name,
+            gender: gender || 'male',
             file_path,
             user_id: req.user._id,
             is_global: req.user.role === 'admin'

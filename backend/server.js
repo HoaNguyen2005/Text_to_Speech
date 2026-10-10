@@ -5,9 +5,10 @@ require('dotenv').config();
 
 const app = express();
 
-app.use(cors()); 
-app.use(express.json()); 
+app.use(cors());
+app.use(express.json());
 const path = require('path');
+const fs = require('fs');
 app.use('/public', express.static(path.join(__dirname, 'public')));
 
 // Import các routes
@@ -16,6 +17,8 @@ const authRoutes = require('./app/routes/auth.route');
 const voiceRoutes = require('./app/routes/voice.route');
 const historyRoutes = require('./app/routes/history.route');
 const GeneratedLecture = require('./app/models/generated_lecture.model');
+const Voice = require('./app/models/voice.model');
+const storage = require('./app/services/storage.service');
 const { optionalAuth } = require('./app/middlewares/auth.middleware');
 
 // Mount các routes vào ứng dụng
@@ -67,8 +70,19 @@ app.post('/api/generate-lecture', optionalAuth, async (req, res) => {
         console.log(`[DEBUG - MEMORY] Hệ thống Node.js đang dùng : ${(memUsage.heapUsed / 1024 / 1024).toFixed(2)} MB RAM`);
 
         // 4. Gọi sang Python FastAPI Engine thực sự
+        //    Khi bật R2: gửi kèm presigned URL của file giọng mẫu để Engine tự tải
+        //    (Engine không còn đọc trực tiếp filesystem của Backend)
         console.log(`\n[DEBUG - AI FORWARDING] Đang gửi yêu cầu sang Python Engine tại http://127.0.0.1:8000/generate...`);
-        
+
+        let reference_audio_url;
+        if (storage.isR2Enabled() && teacher_id) {
+            const voiceDoc = await Voice.findOne({ voice_id: teacher_id });
+            if (voiceDoc && storage.isStorageKey(voiceDoc.file_path)) {
+                reference_audio_url = await storage.resolveUrl(voiceDoc.file_path);
+                console.log(`[DEBUG - R2] Đã sinh presigned URL cho giọng mẫu: ${voiceDoc.file_path}`);
+            }
+        }
+
         try {
             // Sử dụng fetch API có sẵn trong Node.js > 18
             const aiResponse = await fetch('http://127.0.0.1:8000/generate', {
@@ -77,30 +91,49 @@ app.post('/api/generate-lecture', optionalAuth, async (req, res) => {
                 body: JSON.stringify({
                     text: text,
                     teacher_id: teacher_id,
-                    style_id: style_id || 'normal'
+                    style_id: style_id || 'normal',
+                    reference_audio_url: reference_audio_url
                 })
             });
-            
+
             if (!aiResponse.ok) {
                 const errorData = await aiResponse.json();
                 throw new Error(errorData.detail || 'Lỗi từ AI Engine');
             }
-            
+
             const aiResult = await aiResponse.json();
             console.log(`[DEBUG - AI RESPONSE] AI đã xử lý xong và trả về kết quả!`);
 
-            // 5. Lưu lịch sử nếu người dùng đã đăng nhập (lỗi lưu không ảnh hưởng kết quả)
+            // 5. Đưa audio kết quả lên R2 (nếu bật): Engine trả output_path trên đĩa,
+            //    Backend upload thành key generated/<file>, trả URL chơi được cho client,
+            //    DB chỉ lưu key để lần sau đọc lịch sử sinh presigned mới.
+            let audioUrl, historyUrl;
+            if (storage.isR2Enabled() && aiResult.output_path) {
+                const key = `generated/${path.basename(aiResult.output_path)}`;
+                await storage.uploadFile(aiResult.output_path, key, 'audio/wav');
+                audioUrl = await storage.resolveUrl(key);
+                historyUrl = key;
+                // File tạm trên đĩa không còn cần thiết
+                fs.promises.unlink(aiResult.output_path).catch(() => {});
+                console.log(`[DEBUG - R2] Đã upload audio kết quả: ${key}`);
+            } else {
+                // Chế độ local cũ: dùng URL public mà Engine tự dựng
+                audioUrl = aiResult.audio_url;
+                historyUrl = audioUrl;
+            }
+
+            // 6. Lưu lịch sử nếu người dùng đã đăng nhập (lỗi lưu không ảnh hưởng kết quả)
             if (req.user) {
                 GeneratedLecture.create({
                     user_id: req.user._id,
                     text: text,
                     teacher_id: teacher_id || '',
                     style_id: style_id || 'normal',
-                    audio_url: aiResult.audio_url
+                    audio_url: historyUrl
                 }).catch(err => console.error(`[DEBUG - HISTORY] Không lưu được lịch sử:`, err.message));
             }
 
-            // 6. Trả kết quả về cho Vue
+            // 7. Trả kết quả về cho Vue
             const totalTime = (Date.now() - startTime) / 1000;
             console.log(`\n[DEBUG - API COMPLETION] Trả response HTTP 200 về cho Client Vue.js.`);
             console.log(`[DEBUG - PERFORMANCE] Tổng thời gian phản hồi: ${totalTime.toFixed(3)} giây`);
@@ -109,7 +142,7 @@ app.post('/api/generate-lecture', optionalAuth, async (req, res) => {
             res.json({
                 status: "success",
                 message: "Đã tạo bài giảng thành công!",
-                audio_url: aiResult.audio_url // Lấy URL trả về từ Python
+                audio_url: audioUrl
             });
             
         } catch (aiError) {
@@ -128,7 +161,6 @@ app.post('/api/generate-lecture', optionalAuth, async (req, res) => {
 
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 require('dotenv').config();
-const Voice = require('./app/models/voice.model');
 
 const READING_STYLES = "story (chậm rãi, truyền cảm - phù hợp tiểu thuyết, kỹ năng sống), news (nhanh, dứt khoát - phù hợp chuyên môn, bản tin), normal (bình thường)";
 

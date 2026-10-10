@@ -41,6 +41,10 @@ Cần khởi chạy đồng thời cả 3 dịch vụ trên 3 terminal khác nha
 ### Bước 0: Cấu hình biến môi trường
 - `backend/`: copy `backend/.env.example` thành `backend/.env` và điền `MONGODB_URI`,
   `JWT_SECRET`, `GEMINI_API_KEY`.
+- Dùng Cloudflare R2: điền thêm `R2_ACCOUNT_ID`, `R2_BUCKET`, `R2_ACCESS_KEY_ID`,
+  `R2_SECRET_ACCESS_KEY` trong `backend/.env`. Nếu để trống, audio tiếp tục được lưu
+  trên đĩa local. Sau khi cấu hình R2, chạy `node migrate_audio_to_r2.js` từ `backend/`
+  để chuyển audio hiện có; script giữ nguyên các file local.
 - `frontend/`: copy `frontend/.env.example` thành `frontend/.env` (đổi `VITE_API_URL`
   nếu backend chạy cổng khác 3000).
 
