@@ -83,16 +83,38 @@ exports.createVoice = async (req, res) => {
 exports.updateVoice = async (req, res) => {
     try {
         const { id } = req.params;
-        const updates = req.body;
+        const allowedFields = new Set(['name', 'gender', 'is_active']);
+        const updates = req.body || {};
 
-        const updatedVoice = await Voice.findByIdAndUpdate(id, updates, { new: true });
-        
-        if (!updatedVoice) {
-            return res.status(404).json({ error: "Không tìm thấy giọng mẫu" });
+        if (!Object.keys(updates).length || Object.keys(updates).some((key) => !allowedFields.has(key))) {
+            return res.status(400).json({ error: 'Chỉ được cập nhật tên, giới tính hoặc trạng thái giọng' });
+        }
+        if (updates.name !== undefined && (typeof updates.name !== 'string' || !updates.name.trim())) {
+            return res.status(400).json({ error: 'Tên giọng không hợp lệ' });
+        }
+        if (updates.gender !== undefined && !['male', 'female'].includes(updates.gender)) {
+            return res.status(400).json({ error: 'Giới tính không hợp lệ' });
+        }
+        if (updates.is_active !== undefined && typeof updates.is_active !== 'boolean') {
+            return res.status(400).json({ error: 'Trạng thái giọng không hợp lệ' });
         }
 
-        res.json({ message: "Cập nhật thành công", data: updatedVoice });
+        const voice = await Voice.findById(id);
+        if (!voice) {
+            return res.status(404).json({ error: "Không tìm thấy giọng mẫu" });
+        }
+        if (req.user.role !== 'admin' && String(voice.user_id) !== String(req.user._id)) {
+            return res.status(403).json({ error: 'Bạn không có quyền chỉnh sửa giọng này' });
+        }
+
+        if (updates.name !== undefined) voice.name = updates.name.trim();
+        if (updates.gender !== undefined) voice.gender = updates.gender;
+        if (updates.is_active !== undefined) voice.is_active = updates.is_active;
+        await voice.save();
+
+        res.json({ message: "Cập nhật thành công", data: voice });
     } catch (error) {
+        console.error('[ERROR] Cập nhật giọng mẫu:', error.message);
         res.status(500).json({ error: "Lỗi khi cập nhật giọng mẫu" });
     }
 };
@@ -102,14 +124,20 @@ exports.deleteVoice = async (req, res) => {
     try {
         const { id } = req.params;
         
-        const deletedVoice = await Voice.findByIdAndUpdate(id, { is_active: false }, { new: true });
-        
-        if (!deletedVoice) {
+        const voice = await Voice.findById(id);
+        if (!voice) {
             return res.status(404).json({ error: "Không tìm thấy giọng mẫu" });
         }
+        if (req.user.role !== 'admin' && String(voice.user_id) !== String(req.user._id)) {
+            return res.status(403).json({ error: 'Bạn không có quyền xóa giọng này' });
+        }
+
+        voice.is_active = false;
+        await voice.save();
 
         res.json({ message: "Đã xóa giọng mẫu thành công" });
     } catch (error) {
+        console.error('[ERROR] Xóa giọng mẫu:', error.message);
         res.status(500).json({ error: "Lỗi khi xóa giọng mẫu" });
     }
 };

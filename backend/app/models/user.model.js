@@ -8,10 +8,6 @@ const UserSchema = new mongoose.Schema({
         trim: true,
         lowercase: true
     },
-    password: {
-        type: String,
-        required: true
-    },
     fullName: {
         type: String,
         required: true,
@@ -31,6 +27,19 @@ const UserSchema = new mongoose.Schema({
         type: String,
         enum: ['user', 'admin'],
         default: 'user'
+    },
+    authProvisioning: { type: Boolean, default: false },
+    authSyncPending: { type: Boolean, default: false },
+    authSyncError: { type: String, default: '' },
+    authSyncVersion: { type: Number, default: 0 },
+    authSyncStartedAt: { type: Date },
+    // Liên kết tài khoản Keycloak; không đổi MongoDB _id
+    // vì Voice và GeneratedLecture đang tham chiếu user bằng ObjectId này.
+    keycloakId: {
+        type: String,
+        default: undefined,
+        unique: true,
+        sparse: true
     }
 }, { 
     timestamps: false,

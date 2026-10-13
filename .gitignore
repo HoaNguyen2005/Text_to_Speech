@@ -1,5 +1,8 @@
 # Environments
 .env
+backend/.env.migration.local
+backend/.env.keycloak.local
+keycloak/backups/
 .venv
 env/
 venv/

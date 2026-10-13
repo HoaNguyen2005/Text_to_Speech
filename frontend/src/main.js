@@ -1,7 +1,9 @@
-import { createApp } from 'vue'
-import App from './App.vue'
-import router from './router'
+import { createApp } from 'vue';
+import App from './App.vue';
+import { initializeAuth } from './services/auth';
+import './assets/workspace.css';
 
-const app = createApp(App)
-app.use(router)
-app.mount('#app')
+// Process OIDC callback before Vue Router reads the current URL.
+await initializeAuth();
+const { default: router } = await import('./router');
+createApp(App).use(router).mount('#app');

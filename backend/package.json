@@ -4,7 +4,19 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node server.js",
+    "test": "node scripts/check_keycloak_phase3.js",
+    "test:auth": "node scripts/check_keycloak_phase3.js",
+    "keycloak:init": "node scripts/init_keycloak_local.js",
+    "keycloak:configure": "node scripts/configure_keycloak_local.js",
+    "keycloak:copy": "node scripts/copy_users_for_keycloak_local.js",
+    "keycloak:migrate": "node scripts/migrate_users_to_keycloak.js",
+    "keycloak:check": "node scripts/check_keycloak_local.js",
+    "keycloak:phase3": "node scripts/configure_keycloak_phase3.js",
+    "keycloak:theme": "node scripts/configure_keycloak_theme.js",
+    "keycloak:link": "node scripts/link_app_users_to_keycloak.js",
+    "keycloak:setup-links": "node scripts/prepare_keycloak_account_links.js",
+    "backup:mongodb": "node scripts/backup_app_mongodb.js"
   },
   "keywords": [],
   "author": "",
@@ -16,11 +28,10 @@
     "@google/generative-ai": "^0.24.1",
     "@supabase/supabase-js": "^2.116.0",
     "axios": "^1.20.0",
-    "bcrypt": "^6.0.0",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
-    "jsonwebtoken": "^9.0.3",
+    "jose": "6.2.12",
     "mammoth": "^1.12.2",
     "mongoose": "^9.10.2",
     "multer": "^2.4.0"

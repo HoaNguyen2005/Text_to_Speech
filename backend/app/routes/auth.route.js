@@ -1,12 +1,12 @@
 const express = require('express');
 const router = express.Router();
 const authController = require('../controllers/auth.controller');
+const { verifyToken, adminOnly } = require('../middlewares/auth.middleware');
 
-router.post('/register', authController.register);
-router.post('/login', authController.login);
+router.get('/me', verifyToken, authController.me);
 
-router.get('/users', authController.getAllUsers);
-router.put('/users/:id/status', authController.updateUserStatus);
-router.put('/users/:id/role', authController.updateUserRole);
+router.get('/users', verifyToken, adminOnly, authController.getAllUsers);
+router.put('/users/:id/status', verifyToken, adminOnly, authController.updateUserStatus);
+router.put('/users/:id/role', verifyToken, adminOnly, authController.updateUserRole);
 
 module.exports = router;

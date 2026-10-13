@@ -1,29 +1,32 @@
 import { createRouter, createWebHistory } from 'vue-router';
-import LectureCreator from '../views/LectureCreator.vue';
-import BookSummarizer from '../views/BookSummarizer.vue';
+import { session } from '../services/auth';
 
 const routes = [
   {
     path: '/',
     name: 'LectureCreator',
-    component: LectureCreator
+    component: () => import('../views/user/LectureCreator.vue'),
+    meta: { title: 'Tạo bài giảng' }
   },
   {
     path: '/book',
     name: 'BookSummarizer',
-    component: BookSummarizer
+    component: () => import('../views/user/BookSummarizer.vue'),
+    meta: { title: 'Sách nói AI' }
   },
   {
     path: '/history',
     name: 'History',
-    component: () => import('../views/HistoryView.vue')
+    component: () => import('../views/user/HistoryView.vue'),
+    meta: { title: 'Lịch sử' }
   },
   {
     path: '/admin',
     name: 'AdminPanel',
-    component: () => import('../views/AdminPanel.vue'),
-    meta: { requiresAdmin: true }  // Đánh dấu trang này chỉ dành cho Admin
-  }
+    component: () => import('../views/admin/AdminPanel.vue'),
+    meta: { requiresAdmin: true, title: 'Tổng quan' }
+  },
+  { path: '/:pathMatch(.*)*', component: () => import('../views/NotFound.vue'), meta: { title: 'Không tìm thấy trang' } }
 ];
 
 const router = createRouter({
@@ -33,7 +36,7 @@ const router = createRouter({
 
 // Navigation Guard - Bảo vệ route
 router.beforeEach((to, from, next) => {
-  const user = JSON.parse(localStorage.getItem('user') || 'null');
+  const user = session.value?.user;
   const isAdmin = user?.role === 'admin';
 
   // Nếu route yêu cầu Admin mà không phải Admin → về trang chủ

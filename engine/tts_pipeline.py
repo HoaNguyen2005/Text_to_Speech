@@ -85,7 +85,7 @@ if __name__ == "__main__":
     
     sample_text = "Chào mừng các em đến với môn học Kiến trúc Phần mềm. Hôm nay, chúng ta sẽ tìm hiểu về Design Pattern."
     sample_ref = "data/reference_audios/thay_giao_01.wav" 
-    style_ref = "data/reference_audios/giong_doc_tieu_thuyet.wav" 
+    style_id = "story"
     out_file = "data/output_audios/bai_giang_demo.wav"
     
-    pipeline.generate_lecture(sample_text, sample_ref, style_ref, out_file)
+    pipeline.generate_lecture(sample_text, sample_ref, style_id, out_file)

@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "axios": "^1.20.0",
+    "keycloak-js": "26.2.4",
     "mammoth": "^1.12.3",
     "pdfjs-dist": "^6.3.289",
     "vue": "^3.5.40",

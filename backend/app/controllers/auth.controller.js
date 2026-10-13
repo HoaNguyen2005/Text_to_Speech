@@ -1,124 +1,51 @@
+const mongoose = require('mongoose');
 const User = require('../models/user.model');
-const bcrypt = require('bcrypt');
-const jwt = require('jsonwebtoken');
+const { keycloakService, problem } = require('../services/keycloak.service');
 
-exports.register = async (req, res) => {
-    try {
-        const { email, password, fullName, gender } = req.body;
-
-        if (!email || !password || !fullName) {
-            return res.status(400).json({ error: "Vui lòng nhập họ tên, email và mật khẩu" });
-        }
-
-        const existingUser = await User.findOne({ email });
-        if (existingUser) {
-            return res.status(400).json({ error: "Email này đã được sử dụng" });
-        }
-
-        const hashedPassword = await bcrypt.hash(password, 10);
-        const newUser = new User({ 
-            email, 
-            password: hashedPassword,
-            fullName,
-            gender: gender || 'other',
-            role: 'user'   // Tài khoản đăng ký qua web luôn là user
-        });
-        await newUser.save();
-
-        res.status(201).json({ message: "Đăng ký thành công!" });
-    } catch (error) {
-        console.error("[ERROR REGISTER]", error);
-        res.status(500).json({ error: "Lỗi hệ thống khi đăng ký" });
-    }
-};
-
-exports.login = async (req, res) => {
-    try {
-        const { email, password } = req.body;
-
-        if (!email || !password) {
-            return res.status(400).json({ error: "Vui lòng nhập email và mật khẩu" });
-        }
-
-        const user = await User.findOne({ email });
-        if (!user) {
-            return res.status(400).json({ error: "Email hoặc mật khẩu không đúng" });
-        }
-
-        const isMatch = await bcrypt.compare(password, user.password);
-        if (!isMatch) {
-            return res.status(400).json({ error: "Email hoặc mật khẩu không đúng" });
-        }
-
-        const token = jwt.sign(
-            { userId: user._id, email: user.email },
-            process.env.JWT_SECRET || 'secret_key_123',
-            { expiresIn: '7d' }
-        );
-
-        res.json({
-            message: "Đăng nhập thành công!",
-            token,
-            user: { 
-                email: user.email,
-                fullName: user.fullName,
-                gender: user.gender,
-                role: user.role
-            }
-        });
-    } catch (error) {
-        console.error("[ERROR LOGIN]", error);
-        res.status(500).json({ error: "Lỗi hệ thống khi đăng nhập" });
-    }
-};
-
-// Lấy danh sách tất cả người dùng (Cho Admin)
+function fail(res, error) {
+    return res.status(error.status || 503).json({ error: error.status ? error.message : 'Không thể cập nhật tài khoản. Hãy thử lại.',
+        code: error.code || 'AUTH_SYNC_FAILED' });
+}
+exports.me = (req, res) => res.json({ user: req.user });
 exports.getAllUsers = async (req, res) => {
-    try {
-        const users = await User.find().select('-password').sort({ createdAt: -1 });
-        res.json(users);
-    } catch (error) {
-        res.status(500).json({ error: "Lỗi khi tải danh sách người dùng" });
-    }
+    try { res.json(await User.find().select('-password').sort({ _id: -1 })); }
+    catch (error) { fail(res, error); }
 };
 
-// Cập nhật trạng thái người dùng (Cho Admin)
-exports.updateUserStatus = async (req, res) => {
+async function update(req, res, field, values) {
     try {
         const { id } = req.params;
-        const { status } = req.body;
-        
-        const updatedUser = await User.findByIdAndUpdate(id, { status }, { new: true }).select('-password');
-        if (!updatedUser) {
-            return res.status(404).json({ error: "Không tìm thấy người dùng" });
+        const value = req.body?.[field];
+        if (!mongoose.isValidObjectId(id) || !values.includes(value)) throw problem(400, 'ID hoặc giá trị cập nhật không hợp lệ.', 'INVALID_INPUT');
+        const user = await User.findById(id).select('-password');
+        if (!user) throw problem(404, 'Không tìm thấy tài khoản.', 'USER_NOT_FOUND');
+        if (!user.keycloakId) throw problem(409, 'Tài khoản chưa được liên kết Keycloak.', 'MAPPING_REQUIRED');
+        if (String(user._id) === String(req.user._id) && ((field === 'role' && value !== 'admin') || (field === 'status' && value !== 'active'))) {
+            throw problem(409, 'Bạn không thể tự khóa hoặc hạ quyền tài khoản đang quản trị.', 'SELF_LOCKOUT');
         }
-        res.json({ message: "Cập nhật thành công", user: updatedUser });
-    } catch (error) {
-        res.status(500).json({ error: "Lỗi khi cập nhật trạng thái người dùng" });
-    }
-};
-
-// Cập nhật role người dùng (Admin tạo admin)
-exports.updateUserRole = async (req, res) => {
-    try {
-        const { id } = req.params;
-        const { role } = req.body;
-
-        if (!['user', 'admin'].includes(role)) {
-            return res.status(400).json({ error: "Role không hợp lệ" });
+        if (user.authSyncPending && !user.authSyncError && Date.now() - new Date(user.authSyncStartedAt || 0).getTime() < 300000) {
+            throw problem(409, 'Tài khoản đang được cập nhật. Nếu tiến trình bị ngắt, có thể thử lại sau 5 phút.', 'AUTH_SYNC_PENDING');
         }
-
-        const updatedUser = await User.findByIdAndUpdate(
-            id, 
-            { role }, 
-            { returnDocument: 'after' }
-        ).select('-password');
-
-        if (!updatedUser) {
-            return res.status(404).json({ error: "Không tìm thấy người dùng" });
+        const oldVersion = user.authSyncVersion || 0;
+        const versionCondition = oldVersion === 0 ? { $or: [{ authSyncVersion: 0 }, { authSyncVersion: { $exists: false } }] } : { authSyncVersion: oldVersion };
+        const locked = await User.findOneAndUpdate({ _id: user._id, ...versionCondition },
+            { $set: { authSyncPending: true, authSyncError: '', authSyncStartedAt: new Date() }, $inc: { authSyncVersion: 1 } }, { returnDocument: 'after' }).select('-password');
+        if (!locked) throw problem(409, 'Tài khoản vừa được cập nhật bởi thao tác khác.', 'AUTH_SYNC_CONFLICT');
+        const version = locked.authSyncVersion;
+        const changes = { role: user.role, status: user.status, [field]: value };
+        try {
+            const current = await keycloakService().request(`/users/${encodeURIComponent(user.keycloakId)}`);
+            if (current.attributes?.mongoUserId?.[0] !== String(user._id)) throw problem(409, 'Mapping tài khoản Keycloak không khớp.', 'IDENTITY_CONFLICT');
+            await keycloakService().updateAccount(user.keycloakId, changes);
+            const saved = await User.findOneAndUpdate({ _id: user._id, authSyncVersion: version },
+                { $set: { ...changes, authSyncPending: false, authSyncError: '' } }, { returnDocument: 'after', runValidators: true }).select('-password');
+            if (!saved) throw problem(409, 'Phiên bản đồng bộ đã thay đổi.', 'AUTH_SYNC_CONFLICT');
+            res.json({ message: 'Đã cập nhật Keycloak và hồ sơ ứng dụng. Người dùng cần đăng nhập lại.', user: saved });
+        } catch (error) {
+            await User.updateOne({ _id: user._id, authSyncVersion: version }, { $set: { authSyncPending: true, authSyncError: 'AUTH_SYNC_FAILED' } });
+            throw error;
         }
-        res.json({ message: "Cập nhật role thành công", user: updatedUser });
-    } catch (error) {
-        res.status(500).json({ error: "Lỗi khi cập nhật role" });
-    }
-};
+    } catch (error) { fail(res, error); }
+}
+exports.updateUserStatus = (req, res) => update(req, res, 'status', ['active', 'inactive', 'banned']);
+exports.updateUserRole = (req, res) => update(req, res, 'role', ['user', 'admin']);

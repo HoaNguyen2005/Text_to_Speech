@@ -1,47 +1,52 @@
 const express = require('express');
 const cors = require('cors');
 const mongoose = require('mongoose');
-require('dotenv').config();
+const path = require('path');
+const dotenv = require('dotenv');
+dotenv.config({ path: path.join(__dirname, '.env.keycloak.local'), quiet: true });
+dotenv.config({ path: path.join(__dirname, '.env'), quiet: true });
 
 const app = express();
 
-app.use(cors());
+app.use(cors({ origin: (process.env.FRONTEND_ORIGINS || 'http://localhost:5173,http://127.0.0.1:5173').split(',').map((value) => value.trim()) }));
 app.use(express.json());
-const path = require('path');
 const fs = require('fs');
 app.use('/public', express.static(path.join(__dirname, 'public')));
 
 // Import các routes
-const lectureRoutes = require('./app/routes/lecture.route');
 const authRoutes = require('./app/routes/auth.route');
 const voiceRoutes = require('./app/routes/voice.route');
 const historyRoutes = require('./app/routes/history.route');
 const GeneratedLecture = require('./app/models/generated_lecture.model');
 const Voice = require('./app/models/voice.model');
 const storage = require('./app/services/storage.service');
-const { optionalAuth } = require('./app/middlewares/auth.middleware');
+const { verifyToken } = require('./app/middlewares/auth.middleware');
 
 // Mount các routes vào ứng dụng
-app.use('/api/lectures', lectureRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/voices', voiceRoutes);
 app.use('/api/history', historyRoutes);
 
 // Kết nối MongoDB Atlas với cấu hình retry để chịu được lúc Atlas tải cao
-mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/tts_db', {
+async function start() {
+if (!require('./app/config/keycloak').getKeycloakConfig().clientSecret) throw new Error('Run node scripts/configure_keycloak_phase3.js before starting the backend.');
+await mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/tts_db', {
+    family: 4,
     serverSelectionTimeoutMS: 30000,  // Chờ tối đa 30s để chọn server
     socketTimeoutMS: 45000,           // Timeout mỗi operation
     connectTimeoutMS: 30000,          // Timeout kết nối ban đầu
     maxPoolSize: 5,                   // Giới hạn pool connection
     retryWrites: true,
     retryReads: true,
-})
-  .then(() => console.log('[DEBUG - DB] Kết nối MongoDB thành công!'))
-  .catch(err => console.error('[ERROR - DB] Lỗi kết nối MongoDB:', err.message?.substring(0, 100)));
+});
+console.log('[DEBUG - DB] Kết nối MongoDB thành công!');
+return app.listen(PORT, process.env.HOST || '127.0.0.1', () => console.log(`[DEBUG - SERVER START] Backend Node.js đang chạy tại: http://localhost:${PORT}`));
+}
 
 const PORT = process.env.PORT || 3000;
 
-app.post('/api/generate-lecture', optionalAuth, async (req, res) => {
+app.get('/api/health', (req, res) => res.json({ status: 'ok' }));
+app.post('/api/generate-lecture', verifyToken, async (req, res) => {
     const startTime = Date.now();
     
     console.log("\n" + "=".repeat(100));
@@ -75,9 +80,13 @@ app.post('/api/generate-lecture', optionalAuth, async (req, res) => {
         console.log(`\n[DEBUG - AI FORWARDING] Đang gửi yêu cầu sang Python Engine tại http://127.0.0.1:8000/generate...`);
 
         let reference_audio_url;
-        if (storage.isR2Enabled() && teacher_id) {
-            const voiceDoc = await Voice.findOne({ voice_id: teacher_id });
-            if (voiceDoc && storage.isStorageKey(voiceDoc.file_path)) {
+        if (teacher_id) {
+            const voiceDoc = await Voice.findOne({ voice_id: teacher_id, is_active: true });
+            if (!voiceDoc) return res.status(404).json({ error: 'Giọng đọc không tồn tại hoặc đã bị ẩn.' });
+            if (!voiceDoc.is_global && req.user.role !== 'admin' && String(voiceDoc.user_id) !== String(req.user._id)) {
+                return res.status(403).json({ error: 'Bạn không có quyền sử dụng giọng này.' });
+            }
+            if (storage.isR2Enabled() && storage.isStorageKey(voiceDoc.file_path)) {
                 reference_audio_url = await storage.resolveUrl(voiceDoc.file_path);
                 console.log(`[DEBUG - R2] Đã sinh presigned URL cho giọng mẫu: ${voiceDoc.file_path}`);
             }
@@ -160,7 +169,6 @@ app.post('/api/generate-lecture', optionalAuth, async (req, res) => {
 });
 
 const { GoogleGenerativeAI } = require("@google/generative-ai");
-require('dotenv').config();
 
 const READING_STYLES = "story (chậm rãi, truyền cảm - phù hợp tiểu thuyết, kỹ năng sống), news (nhanh, dứt khoát - phù hợp chuyên môn, bản tin), normal (bình thường)";
 
@@ -200,7 +208,7 @@ async function generateWithRetry(prompt) {
 
 // Luồng Sách Nói AI — Bước 1: Gemini tóm tắt sách và chọn giọng đọc phù hợp
 // (Bước 2 sinh audio do frontend gọi tiếp /api/generate-lecture với giọng đã chọn)
-app.post('/api/summarize-book', optionalAuth, async (req, res) => {
+app.post('/api/summarize-book', verifyToken, async (req, res) => {
     try {
         const { text } = req.body;
         if (!text || !text.trim()) {
@@ -284,6 +292,5 @@ ${text}`;
     }
 });
 
-app.listen(PORT, () => {
-    console.log(`[DEBUG - SERVER START] Backend Node.js đang chạy tại: http://localhost:${PORT}`);
-});
+if (require.main === module) start().catch((error) => { console.error('[STARTUP ERROR]', error.message.replace(/mongodb(?:\+srv)?:\/\/[^\s]+/g, '[MongoDB connection]')); process.exitCode = 1; });
+module.exports = { app, start };
