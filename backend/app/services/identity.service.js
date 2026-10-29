@@ -1,10 +1,11 @@
-const mongoose = require('mongoose');
+const { isValidId } = require('../db/postgres');
 const User = require('../models/user.model');
 const { keycloakService, problem } = require('./keycloak.service');
 
-async function resolveIdentity(claims) {
+async function resolveIdentity(claims, { onAccountCreated } = {}) {
     const service = keycloakService();
     let user = await User.findOne({ keycloakId: claims.sub }).select('-password');
+    let accountCreated = false;
     const { user: identity, roles, role } = await service.identity(claims.sub);
     if (!identity.enabled) {
         // Deny old access tokens even if the Keycloak session has already been revoked.
@@ -25,8 +26,8 @@ async function resolveIdentity(claims) {
     const mappedId = identity.attributes?.mongoUserId?.[0];
     if (!user) {
         if (mappedId) {
-            if (!mongoose.isValidObjectId(mappedId)) throw problem(409, 'Mapping tài khoản không hợp lệ.', 'IDENTITY_CONFLICT');
-            throw problem(409, 'Tài khoản cũ chưa được liên kết với MongoDB ứng dụng. Cần chạy bước liên kết Phase 3.', 'MAPPING_REQUIRED');
+            if (!isValidId(mappedId)) throw problem(409, 'Mapping tài khoản không hợp lệ.', 'IDENTITY_CONFLICT');
+            throw problem(409, 'Không tìm thấy hồ sơ ứng dụng đã liên kết. Kiểm tra dữ liệu PostgreSQL và mapping tài khoản.', 'MAPPING_REQUIRED');
         }
         if (await User.exists({ email })) throw problem(409, 'Email đã thuộc tài khoản cũ. Cần quản trị viên xác minh liên kết.', 'IDENTITY_CONFLICT');
         try {
@@ -34,6 +35,7 @@ async function resolveIdentity(claims) {
                 fullName: identity.firstName?.trim() || claims.name || email,
                 gender: ['male', 'female', 'other'].includes(identity.attributes?.gender?.[0]) ? identity.attributes.gender[0] : 'other',
                 role, status: 'active', authProvisioning: true });
+            accountCreated = true;
         } catch (error) {
             if (error.code !== 11000) throw error;
             user = await User.findOne({ keycloakId: claims.sub }).select('-password');
@@ -67,6 +69,7 @@ async function resolveIdentity(claims) {
     const result = user.toObject();
     delete result.password;
     result.role = effectiveRole;
+    if (accountCreated) onAccountCreated?.();
     return result;
 }
 module.exports = { resolveIdentity };

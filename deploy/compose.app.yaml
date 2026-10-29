@@ -1,0 +1,120 @@
+# Overlay for keycloak/compose.yaml: all relative paths start at keycloak/.
+services:
+  vieneu:
+    image: text2speech-vieneu:3.8.3-cpu
+    build:
+      context: ../engine/vieneu_service
+      additional_contexts:
+        engine_os: service:engine
+    init: true
+    restart: unless-stopped
+    env_file:
+      - path: ../deploy/engine.env
+        format: raw
+    environment:
+      VIENEU_DEVICE: cpu
+      VIENEU_CPU_THREADS: '4'
+      HF_HUB_DOWNLOAD_TIMEOUT: '120'
+      HF_HUB_ETAG_TIMEOUT: '60'
+    volumes:
+      - ../backend/data/book-audio:/app/backend/data/book-audio
+      - vieneu-cache:/home/tts/.cache
+    healthcheck:
+      test: ["CMD", "python", "-c", "from urllib.request import urlopen; urlopen('http://127.0.0.1:8001/health/ready', timeout=5).read()"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 15m
+    stop_grace_period: 25m
+  backend:
+    image: text2speech-backend:phase4.1
+    build: ../backend
+    init: true
+    restart: unless-stopped
+    env_file:
+      - path: ../deploy/backend.env
+        format: raw
+    ports:
+      - "127.0.0.1:3000:3000"
+    volumes:
+      - ../backend/data/book-audio:/app/backend/data/book-audio
+      - ../backend/public/audio:/app/backend/public/audio
+    depends_on:
+      postgres: { condition: service_healthy }
+      keycloak: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "node", "scripts/container_health.js", "backend"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  engine:
+    image: text2speech-engine:phase4.1
+    build: ../engine
+    init: true
+    restart: unless-stopped
+    env_file:
+      - path: ../deploy/engine.env
+        format: raw
+    environment:
+      VIENEU_URL: http://vieneu:8001
+    ports:
+      - "127.0.0.1:8000:8000"
+    volumes:
+      - ../backend/data/book-audio:/app/backend/data/book-audio
+      - ../backend/public/audio:/app/backend/public/audio
+      - ../engine/checkpoints/converter:/app/engine/checkpoints/converter
+      - engine-cache:/home/tts/.cache
+      - engine-processed:/app/engine/processed
+    healthcheck:
+      test: ["CMD", "python", "-c", "from urllib.request import urlopen; urlopen('http://127.0.0.1:8000/health/ready', timeout=5).read()"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 180s
+    stop_grace_period: 25m
+
+  worker:
+    image: text2speech-backend:phase4.1
+    command: ["node", "workers/book.worker.js"]
+    init: true
+    restart: unless-stopped
+    env_file:
+      - path: ../deploy/backend.env
+        format: raw
+    environment:
+      BOOK_WORKER_ID_FILE: /tmp/book-worker-id
+    volumes:
+      - ../backend/data/book-audio:/app/backend/data/book-audio
+      - ../backend/public/audio:/app/backend/public/audio
+    depends_on:
+      backend: { condition: service_healthy }
+      engine: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "node", "scripts/container_health.js", "worker"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+    stop_grace_period: 25m
+
+  frontend:
+    image: text2speech-frontend:phase4.1
+    build: ../frontend
+    init: true
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:5173:8080"
+    depends_on:
+      backend: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  vieneu-cache:
+  engine-cache:
+  engine-processed:

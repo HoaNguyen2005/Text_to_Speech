@@ -1,0 +1,10 @@
+# Apply on the NVIDIA desktop only; do not use on Intel Arc/CPU hosts.
+services:
+  vieneu:
+    image: text2speech-vieneu:3.8.3-cuda
+    build:
+      context: ../engine/vieneu_service
+      dockerfile: Dockerfile.gpu
+    environment:
+      VIENEU_DEVICE: cuda
+    gpus: all

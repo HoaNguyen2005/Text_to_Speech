@@ -1,6 +1,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const dotenv = require('dotenv');
+require('./lib/legacy-mongo-tool');
 const mongoose = require('mongoose');
 const { root, loadLocalConfig, createAdminClient } = require('./lib/keycloak-local');
 

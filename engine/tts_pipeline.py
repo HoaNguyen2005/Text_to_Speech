@@ -16,6 +16,14 @@ class LectureTTSPipeline:
         # Thiết lập thiết bị xử lý
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         print(f"[INFO] Thiết bị tính toán được chọn: {self.device.upper()}")
+        if self.device == "cpu":
+            # Optional tuning: keep the current PyTorch default unless configured.
+            threads = os.environ.get("TTS_CPU_THREADS", "").strip()
+            if threads:
+                if not threads.isdigit() or not 1 <= int(threads) <= (os.cpu_count() or 1):
+                    raise ValueError("TTS_CPU_THREADS phải nằm trong số luồng CPU hiện có.")
+                torch.set_num_threads(int(threads))
+            print(f"[INFO] PyTorch CPU threads: {torch.get_num_threads()}")
 
         # Nạp mô hình 
         self._load_models()
@@ -35,7 +43,7 @@ class LectureTTSPipeline:
             print(f"[CRITICAL ERROR] Lỗi nạp trọng số! {str(e)}")
             raise e
 
-    def generate_lecture(self, lecture_text: str, reference_audio_path: str, style_id: str, output_path: str):
+    def generate_lecture(self, lecture_text: str, reference_audio_path: str, style_id: str, output_path: str, gender=None, strict=False, source_embedding_path=None, rate_percent=None, pitch_hz=None, prepared_base_audio_path=None):
         """
         Hàm chính (Public Method) để API gọi vào.
         """
@@ -46,23 +54,32 @@ class LectureTTSPipeline:
         print(f"[INFO] Chiều dài văn bản: {len(lecture_text)} ký tự.")
         
         # BƯỚC 1: Sinh giọng nói Tiếng Việt chuẩn bằng Edge-TTS
-        # Tùy chọn giọng Nam/Nữ dựa vào tên file tham chiếu (giả định)
-        voice = "vi-VN-NamMinhNeural" if "male" in reference_audio_path.lower() else "vi-VN-HoaiMyNeural"
+        # Prefer metadata supplied by Backend; retain filename inference for old callers only.
+        voice = "vi-VN-NamMinhNeural" if (gender == 'male' or (gender is None and "male" in reference_audio_path.lower())) else "vi-VN-HoaiMyNeural"
         
-        base_audio_path = self.base_tts.synthesize(lecture_text, voice=voice, style_id=style_id)
+        edge_start = time.perf_counter()
+        base_audio_path = prepared_base_audio_path or self.base_tts.synthesize(lecture_text, voice=voice, style_id=style_id, strict=strict, rate_percent=rate_percent, pitch_hz=pitch_hz)
+        print(f"[TTS TIMING] edge_seconds={time.perf_counter() - edge_start:.2f}")
         print(f"  -> [PHASE 1] Hoàn thành sinh âm thanh cơ sở: {base_audio_path}")
         
         # BƯỚC 2: Chuyển đổi âm sắc bằng OpenVoice
         print(f"\n[PHASE 2] Bắt đầu chuyển đổi âm sắc...")
-        self.tone_converter.convert(
-            base_audio_path=base_audio_path,
-            reference_audio_path=reference_audio_path,
-            output_path=output_path
-        )
+        clone_start = time.perf_counter()
+        try:
+            self.tone_converter.convert(
+                base_audio_path=base_audio_path,
+                reference_audio_path=reference_audio_path,
+                output_path=output_path,
+                source_embedding_path=source_embedding_path
+            )
+        finally:
+            print(f"[TTS TIMING] openvoice_seconds={time.perf_counter() - clone_start:.2f}")
+            if not prepared_base_audio_path and os.path.exists(base_audio_path):
+                os.remove(base_audio_path)
         
         # Dọn dẹp file tạm của Edge TTS
         try:
-            if os.path.exists(base_audio_path):
+            if not prepared_base_audio_path and os.path.exists(base_audio_path):
                 os.remove(base_audio_path)
         except Exception as e:
             print(f"[WARNING] Không thể xóa file tạm {base_audio_path}: {e}")

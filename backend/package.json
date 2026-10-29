@@ -5,6 +5,14 @@
   "main": "index.js",
   "scripts": {
     "start": "node server.js",
+    "worker:books": "node workers/book.worker.js",
+    "books:init": "node scripts/init_book_audio.js",
+    "db:init": "node scripts/init_app_postgres.js",
+    "db:migrate": "node scripts/migrate_postgres_schema.js",
+    "db:status": "node scripts/postgres_status.js",
+    "db:import:preview": "node scripts/import_mongodb_postgres.js",
+    "db:import": "node scripts/import_mongodb_postgres.js --execute",
+    "backup:postgres": "node scripts/backup_app_postgres.js",
     "test": "node scripts/check_keycloak_phase3.js",
     "test:auth": "node scripts/check_keycloak_phase3.js",
     "keycloak:init": "node scripts/init_keycloak_local.js",
@@ -34,6 +42,7 @@
     "jose": "6.2.12",
     "mammoth": "^1.12.2",
     "mongoose": "^9.10.2",
-    "multer": "^2.4.0"
+    "multer": "^2.4.0",
+    "pg": "^8.23.1"
   }
 }

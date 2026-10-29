@@ -1,5 +1,11 @@
 # Phase 3 — Xác thực ứng dụng bằng Keycloak local
 
+## Cập nhật database ứng dụng 17/10/2026
+
+Backend/worker đã được chuyển mã sang PostgreSQL database `tts_app`, tách database `keycloak`.
+Chỉ bật ứng dụng sau khi nhập nguồn và ghi marker thành công; xem [POSTGRES_MIGRATION.md](../POSTGRES_MIGRATION.md).
+ID cũ và thuộc tính `mongoUserId` được giữ để không đổi token/mapping. Các số liệu Phase 3 dưới đây là lịch sử.
+
 ## Trạng thái ngày 13/10/2026
 
 Frontend/backend đã dùng Keycloak realm `tts-local`. MongoDB ứng dụng giữ hồ sơ và dữ liệu nghiệp vụ; mật khẩu do Keycloak lưu trong PostgreSQL local.
@@ -61,11 +67,12 @@ Tài khoản đã có mật khẩu muốn đổi/quên mật khẩu: dùng trang
 | File | Mục đích |
 |---|---|
 | keycloak/.env | Secrets PostgreSQL và bootstrap administrator; dùng cho Compose/công cụ cấu hình |
-| backend/.env | MongoDB ứng dụng, R2, Gemini, PORT/HOST, FRONTEND_ORIGINS |
+| backend/.env | R2, Gemini, PORT/HOST, FRONTEND_ORIGINS; MONGODB_URI chỉ cho công cụ đọc nguồn |
+| backend/.env.postgres.local | DATABASE_URL ứng dụng tts_app, bị Git bỏ qua |
 | backend/.env.keycloak.local | URL/realm/audience và service account backend; được script provision tạo |
 | frontend/.env | VITE_API_URL, VITE_KEYCLOAK_URL, VITE_KEYCLOAK_REALM, VITE_KEYCLOAK_CLIENT_ID |
 
-Backend ưu tiên biến môi trường của tiến trình, sau đó `backend/.env.keycloak.local`, rồi `backend/.env`. Frontend chỉ có cấu hình public, không có service client secret.
+Backend ưu tiên biến môi trường của tiến trình, sau đó `.env.postgres.local`, `.env.keycloak.local`, `.env.books.local`, rồi `.env`. Frontend chỉ có cấu hình public, không có service client secret.
 
 Service account `tts-admin-service` dùng client credentials trong realm tts-local, với `view-users`, `query-users`, `manage-users`, `view-realm`. Credentials master chỉ dùng trong công cụ provision/migration, không dùng khi backend chạy.
 
@@ -84,19 +91,19 @@ Khởi động lại backend sau khi script cập nhật file cấu hình. Dùng
 - Axios refresh token trước khi gọi API và gửi Authorization: Bearer.
 - Backend dùng jose/JWKS, chỉ nhận RS256 access token với issuer tts-local, audience tts-backend và thời hạn hợp lệ.
 - Backend kiểm tra tài khoản/role và phiên SSO còn sống qua Keycloak Admin API. Đăng xuất/revoke session khiến access token cũ bị chặn, dù exp chưa tới.
-- Token liên kết qua sub ↔ keycloakId; mongoUserId phải khớp MongoDB _id. Không tự ghép tài khoản cũ theo email.
-- Đăng ký mới tạo hồ sơ MongoDB và ghi mapping bằng service account; không lưu password ở MongoDB.
+- Token liên kết qua sub ↔ keycloakId; mongoUserId phải khớp _id hồ sơ ứng dụng (giữ nguyên khi chuyển PostgreSQL). Không tự ghép tài khoản cũ theo email.
+- Đăng ký mới tạo hồ sơ PostgreSQL tts_app và ghi mapping bằng service account; không lưu password vào database ứng dụng.
 - GET /api/auth/me trả hồ sơ và quyền hiệu lực. Các API tạo bài giảng/tóm tắt yêu cầu đăng nhập; GET voices không có token chỉ trả giọng global, token sai bị từ chối.
-- Giọng riêng, lịch sử và quyền sửa giọng tiếp tục dựa trên MongoDB _id được giữ nguyên.
+- Giọng riêng, lịch sử và quyền sửa giọng tiếp tục dựa trên _id được giữ nguyên trong PostgreSQL.
 
 ## Quản trị user và xử lý lỗi đồng bộ
 
 AdminPanel vẫn quản lý user/giọng. Khi đổi role/status:
 
-1. Đặt cờ authSyncPending và tăng phiên bản đồng bộ trong MongoDB.
+1. Đặt cờ authSyncPending và tăng phiên bản đồng bộ trong PostgreSQL.
 2. Cập nhật enabled/role/legacyStatus trên Keycloak và kiểm tra lại kết quả.
 3. Thu hồi các phiên của tài khoản đích.
-4. Ghi trạng thái đã xác nhận vào MongoDB, bỏ cờ pending.
+4. Ghi trạng thái đã xác nhận vào PostgreSQL, bỏ cờ pending.
 
 Nếu một bước thất bại, tài khoản pending bị chặn; AdminPanel hiển thị cảnh báo. Thực hiện lại thao tác role/status để sửa đồng bộ. Nếu tiến trình bị ngắt lúc đang chạy, có thể thử lại sau 5 phút. Backend dùng kiểm tra phiên bản để tránh ghi đè cập nhật đồng thời.
 

@@ -1,4 +1,4 @@
-const mongoose = require('mongoose');
+const { isValidId } = require('../db/postgres');
 const User = require('../models/user.model');
 const { keycloakService, problem } = require('../services/keycloak.service');
 
@@ -6,7 +6,11 @@ function fail(res, error) {
     return res.status(error.status || 503).json({ error: error.status ? error.message : 'Không thể cập nhật tài khoản. Hãy thử lại.',
         code: error.code || 'AUTH_SYNC_FAILED' });
 }
-exports.me = (req, res) => res.json({ user: req.user });
+exports.me = (req, res) => res.json({ user: req.user, account_created: Boolean(req.identityCreated) });
+exports.updateProfile=async(req,res)=>{
+    try {res.json({message:'Đã cập nhật thông tin cá nhân.',user:await require('../services/profile.service').update(req.user,req.body)});}
+    catch(error){fail(res,error);}
+};
 exports.getAllUsers = async (req, res) => {
     try { res.json(await User.find().select('-password').sort({ _id: -1 })); }
     catch (error) { fail(res, error); }
@@ -16,7 +20,7 @@ async function update(req, res, field, values) {
     try {
         const { id } = req.params;
         const value = req.body?.[field];
-        if (!mongoose.isValidObjectId(id) || !values.includes(value)) throw problem(400, 'ID hoặc giá trị cập nhật không hợp lệ.', 'INVALID_INPUT');
+        if (!isValidId(id) || !values.includes(value)) throw problem(400, 'ID hoặc giá trị cập nhật không hợp lệ.', 'INVALID_INPUT');
         const user = await User.findById(id).select('-password');
         if (!user) throw problem(404, 'Không tìm thấy tài khoản.', 'USER_NOT_FOUND');
         if (!user.keycloakId) throw problem(409, 'Tài khoản chưa được liên kết Keycloak.', 'MAPPING_REQUIRED');

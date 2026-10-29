@@ -2,6 +2,8 @@ import { createRouter, createWebHistory } from 'vue-router';
 import { session } from '../services/auth';
 
 const routes = [
+  {path:'/profile',name:'Profile',component:()=>import('../views/user/ProfileView.vue'),meta:{title:'Thông tin cá nhân',shared:true}},
+  {path:'/voices',name:'MyVoices',component:()=>import('../views/user/MyVoices.vue'),meta:{title:'Giọng của bạn'}},
   {
     path: '/',
     name: 'LectureCreator',
@@ -45,7 +47,7 @@ router.beforeEach((to, from, next) => {
   }
 
   // Nếu đã đăng nhập là Admin mà cố vào trang user → về /admin
-  if (!to.meta.requiresAdmin && isAdmin && to.path !== '/admin') {
+  if (!to.meta.requiresAdmin && !to.meta.shared && isAdmin && to.path !== '/admin') {
     return next('/admin');
   }
 

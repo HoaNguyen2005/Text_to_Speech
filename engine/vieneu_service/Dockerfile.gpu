@@ -1,0 +1,12 @@
+FROM pytorch/pytorch:2.8.0-cuda12.8-cudnn-runtime
+ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 HF_HOME=/home/tts/.cache/huggingface VIENEU_DEVICE=cuda
+RUN find /etc/apt -type f \( -name '*.list' -o -name '*.sources' \) -exec sed -i 's|http://|https://|g' {} + \
+    && apt-get -o Acquire::Retries=3 update && apt-get -o Acquire::Retries=3 install -y --no-install-recommends ffmpeg libsndfile1 libgomp1 ca-certificates && rm -rf /var/lib/apt/lists/*
+COPY requirements.txt /tmp/requirements.txt
+RUN --mount=type=cache,target=/root/.cache/pip pip install -r /tmp/requirements.txt "vieneu[cuda]==3.8.3"
+RUN useradd --create-home --uid 1000 tts && mkdir -p /app/backend/data/book-audio /home/tts/.cache && chown -R tts:tts /app /home/tts
+WORKDIR /app/vieneu
+COPY --chown=tts:tts app.py ./
+USER tts
+EXPOSE 8001
+CMD ["uvicorn","app:app","--host","0.0.0.0","--port","8001"]

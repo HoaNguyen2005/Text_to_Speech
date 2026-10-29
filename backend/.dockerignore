@@ -1,0 +1,25 @@
+# Allow only the files required by the runtime image into its build context.
+**
+!package.json
+!package-lock.json
+!server.js
+!app/
+!app/**
+!workers/
+!workers/**
+!scripts/
+!scripts/migrate_postgres_schema.js
+!scripts/postgres_status.js
+!scripts/container_health.js
+
+# Also exclude private/runtime files if added below an allowed source directory.
+**/.env
+**/.env.*
+**/node_modules
+**/data
+**/backups
+**/*.log
+**/*.dump
+**/*.wav
+**/*.mp3
+**/*.m4a

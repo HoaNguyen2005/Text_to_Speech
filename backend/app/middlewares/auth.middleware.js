@@ -6,7 +6,7 @@ let verifierPromise;
 async function verifyAccessToken(token) {
     if (!verifierPromise) verifierPromise = import('jose').then(({ createRemoteJWKSet, jwtVerify }) => {
         const config = getKeycloakConfig();
-        const keys = createRemoteJWKSet(new URL(`${config.issuer}/protocol/openid-connect/certs`), {
+        const keys = createRemoteJWKSet(new URL(config.jwksUri), {
             timeoutDuration: 10000, cooldownDuration: 1000, cacheMaxAge: 600000
         });
         return async (accessToken) => {
@@ -41,7 +41,7 @@ async function verifyToken(req, res, next) {
     }
     try {
         req.auth = await verifyAccessToken(header.replace(/^Bearer\s+/i, ''));
-        req.user = await resolveIdentity(req.auth);
+        req.user = await resolveIdentity(req.auth, { onAccountCreated: () => { req.identityCreated = true; } });
         next();
     } catch (error) { authFailure(res, error); }
 }

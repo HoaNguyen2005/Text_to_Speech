@@ -4,6 +4,22 @@
     <meta charset="UTF-8">
     <link rel="icon" type="image/svg+xml" href="/favicon.svg">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="color-scheme" content="light dark">
+    <script>
+      // Apply before the first paint and before OIDC initialization.
+      (() => {
+        let saved;
+        try { saved = localStorage.getItem('text2speech.theme'); } catch {}
+        try {
+          const shared = document.cookie.split(';').map(item => item.trim()).find(item => item.startsWith('tts_theme='))?.slice(10);
+          if (shared === 'light' || shared === 'dark') saved = shared;
+        } catch {}
+        const theme = saved === 'light' || saved === 'dark' ? saved : matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        document.documentElement.dataset.theme = theme;
+        document.documentElement.style.colorScheme = theme;
+      })();
+    </script>
+    <style>html{background:#f3f5f4;color:#182d30}html[data-theme="dark"]{background:#101b21;color:#e5efed}</style>
     <title>Text2Speech — Bài giảng AI</title>
   </head>
   <body>

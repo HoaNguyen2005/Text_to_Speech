@@ -8,7 +8,7 @@ function createService(config = getKeycloakConfig()) {
         if (token && Date.now() < expiresAt) return token;
         if (!config.clientSecret) throw problem(503, 'Chưa cấu hình kết nối quản trị Keycloak cho backend.', 'KEYCLOAK_NOT_CONFIGURED');
         if (!tokenRequest) tokenRequest = (async () => {
-            const response = await fetch(`${config.issuer}/protocol/openid-connect/token`, {
+            const response = await fetch(config.tokenUrl || `${config.issuer}/protocol/openid-connect/token`, {
                 method: 'POST', signal: AbortSignal.timeout(10000),
                 headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                 body: new URLSearchParams({ grant_type: 'client_credentials', client_id: config.clientId, client_secret: config.clientSecret })
@@ -24,7 +24,7 @@ function createService(config = getKeycloakConfig()) {
     }
     async function request(endpoint, { method = 'GET', body } = {}, retry = true) {
         try {
-            const response = await fetch(`${config.base}/admin/realms/${encodeURIComponent(config.realm)}${endpoint}`, {
+            const response = await fetch(`${config.internalBase || config.base}/admin/realms/${encodeURIComponent(config.realm)}${endpoint}`, {
                 method, signal: AbortSignal.timeout(15000),
                 headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await serviceToken()}` },
                 body: body === undefined ? undefined : JSON.stringify(body)

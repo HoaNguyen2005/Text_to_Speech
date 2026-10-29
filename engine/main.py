@@ -1,5 +1,8 @@
 import sys
 import codecs
+import os
+# Configure before importing pydub/OpenVoice so their subprocesses also find FFmpeg.
+os.environ['PATH'] = os.path.dirname(sys.executable) + os.pathsep + os.environ.get('PATH', '')
 if sys.stdout.encoding.lower() != 'utf-8':
     sys.stdout = codecs.getwriter('utf-8')(sys.stdout.detach())
 
@@ -14,6 +17,10 @@ import uuid
 from urllib.request import urlopen, Request
 from urllib.parse import urlparse, unquote
 from tts_pipeline import LectureTTSPipeline
+from book_audio import register_book_routes, ENGINE_LOCK, SECRET
+from runtime_paths import SAMPLES, GENERATED
+from runtime_paths import BOOK_ARTIFACT_ROOT
+import shutil
 
 # URL public của Backend Gateway để trả về link audio cho client (chế độ local)
 PUBLIC_BACKEND_URL = os.getenv("PUBLIC_BACKEND_URL", "http://localhost:3000")
@@ -30,6 +37,18 @@ except Exception as e:
     print(f"Warning: Không thể khởi tạo Pipeline. Vui lòng kiểm tra lại môi trường và weights: {e}")
     pipeline = None
 
+
+@app.get('/health/ready')
+def readiness():
+    # HTTP can start after a model loading failure; report that separately.
+    ready = pipeline is not None and bool(shutil.which('ffmpeg')) and bool(shutil.which('ffprobe'))
+    ready = ready and bool(SECRET)
+    for directory in (BOOK_ARTIFACT_ROOT, SAMPLES, GENERATED):
+        ready = ready and directory.is_dir() and os.access(directory, os.R_OK | os.W_OK)
+    if not ready:
+        raise HTTPException(status_code=503, detail='Engine/model hoặc thư mục dùng chung chưa sẵn sàng.')
+    return {'status': 'ok', 'standard': True, 'clone': True}
+
 class GenerateRequest(BaseModel):
     text: str
     teacher_id: str
@@ -37,6 +56,8 @@ class GenerateRequest(BaseModel):
     # Presigned URL của file giọng mẫu trên R2 (Backend sinh). Nếu bỏ trống,
     # Engine fallback về đọc đĩa như cũ — tương thích chế độ dev không có R2.
     reference_audio_url: Optional[str] = None
+    gender: Optional[str] = None
+    reference_file: Optional[str] = None
 
 
 def _download_reference_audio(url: str) -> str:
@@ -52,13 +73,14 @@ def _download_reference_audio(url: str) -> str:
     return dest
 
 
-def _find_local_reference(teacher_id: str) -> str:
+def _find_local_reference(teacher_id: str, reference_file=None) -> str:
     """Fallback cũ: tìm file mẫu trên đĩa theo teacher_id (mọi định dạng)."""
     if not teacher_id or not all(char.isalnum() or char in "_-" for char in teacher_id):
         raise HTTPException(status_code=400, detail="Mã giọng không hợp lệ")
-    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    sample_pattern = os.path.join(base_dir, "backend", "public", "audio", "samples", f"{teacher_id}.*")
+    sample_pattern = str(SAMPLES / f"{teacher_id}.*")
     matches = [f for f in glob.glob(sample_pattern) if not f.endswith(".json")]
+    if reference_file:
+        matches = [f for f in matches if os.path.basename(f) == reference_file]
     if not matches:
         raise HTTPException(status_code=400, detail=f"Không tìm thấy file mẫu cho giọng: {teacher_id}")
     return matches[0]
@@ -69,36 +91,36 @@ def generate_audio(request: GenerateRequest):
     if pipeline is None:
         raise HTTPException(status_code=500, detail="AI Pipeline chưa được khởi tạo thành công.")
 
-    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-
     # Nguồn giọng mẫu: ưu tiên URL từ R2, fallback đĩa local cho môi trường dev
     downloaded_file = None
     if request.reference_audio_url:
-        print(f"[ENGINE] Tải giọng mẫu từ R2: {request.reference_audio_url[:120]}...")
+        print('[ENGINE] Tải giọng mẫu từ R2.')
         try:
             reference_audio = _download_reference_audio(request.reference_audio_url)
             downloaded_file = reference_audio
         except Exception as e:
             raise HTTPException(status_code=400, detail=f"Không tải được file giọng mẫu từ R2: {str(e)}")
     else:
-        reference_audio = _find_local_reference(request.teacher_id)
+        reference_audio = _find_local_reference(request.teacher_id, request.reference_file)
 
     # Map style_id to style audio (Giả sử dùng chính giọng mẫu làm style nếu chưa có)
     style_audio = reference_audio
 
     # Tạo output path
     output_filename = f"output_{uuid.uuid4().hex}.wav"
-    output_dir = os.path.join(base_dir, "backend", "public", "audio", "generated")
+    output_dir = str(GENERATED)
     os.makedirs(output_dir, exist_ok=True)
     output_path = os.path.join(output_dir, output_filename)
 
     try:
-        pipeline.generate_lecture(
-            lecture_text=request.text,
-            reference_audio_path=reference_audio,
-            style_id=request.style_id,
-            output_path=output_path
-        )
+        with ENGINE_LOCK:
+            pipeline.generate_lecture(
+                lecture_text=request.text,
+                reference_audio_path=reference_audio,
+                style_id=request.style_id,
+                output_path=output_path,
+                gender=request.gender
+            )
         return {
             "status": "success",
             # Backend (nếu bật R2) sẽ đọc file tại output_path để upload lên R2 rồi xóa
@@ -116,6 +138,8 @@ def generate_audio(request: GenerateRequest):
             except OSError:
                 pass
 
+register_book_routes(app, lambda: pipeline)
+
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host=os.getenv('ENGINE_HOST', '127.0.0.1'), port=8000)

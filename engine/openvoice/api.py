@@ -6,7 +6,6 @@ from openvoice import utils
 from openvoice import commons
 import os
 import librosa
-from openvoice.text import text_to_sequence
 from openvoice.mel_processing import spectrogram_torch
 from openvoice.models import SynthesizerTrn
 
@@ -47,6 +46,9 @@ class BaseSpeakerTTS(OpenVoiceBaseClass):
 
     @staticmethod
     def get_text(text, hps, is_symbol):
+        # The application uses Edge-TTS plus ToneColorConverter; load the
+        # multilingual BaseSpeakerTTS dictionaries only for that demo path.
+        from openvoice.text import text_to_sequence
         text_norm = text_to_sequence(text, hps.symbols, [] if is_symbol else hps.data.text_cleaners)
         if hps.data.add_blank:
             text_norm = commons.intersperse(text_norm, 0)

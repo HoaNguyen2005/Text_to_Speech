@@ -1,0 +1,13 @@
+// SQL columns are fixed here; no table/column identifiers come from HTTP input.
+const tables = {
+    users: { collection: 'users', columns: ['_id','email','fullName','gender','status','role','account_class','profile_version','authProvisioning','authSyncPending','authSyncError','authSyncVersion','authSyncStartedAt','keycloakId'], defaults: { gender: 'other', status: 'active', role: 'user', account_class:'free',profile_version:0, authProvisioning: false, authSyncPending: false, authSyncError: '', authSyncVersion: 0 } },
+    voices: { collection: 'voices', columns: ['_id','voice_id','name','gender','file_path','is_active','user_id','is_global','class','description','createdAt','updatedAt'], timestamps:true, defaults: { gender: 'male', is_active: true, is_global: false,class:'free',description:'' } },
+    book_jobs: { collection: 'bookjobs', columns: ['_id','user_id','request_id','title','book_metadata','ai_assisted','source','source_hash','target_minutes','voice_mode','selected_voice','workflow_version','work_action','draft','draft_revision','approved_revision','edit_request','next_attempt_at','retry_state','status','cancel_requested','delete_requested','progress','checkpoint','result','error','lease_owner','lease_until','runs','artifacts_cleaned','createdAt','updatedAt'], json: ['book_metadata','selected_voice','draft','edit_request','retry_state','progress','checkpoint','result'], hidden: ['source','checkpoint'], timestamps: true,
+        defaults: { ai_assisted: true, status: 'queued', work_action: 'summary', draft_revision: 0, cancel_requested: false, delete_requested: false, progress: { phase: 'queued', percent: 0, message: 'Đang chờ worker.' }, checkpoint: {}, error: '', runs: 0, artifacts_cleaned: false } },
+    generated_lectures: { collection: 'generatedlectures', columns: ['_id','book_job_id','user_id','title','book_metadata','ai_assisted','target_minutes','duration_seconds','voice_mode','text','teacher_id','style_id','audio_url','speech_config','subtitle_url','subtitle_timing','createdAt','updatedAt'], json: ['book_metadata','speech_config'], timestamps: true, defaults: { teacher_id: '', style_id: 'normal' } },
+    book_caches: { collection: 'bookcaches', columns: ['_id','user_id','source_hash','version','notes','overview','expires_at'], json: ['notes'], defaults: { notes: [] } },
+    reading_profiles: { collection: 'readingprofiles', columns: ['_id','units_per_minute','seconds','expires_at'] },
+    book_previews: { columns: ['_id','user_id','job_id','signature','status','owner','lease_until','expires_at','result','error'], json:['result'] },
+    worker_leases: { collection: 'bookworkerleases', columns: ['_id','owner','until'] },
+};
+module.exports = tables;

@@ -1,3 +1,4 @@
+require('./legacy-mongo-tool');
 const mongoose = require('mongoose');
 const { assertLocalMongoUri, createAdminClient } = require('./keycloak-local');
 

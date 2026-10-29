@@ -2,6 +2,15 @@
 import { computed } from 'vue';
 const props = defineProps({ name: { type: String, default: 'wave' } });
 const paths = {
+  download:'M12 3v12M7 10l5 5 5-5M4 17v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3',
+  user:'M20 21v-2a7 7 0 0 0-14 0v2M12 3a4 4 0 1 0 0 8 4 4 0 0 0 0-8Z',
+  play:'M8 4v16l13-8L8 4Z',
+  pause:'M8 4v16M16 4v16',
+  chevron:'M9 5l7 7-7 7',
+  edit:'M15 5l4 4M4 20l4-1L20 7a2 2 0 0 0-4-4L4 15v5Z',
+  language: 'M3 5h12M9 3v2M5 5c0 6 5 10 9 11M13 5c0 6-5 10-9 11M14 21l4-10 4 10M15.5 17h5',
+  sun: 'M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8ZM12 2v2M12 20v2M2 12h2M20 12h2M4.93 4.93l1.42 1.42M17.65 17.65l1.42 1.42M4.93 19.07l1.42-1.42M17.65 6.35l1.42-1.42',
+  moon: 'M20.9 13.1A9 9 0 0 1 10.9 3a9 9 0 1 0 10 10.1Z',
   wave: 'M4 10v4M8 6v12M12 3v18M16 7v10M20 10v4',
   book: 'M4 5a2 2 0 0 1 2-2h12v18H6a2 2 0 0 1-2-2V5ZM4 17h14M8 7h6M8 11h4',
   document: 'M7 3h7l4 4v14H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2ZM14 3v5h4M9 12h5M9 16h6',

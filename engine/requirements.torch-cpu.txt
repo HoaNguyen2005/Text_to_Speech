@@ -1,0 +1,4 @@
+# Install from https://download.pytorch.org/whl/cpu before the other requirements.
+# Reused as constraints so later dependency resolution cannot replace CPU wheels.
+torch==2.10.0+cpu
+torchaudio==2.10.0+cpu

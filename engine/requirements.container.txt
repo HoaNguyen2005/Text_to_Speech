@@ -1,0 +1,16 @@
+# CPU API dependencies: Edge-TTS + ToneColorConverter (not BaseSpeakerTTS/ASR/Gradio demos).
+# Keep the Windows development environment in requirements.txt unchanged.
+fastapi==0.143.0
+uvicorn==0.54.0
+pydantic==2.14.0
+edge-tts==7.3.1
+gTTS==2.5.4
+pydub==0.25.1
+wavmark==0.0.3
+numpy==2.2.6
+librosa==0.11.0
+soundfile==0.14.0
+# Hub 2.2 requires Click >=8.4, while the existing gTTS fallback needs Click <8.2.
+# The download/cache API used by OpenVoice and WavMark is supported by this pin.
+huggingface-hub==0.34.4
+silero-vad==6.2.3

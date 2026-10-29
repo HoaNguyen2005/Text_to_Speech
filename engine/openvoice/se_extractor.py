@@ -7,16 +7,16 @@ import base64
 from glob import glob
 import numpy as np
 from pydub import AudioSegment
-from faster_whisper import WhisperModel
 import hashlib
 import base64
 import librosa
-from whisper_timestamped.transcribe import get_audio_tensor, get_vad_segments
 
 model_size = "medium"
 # Run on GPU with FP16
 model = None
+_packaged_vad_model = None
 def split_audio_whisper(audio_path, audio_name, target_dir='processed'):
+    from faster_whisper import WhisperModel
     global model
     if model is None:
         model = WhisperModel(model_size, device="cuda", compute_type="float16")
@@ -56,7 +56,7 @@ def split_audio_whisper(audio_path, audio_name, target_dir='processed'):
         audio_seg = audio[int( start_time * 1000) : min(max_len, int(end_time * 1000) + 80)]
 
         # segment file name
-        fname = f"{audio_name}_seg{s_ind}.wav"
+        fname = f"seg_{s_ind:04d}.wav"
 
         # filter out the segment shorter than 1.5s and longer than 20s
         save = audio_seg.duration_seconds > 1.5 and \
@@ -76,14 +76,26 @@ def split_audio_whisper(audio_path, audio_name, target_dir='processed'):
 
 def split_audio_vad(audio_path, audio_name, target_dir, split_seconds=10.0):
     SAMPLE_RATE = 16000
-    audio_vad = get_audio_tensor(audio_path)
-    segments = get_vad_segments(
-        audio_vad,
-        output_sample=True,
-        min_speech_duration=0.1,
-        min_silence_duration=1,
-        method="silero",
-    )
+    if os.environ.get('SILERO_VAD_BACKEND') == 'package':
+        # The wheel includes the model: no torch.hub download/trust prompt in Docker.
+        from silero_vad import load_silero_vad, get_speech_timestamps
+        global _packaged_vad_model
+        if _packaged_vad_model is None:
+            _packaged_vad_model = load_silero_vad()
+        audio_vad, _ = librosa.load(audio_path, sr=SAMPLE_RATE, mono=True)
+        segments = get_speech_timestamps(
+            torch.from_numpy(audio_vad), _packaged_vad_model,
+            sampling_rate=SAMPLE_RATE, min_speech_duration_ms=100,
+            min_silence_duration_ms=1000,
+        )
+    else:
+        # Retain the existing Windows installation and its VAD behavior.
+        from whisper_timestamped.transcribe import get_audio_tensor, get_vad_segments
+        audio_vad = get_audio_tensor(audio_path)
+        segments = get_vad_segments(
+            audio_vad, output_sample=True, min_speech_duration=0.1,
+            min_silence_duration=1, method="silero",
+        )
     segments = [(seg["start"], seg["end"]) for seg in segments]
     segments = [(float(s) / SAMPLE_RATE, float(e) / SAMPLE_RATE) for s,e in segments]
     print(segments)
@@ -108,7 +120,7 @@ def split_audio_vad(audio_path, audio_name, target_dir, split_seconds=10.0):
         end_time = min(start_time + interval, audio_dur)
         if i == num_splits - 1:
             end_time = audio_dur
-        output_file = f"{wavs_folder}/{audio_name}_seg{count}.wav"
+        output_file = os.path.join(wavs_folder, f"seg_{count:04d}.wav")
         audio_seg = audio_active[int(start_time * 1000): int(end_time * 1000)]
         audio_seg.export(output_file, format='wav')
         start_time = end_time
@@ -131,7 +143,9 @@ def get_se(audio_path, vc_model, target_dir='processed', vad=True):
     version = vc_model.version
     print("OpenVoice version:", version)
 
-    audio_name = f"{os.path.basename(audio_path).rsplit('.', 1)[0]}_{version}_{hash_numpy_array(audio_path)}"
+    # The job path already contains a UUID/hash. Repeating the entire source basename
+    # in both the directory and segment filename can exceed Windows MAX_PATH.
+    audio_name = f"{version}_{hash_numpy_array(audio_path)}"
     se_path = os.path.join(target_dir, audio_name, 'se.pth')
 
     # if os.path.isfile(se_path):

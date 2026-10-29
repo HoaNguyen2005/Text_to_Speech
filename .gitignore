@@ -2,7 +2,11 @@
 .env
 backend/.env.migration.local
 backend/.env.keycloak.local
+backend/.env.books.local
+backend/.env.postgres.local
+backend/data/
 keycloak/backups/
+deploy/*.env
 .venv
 env/
 venv/
