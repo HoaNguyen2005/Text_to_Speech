@@ -66,29 +66,36 @@ function narration(intro, sections, style) {
     const split = text => {
         const result = [];
         let remaining = text.trim();
-        while (remaining.length > 1200) {
-            const head = remaining.slice(0, 1200);
-            let cut = Math.max(head.lastIndexOf('. '), head.lastIndexOf('? '), head.lastIndexOf('! '));
-            if (cut < 300) cut = head.lastIndexOf(' ');
-            if (cut < 1) cut = 1200; else cut++;
+        while (remaining.length > 600) {
+            const head = remaining.slice(0, 600);
+            let cut = Math.max(head.lastIndexOf('. '), head.lastIndexOf('? '), head.lastIndexOf('! '), head.lastIndexOf('; '));
+            if (cut < 180) cut = Math.max(cut, head.lastIndexOf(', '));
+            if (cut < 180) cut = head.lastIndexOf(' ');
+            if (cut < 1) cut = 600; else cut++;
             result.push(remaining.slice(0, cut).trim()); remaining = remaining.slice(cut).trim();
         }
         if (remaining) result.push(remaining);
         return result;
     };
-    const add = (text, rate, pause) => {
+    const add = (text, rate, pitch, pause) => {
         const chunks = split(text);
-        chunks.forEach((text, i) => parts.push({ text, rate_percent: rate, pitch_hz: 0, pause_ms: i === chunks.length - 1 ? pause : 100 }));
+        chunks.forEach((chunk, i) => {
+            const chunkPitch = chunks.length > 1 && i === chunks.length - 1 ? Math.max(-10, pitch - 1) : pitch;
+            parts.push({ text: chunk, rate_percent: rate, pitch_hz: chunkPitch, pause_ms: i === chunks.length - 1 ? pause : 180 });
+        });
     };
-    add(intro, -3, 650);
+    if (intro && intro.trim()) add(intro, -3, 1, 700);
     const base = style === 'news' ? 5 : style === 'story' ? -5 : 0;
     sections.forEach((section, i) => {
         const paragraphs = section.text.split(/\n\s*\n/u).map(text => text.trim()).filter(Boolean);
         paragraphs.forEach((paragraph, j) => {
-            const reflective = /^(Tuy nhiên|Nhưng|Dù vậy|Thay vì|Điều quan trọng|Điểm cốt lõi|Tóm lại|Vì vậy|Do đó)(?=\s|[,:;.!?]|$)/iu.test(paragraph);
+            const reflective = /^(Tuy nhiên|Nhưng|Dù vậy|Thay vì|Điều quan trọng|Điểm cốt lõi|Tóm lại|Vì vậy|Do đó|Thực tế|Nói cách khác)(?=\s|[,:;.!?]|$)/iu.test(paragraph);
             const question = /[?？]\s*$/u.test(paragraph);
+            const isLast = j === paragraphs.length - 1;
+            const isFirst = j === 0 && paragraphs.length > 1;
+            const pitch = question ? 2 : isLast ? -1 : reflective ? -1 : isFirst ? 1 : (j % 2 === 1 ? 1 : 0);
             add(paragraph, Math.max(-10, Math.min(8, base + (i === sections.length - 1 || reflective ? -2 : question ? -1 : 0))),
-                j === paragraphs.length - 1 ? 650 : question ? 550 : 400);
+                pitch, isLast ? 700 : question ? 600 : reflective ? 520 : 420);
         });
     });
     if (parts.length > 300) throw new Error('Kịch bản có quá nhiều đoạn. Hãy rút gọn nội dung.');

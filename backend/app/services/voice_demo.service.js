@@ -1,5 +1,6 @@
 const fs=require('fs/promises'),path=require('path'),crypto=require('crypto');
 const config=require('../config/book'),providers=require('./tts_provider.service');
+const artifact=require('./engine_artifact.service');
 const {WorkerLease}=require('../models/book_cache.model');
 const problem=(status,message)=>Object.assign(new Error(message),{status});
 const directory=path.resolve(__dirname,'../../public/audio/generated');
@@ -10,9 +11,7 @@ async function engine(endpoint,payload) {
     return result;
 }
 function checked(id,file) {
-    const resolved=path.resolve(file);
-    if(path.dirname(resolved)!==path.join(config.artifactRoot,id))throw problem(503,'Không tạo được giọng nghe mẫu. Hãy thử lại.');
-    return resolved;
+    return artifact.localPath(id, file, 'Không tạo được giọng nghe mẫu. Hãy thử lại.');
 }
 async function sample(provider,id) {
     providers.validate(provider);
@@ -34,13 +33,14 @@ async function sample(provider,id) {
         const audio=await engine('part',{job_id:jobId,part_id:hash,text,mode:'standard',gender:voice.gender,style:'normal',reference_key:hash,...options,rate_percent:0,pitch_hz:0,pause_ms:0,interactive:true});
         checked(jobId,audio.output_path);
         const clip=await engine('preview',{job_id:jobId,part_id:hash});
-        const file=checked(jobId,clip.output_path);
+        const file=await artifact.materialize(jobId,clip.output_path,'Không tạo được giọng nghe mẫu. Hãy thử lại.');
         if(lost || !await WorkerLease.exists({_id:'voice-preset-demo',owner,until:{$gt:new Date()}}))throw problem(503,'Lượt nghe mẫu đã bị gián đoạn. Hãy thử lại.');
         await fs.mkdir(directory,{recursive:true});await fs.copyFile(file,temporary);await fs.rename(temporary,output);
         return output;
     }finally{
         clearInterval(heartbeat);await fs.unlink(temporary).catch(()=>{});
         await engine('cleanup',{job_id:jobId}).catch(()=>{});
+        await artifact.cleanupLocal(jobId);
         await WorkerLease.updateOne({_id:'voice-preset-demo',owner},{$set:{until:new Date(0)}});
     }
 }

@@ -14,21 +14,130 @@ const duration = require('../app/services/book_duration.service');
 const { normalizeMetadata, introduction, openingLine, AI_SUMMARY_NOTICE } = require('../app/services/book_metadata.service');
 
 module.exports = async function editorial(job, context) {
-    const { checkpoint, guard, save, timed, engine, artifactPath, restore, exists, workerId, Interrupted } = context;
+    const { checkpoint, guard, save, timed, engine, artifactPath, materialize = async (id, file) => artifactPath(id, file), restore, exists, workerId, Interrupted } = context;
     const state = checkpoint.editorial ||= {};
     const chunkChars = checkpoint.analysis_chunk_chars || 6000;
     const chunks = llm.splitText(job.source,chunkChars);
     const metadata = normalizeMetadata(job.book_metadata, job.title);
     // Keep reviewed text and retry checkpoints identical; new jobs carry a fixed opening index.
     const intro = job.draft?.introduction ?? state.task?.draft?.introduction ?? introduction(metadata, openingLine(checkpoint.opening_index));
-    if (['summary', 'revise'].includes(job.work_action)) {
-        state.reading_rate = await duration.calibrate(job, context);
-        await save('analysis', 2);
+    const initialRate = checkpoint.initial_speech?.rate_percent ?? 0;
+    const chosenRate = job.work_action === 'revise' ? job.draft?.speech?.rate_percent ?? initialRate : initialRate;
+    if (job.work_action === 'summary' || job.edit_request?.fit_duration) {
+        const preIssue = await duration.checkSource(job.source, intro, job.target_minutes, checkpoint.voice, job.voice_mode, { rate_percent: chosenRate }, state.reading_rate);
+        if (preIssue && preIssue.rate_basis === 'measured') {
+            state.source_duration_issue = preIssue;
+            await save('calibration', 2, 'Nguồn quá ngắn cho thời lượng đã chọn. Hãy chọn lại thời lượng hoặc thêm nội dung nguồn.');
+            duration.rejectSource(preIssue);
+        }
+    }
+    const calibrationPromise = ['summary', 'revise'].includes(job.work_action)
+        ? duration.calibrate(job, context, { silent: true })
+        : null;
+    try {
+        const estimatedBaseRate = state.reading_rate?.units_per_minute || 300;
+        const estimatedPossibleMinutes = Math.max(0.5, (llm.units(job.source) + llm.units(intro)) / (estimatedBaseRate * (1 + initialRate / 100)));
+        const minutes = Math.min(job.target_minutes, estimatedPossibleMinutes);
+        const adaptive = checkpoint.analysis_strategy === 'adaptive-v1';
+        const usable = text => typeof text === 'string' && text.trim() && !language.missingDiacritics(text);
+        const cacheVersion = `${config.editorialVersion}:${config.languageVersion}${chunkChars === 6000 ? '' : ':chunks-'+chunkChars}${adaptive ? ':'+llm.FAST_VERSION+':'+(process.env.GEMINI_MODEL || 'gemini-flash-latest') : ''}`;
+        if (!state.notes) {
+            const cache = await BookCache.findOne({ user_id: job.user_id, source_hash: job.source_hash, version: cacheVersion, expires_at: { $gt: new Date() } }).lean();
+            state.notes = cache?.notes || [];
+            state.overview = cache?.overview;
+        }
+        if (adaptive && !state.plan && !state.fastRejected && chunks.length <= 4 && !state.notes.some(usable)) {
+            const items = chunks.map((text,id)=>({id,text}));
+            if (llm.withinBudget(items)) {
+                await save('analysis', 2, 'Phân tích dữ kiện và lập dàn ý trong cùng lượt.');
+                try {
+                    const combined = await timed('analysis_outline', () => llm.analyzeGroup(items, minutes, guard));
+                    combined.notes.forEach(item=>{state.notes[item.id]=item.note;});
+                    state.plan = combined.plan;
+                    await save('outline', 24);
+                } catch (error) {
+                    if (!llm.canFallback(error) && error.code !== 'TIMEOUT') throw error;
+                    state.fastRejected = true;
+                    await save('analysis', 2, 'Chuyển sang phân tích theo nhóm nhỏ hơn.');
+                    if (error.code === 'TIMEOUT') throw error; // Respect the shared retry gate.
+                }
+            } else state.fastRejected = true;
+        }
+        async function analyzeBatch(items) {
+            try {
+                const results = items.length === 1
+                    ? [{ id:items[0].id, note:await timed('analysis',()=>llm.analyze(items[0].text,guard)) }]
+                    : (await timed('analysis_batch',()=>llm.analyzeGroup(items,null,guard))).notes;
+                results.forEach(item=>{state.notes[item.id]=item.note;});
+                await save('analysis', 2 + state.notes.filter(usable).length / chunks.length * 20);
+            } catch (error) {
+                if (items.length < 2 || (!llm.canFallback(error) && error.code !== 'TIMEOUT')) throw error;
+                state.groupMaxChunks = Math.max(1,Math.floor(items.length/2));
+                await save('analysis', 2 + state.notes.filter(usable).length / chunks.length * 20, 'Chia nhóm phân tích để giữ đủ dữ kiện.');
+                if (error.code === 'TIMEOUT') throw error;
+                const middle = Math.ceil(items.length/2);
+                await analyzeBatch(items.slice(0,middle));
+                await analyzeBatch(items.slice(middle));
+            }
+        }
+        for (let start = 0; adaptive && start < chunks.length;) {
+            if (usable(state.notes[start])) { start++; continue; }
+            const items=[];
+            const max = state.groupMaxChunks || 4;
+            while (start < chunks.length && items.length < max && !usable(state.notes[start])) {
+                const item = {id:start,text:chunks[start]};
+                if (items.length && !llm.withinBudget([...items,item])) break;
+                items.push(item);start++;
+            }
+            await save('analysis',2 + state.notes.filter(usable).length / chunks.length * 20,'Phân tích nguồn theo nhóm, giữ mã tham chiếu từng phần.');
+            await analyzeBatch(items);
+        }
+        for (let start = 0; !adaptive && start < chunks.length; start += config.analysisConcurrency) {
+            const ids = [];
+            for (let i = start; i < Math.min(chunks.length, start + config.analysisConcurrency); i++) if (!usable(state.notes[i])) ids.push(i);
+            if (!ids.length) continue;
+            await save('analysis', 2 + start / chunks.length * 20, `Phân tích dữ kiện · ${start}/${chunks.length} phần`);
+            const results = await Promise.allSettled(ids.map(i => timed('analysis', () => llm.analyze(chunks[i], guard))));
+            results.forEach((result, i) => { if (result.status === 'fulfilled') state.notes[ids[i]] = result.value; });
+            await save('analysis', 2 + (start + ids.length) / chunks.length * 20);
+            const failure = results.find(result => result.status === 'rejected');
+            if (failure) throw failure.reason;
+        }
+        if (!state.overview) {
+            // Compact the structured record only for planning. Writing and checking
+            // retrieve original excerpts again, so this overview is never the sole source.
+            const records = state.notes.map((text, i) => `[Phần ${i}] ${text}`);
+            let groups = records;
+            state.overviewRounds ||= [];
+            for (let round = 0; !state.plan && groups.join('\n').length > 14000; round++) {
+                if (round > 5) throw new Error('Nguồn quá phức tạp để lập dàn ý. Hãy chia thành các tập nhỏ hơn.');
+                const batches = []; let batch = '';
+                for (const record of groups) {
+                    if (batch.length + record.length > 14000 && batch) { batches.push(batch); batch = ''; }
+                    batch += record + '\n';
+                }
+                if (batch) batches.push(batch);
+                const saved = state.overviewRounds[round] ||= [];
+                for (let i = 0; i < batches.length; i++) {
+                    if (!saved[i]) saved[i] = await timed('reduce', () => llm.reduce(batches[i], guard));
+                    await save('outline', 24, 'Đang gộp dữ kiện để lập dàn ý.');
+                }
+                groups = saved.slice(0, batches.length);
+            }
+            state.overview = groups.join('\n');
+            await BookCache.updateOne({ user_id: job.user_id, source_hash: job.source_hash, version: cacheVersion },
+                { $set: { notes: state.notes, overview: state.overview, expires_at: new Date(Date.now() + 7 * 86400000) } }, { upsert: true });
+            await save('outline', 24);
+        }
+        if (calibrationPromise) {
+            state.reading_rate = await calibrationPromise;
+        }
+    } catch (error) {
+        if (calibrationPromise) await calibrationPromise.catch(() => {});
+        throw error;
     }
     const baseRate = state.reading_rate?.units_per_minute || 300;
-    const initialRate = checkpoint.initial_speech?.rate_percent ?? 0;
     if (job.work_action === 'summary' || job.edit_request?.fit_duration) {
-        const chosenRate = job.work_action === 'revise' ? job.draft?.speech?.rate_percent ?? initialRate : initialRate;
         state.source_duration_issue = duration.sourceIssue(job.source, intro, job.target_minutes, baseRate, chosenRate, true);
         if (state.source_duration_issue) {
             await save('calibration', 2, 'Nguồn quá ngắn cho thời lượng đã chọn. Hãy chọn lại thời lượng hoặc thêm nội dung nguồn.');
@@ -36,98 +145,6 @@ module.exports = async function editorial(job, context) {
         }
     }
     const possibleMinutes = Math.max(0.5, (llm.units(job.source) + llm.units(intro)) / (baseRate * (1 + initialRate / 100)));
-    const minutes = Math.min(job.target_minutes, possibleMinutes);
-    const adaptive = checkpoint.analysis_strategy === 'adaptive-v1';
-    const usable = text => typeof text === 'string' && text.trim() && !language.missingDiacritics(text);
-    const cacheVersion = `${config.editorialVersion}:${config.languageVersion}${chunkChars === 6000 ? '' : ':chunks-'+chunkChars}${adaptive ? ':'+llm.FAST_VERSION+':'+(process.env.GEMINI_MODEL || 'gemini-flash-latest') : ''}`;
-    if (!state.notes) {
-        const cache = await BookCache.findOne({ user_id: job.user_id, source_hash: job.source_hash, version: cacheVersion, expires_at: { $gt: new Date() } }).lean();
-        state.notes = cache?.notes || [];
-        state.overview = cache?.overview;
-    }
-    if (adaptive && !state.plan && !state.fastRejected && chunks.length <= 4 && !state.notes.some(usable)) {
-        const items = chunks.map((text,id)=>({id,text}));
-        if (llm.withinBudget(items)) {
-            await save('analysis', 2, 'Phân tích dữ kiện và lập dàn ý trong cùng lượt.');
-            try {
-                const combined = await timed('analysis_outline', () => llm.analyzeGroup(items, minutes, guard));
-                combined.notes.forEach(item=>{state.notes[item.id]=item.note;});
-                state.plan = combined.plan;
-                await save('outline', 24);
-            } catch (error) {
-                if (!llm.canFallback(error) && error.code !== 'TIMEOUT') throw error;
-                state.fastRejected = true;
-                await save('analysis', 2, 'Chuyển sang phân tích theo nhóm nhỏ hơn.');
-                if (error.code === 'TIMEOUT') throw error; // Respect the shared retry gate.
-            }
-        } else state.fastRejected = true;
-    }
-    async function analyzeBatch(items) {
-        try {
-            const results = items.length === 1
-                ? [{ id:items[0].id, note:await timed('analysis',()=>llm.analyze(items[0].text,guard)) }]
-                : (await timed('analysis_batch',()=>llm.analyzeGroup(items,null,guard))).notes;
-            results.forEach(item=>{state.notes[item.id]=item.note;});
-            await save('analysis', 2 + state.notes.filter(usable).length / chunks.length * 20);
-        } catch (error) {
-            if (items.length < 2 || (!llm.canFallback(error) && error.code !== 'TIMEOUT')) throw error;
-            state.groupMaxChunks = Math.max(1,Math.floor(items.length/2));
-            await save('analysis', 2 + state.notes.filter(usable).length / chunks.length * 20, 'Chia nhóm phân tích để giữ đủ dữ kiện.');
-            if (error.code === 'TIMEOUT') throw error;
-            const middle = Math.ceil(items.length/2);
-            await analyzeBatch(items.slice(0,middle));
-            await analyzeBatch(items.slice(middle));
-        }
-    }
-    for (let start = 0; adaptive && start < chunks.length;) {
-        if (usable(state.notes[start])) { start++; continue; }
-        const items=[];
-        const max = state.groupMaxChunks || 4;
-        while (start < chunks.length && items.length < max && !usable(state.notes[start])) {
-            const item = {id:start,text:chunks[start]};
-            if (items.length && !llm.withinBudget([...items,item])) break;
-            items.push(item);start++;
-        }
-        await save('analysis',2 + state.notes.filter(usable).length / chunks.length * 20,'Phân tích nguồn theo nhóm, giữ mã tham chiếu từng phần.');
-        await analyzeBatch(items);
-    }
-    for (let start = 0; !adaptive && start < chunks.length; start += config.analysisConcurrency) {
-        const ids = [];
-        for (let i = start; i < Math.min(chunks.length, start + config.analysisConcurrency); i++) if (!usable(state.notes[i])) ids.push(i);
-        if (!ids.length) continue;
-        await save('analysis', 2 + start / chunks.length * 20, `Phân tích dữ kiện · ${start}/${chunks.length} phần`);
-        const results = await Promise.allSettled(ids.map(i => timed('analysis', () => llm.analyze(chunks[i], guard))));
-        results.forEach((result, i) => { if (result.status === 'fulfilled') state.notes[ids[i]] = result.value; });
-        await save('analysis', 2 + (start + ids.length) / chunks.length * 20);
-        const failure = results.find(result => result.status === 'rejected');
-        if (failure) throw failure.reason;
-    }
-    if (!state.overview) {
-        // Compact the structured record only for planning. Writing and checking
-        // retrieve original excerpts again, so this overview is never the sole source.
-        const records = state.notes.map((text, i) => `[Phần ${i}] ${text}`);
-        let groups = records;
-        state.overviewRounds ||= [];
-        for (let round = 0; !state.plan && groups.join('\n').length > 14000; round++) {
-            if (round > 5) throw new Error('Nguồn quá phức tạp để lập dàn ý. Hãy chia thành các tập nhỏ hơn.');
-            const batches = []; let batch = '';
-            for (const record of groups) {
-                if (batch.length + record.length > 14000 && batch) { batches.push(batch); batch = ''; }
-                batch += record + '\n';
-            }
-            if (batch) batches.push(batch);
-            const saved = state.overviewRounds[round] ||= [];
-            for (let i = 0; i < batches.length; i++) {
-                if (!saved[i]) saved[i] = await timed('reduce', () => llm.reduce(batches[i], guard));
-                await save('outline', 24, 'Đang gộp dữ kiện để lập dàn ý.');
-            }
-            groups = saved.slice(0, batches.length);
-        }
-        state.overview = groups.join('\n');
-        await BookCache.updateOne({ user_id: job.user_id, source_hash: job.source_hash, version: cacheVersion },
-            { $set: { notes: state.notes, overview: state.overview, expires_at: new Date(Date.now() + 7 * 86400000) } }, { upsert: true });
-        await save('outline', 24);
-    }
     if (!state.plan) {
         // Do not force a long requested duration from a short source.
         await save('outline', 25, 'Lập dàn ý theo thể loại và mạch nội dung.');
@@ -236,8 +253,41 @@ module.exports = async function editorial(job, context) {
             const revising = job.work_action === 'revise';
             if (revising && job.edit_request?.section_index != null && job.edit_request.section_index !== i) continue;
             if (task.written.includes(i)) continue;
-            await save('script', 30 + i / state.plan.sections.length * 14, `${revising ? 'Chỉnh' : 'Viết'} bản tóm tắt · mục ${i + 1}/${state.plan.sections.length}`);
             const allocated = Math.max(20, Math.round(target / state.plan.sections.length));
+            if (!revising && i + 1 < state.plan.sections.length && !task.written.includes(i + 1)
+                && !task.scriptStates[i]?.result && !task.scriptStates[i + 1]?.result && allocated * 2 <= 950) {
+                await save('script', 30 + i / state.plan.sections.length * 14, `Viết bản tóm tắt · mục ${i + 1}–${i + 2}/${state.plan.sections.length}`);
+                try {
+                    const batched = await timed('script_batch', () => llm.editorialScriptBatch([
+                        { index: i, target: allocated, evidence: sourceFor(i, '') },
+                        { index: i + 1, target: allocated, evidence: sourceFor(i + 1, '') },
+                    ], state.plan, draft.sections[i - 1]?.text || '', guard));
+                    if (batched) {
+                        for (const idx of [i, i + 1]) {
+                            const entry = batched.get(idx);
+                            if (!entry) continue;
+                            task.scriptStates[idx] = { attempts: 1, result: entry };
+                            if (entry.inRange || entry.shortfall) {
+                                draft.sections[idx] = {
+                                    title: state.plan.sections[idx].title,
+                                    source_ids: state.plan.sections[idx].source_ids,
+                                    text: entry.text,
+                                    source_shortfall: entry.shortfall,
+                                    evidence_expanded: false,
+                                };
+                                task.written.push(idx);
+                            }
+                        }
+                        draft.preview = null;
+                        await save('script', 30 + Math.min(state.plan.sections.length, i + 2) / state.plan.sections.length * 14);
+                        if (task.written.includes(i)) continue;
+                    }
+                } catch (error) {
+                    if (!llm.canFallback(error) && error.code !== 'TIMEOUT') throw error;
+                    if (error.code === 'TIMEOUT') throw error;
+                }
+            }
+            await save('script', 30 + i / state.plan.sections.length * 14, `${revising ? 'Chỉnh' : 'Viết'} bản tóm tắt · mục ${i + 1}/${state.plan.sections.length}`);
             const written = await timed('script', () => llm.editorialScript(sourceFor(i, draft.sections[i]?.text || ''), state.plan, i,
                 allocated, draft.sections[i - 1]?.text || '', guard,
                 revising ? draft.sections[i]?.text || '' : '', job.edit_request?.instruction || '', {
@@ -348,7 +398,7 @@ module.exports = async function editorial(job, context) {
         const previewId=path.basename(previewMerged.output_path).match(/^final_([a-f0-9]{64})[.]mp3$/)?.[1];
         if (!previewId) throw new Error('Đường dẫn nghe thử không hợp lệ.');
         const clip = await timed('preview', () => engine('preview', { job_id: String(job._id), part_id: previewId, merged:true }, guard));
-        const file = artifactPath(job._id, clip.output_path);
+        const file = await materialize(job._id, clip.output_path, 'Đường dẫn nghe thử không hợp lệ.');
         draft.preview = { audio_url: await publish(file, `book-preview-${job._id}-${path.basename(file)}`, 'audio/mpeg'), duration_seconds: clip.duration_seconds,
             content_hash: content.textHash(draft.sections), speech_plan_hash: planned?.hash };
         await returnForReview(draft, 'Đoạn nghe thử đã sẵn sàng. Bạn có thể tạo toàn bộ âm thanh khi hài lòng.');
@@ -372,33 +422,44 @@ module.exports = async function editorial(job, context) {
         jobId: job._id, provider: checkpoint.voice.provider || 'edge', parts, payload: partPayload, guard, timed,
         skip: i => task.parts[i]?.part_id === partId(parts[i]),
     });
+    const pendingUploads = new Set();
     try {
         for (let i = 0; i < parts.length; i++) {
             await save('audio', 55 + i / parts.length * 38, `Tạo âm thanh đoạn ${i + 1}/${parts.length}`);
             const id = partId(parts[i]);
             const expected = path.join(config.artifactRoot, String(job._id), `${id}.wav`);
             let saved = task.parts[i];
-            if (saved?.part_id !== id || (!await exists(expected) && !await restore(saved.storage_key, expected))) saved = null;
+            if (saved?.part_id !== id || (!await exists(expected) && !await materialize(job._id, expected).then(() => true).catch(() => false) && !await restore(saved.storage_key, expected))) saved = null;
             if (!saved) {
                 await prefetch.ready(i);
                 prefetch.advance(i + 1);
                 const audio = await makePart(parts[i]);
                 const storageKey = `generated/book-${job._id}-${id}.wav`;
-                if (storage.isR2Enabled()) await timed('upload', () => storage.uploadFile(expected, storageKey, 'audio/wav'));
-                saved = { part_id: id, duration_seconds: audio.duration_seconds, speech_duration_seconds: audio.speech_duration_seconds, storage_key: storage.isR2Enabled() ? storageKey : null };
+                saved = { part_id: id, duration_seconds: audio.duration_seconds, speech_duration_seconds: audio.speech_duration_seconds, storage_key: null };
                 task.parts[i] = saved;
+                if (storage.isR2Enabled()) {
+                    if (pendingUploads.size >= 3) await Promise.race(pendingUploads);
+                    const uploadTask = timed('upload', async () => storage.uploadFile(await materialize(job._id, expected), storageKey, 'audio/wav'))
+                        .then(() => { saved.storage_key = storageKey; })
+                        .finally(() => pendingUploads.delete(uploadTask));
+                    pendingUploads.add(uploadTask);
+                }
             }
             prefetch.advance(i + 1);
             await save('audio', 55 + (i + 1) / parts.length * 38);
             if (task.parts.slice(0, i + 1).reduce((sum, part) => sum + part.duration_seconds, 0) >= config.maxAudioSeconds) throw new Error('Thời lượng âm thanh đã đạt 1 giờ. Hãy quay lại bản tóm tắt và rút gọn.');
         }
-    } finally { await prefetch.close(); }
+        if (pendingUploads.size) await Promise.all(pendingUploads);
+    } finally {
+        await Promise.allSettled(pendingUploads);
+        await prefetch.close();
+    }
     task.parts = task.parts.slice(0, parts.length);
     await save('merge', 94);
     const merged = await timed('merge', () => engine('merge', { job_id: String(job._id), part_ids: task.parts.map(part => part.part_id) }, guard));
     if (!Number.isFinite(merged.duration_seconds) || merged.duration_seconds <= 0 || merged.duration_seconds >= config.maxAudioSeconds) throw new Error('Thời lượng âm thanh không hợp lệ hoặc đạt 1 giờ. Hãy rút gọn bản tóm tắt.');
     await save('publishing', 97, 'Đang lưu âm thanh và lịch sử.');
-    const file = artifactPath(job._id, merged.output_path);
+    const file = await materialize(job._id, merged.output_path, 'Engine trả đường dẫn âm thanh không hợp lệ.');
     const audioUrl = await publish(file, `book-${job._id}-${path.basename(file)}`, 'audio/mpeg');
     const subtitleName = `book-${job._id}-${path.basename(file, '.mp3')}.srt`;
     const subtitleFile = path.join(path.dirname(file),path.basename(file,'.mp3')+'.srt');

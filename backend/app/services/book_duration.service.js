@@ -9,6 +9,11 @@ const VERSION = 'measured-duration-2';
 const sample = 'Mỗi cuốn sách mở ra một cách nhìn mới về cuộc sống. Khi đọc, chúng ta không chỉ ghi nhớ những câu chữ, mà còn tìm hiểu ý nghĩa phía sau câu chuyện. Hãy dành một chút thời gian để lắng nghe, suy ngẫm và kết nối điều vừa học với trải nghiệm của mình. Một ý tưởng chỉ trở nên hữu ích khi được hiểu đúng trong hoàn cảnh của nó.';
 const validRate = rate => Number.isFinite(rate) && rate >= 80 && rate <= 600;
 
+function sectionCount(minutes) {
+    if (minutes <= 5) return Math.max(1, Math.ceil(minutes / 1.5));
+    return Math.min(14, Math.max(4, Math.ceil(minutes / 2.2)));
+}
+
 // Measure once at 1x, separately for each engine/model/reference revision.
 // Playback rate is applied later by the same planner used for narration.
 async function readingKey(voice, mode) {
@@ -21,14 +26,14 @@ async function readingKey(voice, mode) {
     return content.hash(JSON.stringify([VERSION, mode, voice.voice_id, voice.file_path || '', voice.gender,
         voice.provider || 'edge', voice.model_revision || '', voice.preset || '', revision]));
 }
-async function calibrate(job, context) {
+async function calibrate(job, context, options = {}) {
     const voice = context.checkpoint.voice;
     const key = await readingKey(voice, job.voice_mode);
     const previous = context.checkpoint.editorial.reading_rate;
     if (previous?.key === key && validRate(previous.units_per_minute)) return previous;
     const cached = await ReadingProfile.findOne({ _id: key, expires_at: { $gt: new Date() } }).lean();
     if (cached && validRate(cached.units_per_minute)) return { key, units_per_minute: cached.units_per_minute, version: VERSION };
-    await context.save('calibration', 1, 'Đo tốc độ giọng đã chọn để tính độ dài bản tóm tắt.');
+    if (!options.silent) await context.save('calibration', 1, 'Đo tốc độ giọng đã chọn để tính độ dài bản tóm tắt.');
     const referenceUrl = job.voice_mode === 'clone' && storage.isStorageKey(voice.file_path) ? await storage.resolveUrl(voice.file_path) : undefined;
     const audio = await context.timed('calibration', () => context.engine('part', {
         job_id: String(job._id), part_id: content.hash(`${key}:${sample}`), text: sample,
@@ -80,11 +85,11 @@ function annotate(draft, targetMinutes) {
 }
 
 function sourceIssue(source, intro, minutes, baseRate = 300, ratePercent = 0, measured = false) {
-    const target = budget(source, intro, minutes, baseRate, ratePercent, Math.ceil(minutes / 1.25));
+    const target = budget(source, intro, minutes, baseRate, ratePercent, sectionCount(minutes));
     if (!target.source_limited) return null;
     let maxMinutes = 0;
     for (let candidate = 1; candidate <= 59; candidate++) {
-        if (!budget(source, intro, candidate, baseRate, ratePercent, Math.ceil(candidate / 1.25)).source_limited) maxMinutes = candidate;
+        if (!budget(source, intro, candidate, baseRate, ratePercent, sectionCount(candidate)).source_limited) maxMinutes = candidate;
     }
     return { source_units: content.units(source), target_minutes: minutes,
         estimated_seconds: target.source_capacity_seconds, max_minutes: maxMinutes || null,
@@ -108,4 +113,4 @@ function rejectSource(issue) {
         status:422, code:'SOURCE_TOO_SHORT', duration_issue:issue,
     });
 }
-module.exports = { VERSION, calibrate, budget, audit, annotate, checkSource, sourceIssue, rejectSource };
+module.exports = { VERSION, sectionCount, calibrate, budget, audit, annotate, checkSource, sourceIssue, rejectSource };

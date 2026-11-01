@@ -4,7 +4,7 @@
 > Mỗi lần làm việc mới trên dự án, cập nhật thêm mục [4. Nhật ký làm việc](#4-nhật-ký-làm-việc)
 > và [5. Việc tiếp theo](#5-việc-tiếp-theo--todo).
 >
-> **Cập nhật lần cuối:** 25/10/2026
+> **Cập nhật lần cuối:** 29/10/2026
 
 ---
 
@@ -124,9 +124,9 @@ ba trang người dùng và trang quản trị. Cấu trúc source/README đã c
 | `ea6f282` | Tách lưu trữ audio sang Cloudflare R2 |
 | `8bcf244` | Thêm nút hiện/ẩn mật khẩu trong Auth.vue |
 | `9f5791c` | Hoàn thiện Keycloak local và thiết kế lại giao diện người dùng/quản trị |
+| `35ad123` | Bổ sung sách nói dài, chuyển PostgreSQL, Docker stack và cải tiến giao diện |
 
-Mốc Phase 2–3/giao diện ngày 13/10 là `9f5791c`;
-sách nói dài và chuyển PostgreSQL chưa được commit/push ở phiên 17/10.
+Mốc Phase 2–3/giao diện ngày 13/10 là `9f5791c`; mốc sách nói dài + PostgreSQL + Docker ngày 29/10 là `35ad123`.
 
 ---
 
@@ -791,6 +791,36 @@ sách nói dài và chuyển PostgreSQL chưa được commit/push ở phiên 17
 - Tạm ẩn nút biểu cảm theo phản hồi nghe chưa tự nhiên. Nháp cũ mở qua giao diện giản lược sẽ tắt experimental_cues trước lần lưu/nghe thử/duyệt tiếp theo; giữ vị trí thẻ trong markup nhưng không đọc chúng, không sửa file âm thanh đã tạo. Giữ mã SDK/nhánh TTS để có thể mở lại sau.
 - Docker Frontend build đạt và container Frontend đã cập nhật healthy, không khởi động lại Backend/worker/Engine, không sửa database hoặc gọi Gemini/TTS. Không chạy bộ test hay luồng sách thật. Computer Use dừng kiểm tra trực tiếp vì không xác định được URL trình duyệt Windows đủ chắc chắn; chưa xác nhận hiển thị/thao tác hai màn bằng browser trong phiên này.
 
+### 29/10/2026 — Push GitHub bản nền và tối ưu tốc độ Engine, ngữ điệu tự nhiên, luồng Gemini
+
+- Đã commit và push trạng thái dự án trước khi tối ưu lên GitHub (`origin/main`, commit `35ad123`).
+- **Tối ưu tốc độ Engine (`Edge-TTS + OpenVoice V2`):**
+  - Chuyển tổng hợp `Edge-TTS` sang gọi trực tiếp thư viện async `edge_tts.Communicate(...).stream()` ngay trong tiến trình Python (`_run_edge_tts_inproc` tại `engine/core_tts/base_tts.py`), kiểm tra `cancel_event` theo từng chunk mạng thay vì spawn tiến trình con `edge-tts.exe` cho mỗi đoạn; vẫn giữ CLI làm fallback an toàn.
+  - Tắt mặc định bước đóng thủy vân âm thanh WavMark (`OPENVOICE_WATERMARK=0`) và đặt `tau=0.35` (`OPENVOICE_TAU`) trong `engine/core_tts/tone_converter.py`, giảm tải suy luận mỗi đoạn clone và giữ âm sắc rõ hơn.
+  - Bật lại cache ổ đĩa `se.pth` theo hash nội dung mẫu giọng trong `engine/openvoice/se_extractor.py` để tái sử dụng speaker embedding qua các lần khởi động lại Engine.
+  - Thêm bước lọc chuẩn hóa mẫu giọng tham chiếu `normalize_reference` (`highpass=f=75,lowpass=f=10000,loudnorm=I=-18:TP=-1.5:LRA=9`) trong `engine/core_tts/audio_files.py` và `engine/book_audio.py`.
+- **Cải thiện ngữ điệu đọc tự nhiên và giảm phụ thuộc giọng mẫu:**
+  - Giữ các dấu ngắt nhịp tự nhiên (`; `, `, `) khi làm sạch văn bản đầu vào trong `engine/core_tts/base_tts.py`.
+  - Giảm ngưỡng cắt đoạn `split()` từ `1200` xuống `600` ký tự ưu tiên tại dấu câu (`. `, `? `, `! `, `; `) với khoảng nghỉ nối câu `180ms` trong `backend/app/services/speech.service.js` và `backend/app/services/book_content.service.js`.
+  - Thêm hàm tạo đường cong ngữ điệu `contour()` trong `speech.service.js`: tự động biến thiên `rate_percent`, `pitch_hz` (`-2Hz` đến `+2Hz`) và `pause_ms` theo vai trò đoạn văn (lời mở đầu, câu mở mục, câu chuyển ý/suy ngẫm, câu hỏi tu từ, đoạn kết mục/kết bài và nhịp xen kẽ giữa các đoạn thân bài), đồng thời hạ nhẹ `-1Hz` ở mảnh cuối của đoạn dài. Truyền đầy đủ `pitch_hz` qua `backend/app/services/speech_lecture.service.js`.
+- **Tăng tốc luồng Gemini tạo bản tóm tắt và worker sách nói:**
+  - Tối ưu số mục dàn ý `sectionCount(minutes)` trong `backend/app/services/book_duration.service.js` và `backend/app/services/book_llm.service.js` (mốc > 5 phút dùng `ceil(minutes / 2.2)`, tối đa 14 mục thay vì 24 mục), giảm ~40% số lượt gọi Gemini viết và đối chiếu.
+  - Chạy song song bước đo tốc độ giọng `duration.calibrate(..., { silent: true })` với giai đoạn phân tích nguồn `analysis` trong `backend/workers/book.editorial.js`.
+  - Thêm `editorialScriptBatch` trong `book_llm.service.js` để viết gộp 2 mục liên tiếp trong một lượt gọi Gemini khi tổng ngân sách hai mục `<= 950` đơn vị, nới biên độ chấp nhận lượt đầu thành `85%–115%` và bổ sung hướng dẫn viết câu có nhịp đọc tự nhiên.
+  - Giảm mặc định `geminiMinIntervalMs` từ `4000ms` xuống `2000ms` trong `backend/app/config/book.js` và tải lên R2 các đoạn `.wav` bất đồng bộ (tối đa 3 upload song song) trong `book.editorial.js` để không chặn Engine tạo đoạn tiếp theo.
+
+### 29/10/2026 — Kiến trúc Trạm Tính Toán GPU từ xa (Remote GPU Compute Node — RTX 4060)
+
+- **Đồng bộ tệp âm thanh qua HTTP giữa Backend/Worker và Engine khác máy (hoặc chung máy):**
+  - Bổ sung 2 endpoint xác thực bằng `X-Book-Engine-Secret` trong `engine/book_audio.py`:
+    - `GET /book/artifact/{job_id}/{filename}`: truyền phát tệp `.wav`/`.mp3` từ Engine về Backend/Worker khi hai bên chạy khác máy (Laptop / Cloud Web Server gọi về PC RTX 4060 ở nhà).
+    - `PUT /book/artifact/{job_id}/{filename}`: cho phép Worker đẩy lại các đoạn `.wav` khôi phục từ R2 sang Engine từ xa trước bước `/book/merge`.
+  - Bổ sung báo cáo thiết bị tính toán (`device` và `gpu_name`) trong `/health/ready` (`engine/main.py`) và mở endpoint kiểm tra `GET /api/speech/engine-status` tại `backend/app/routes/speech.route.js`.
+  - Tạo `backend/app/services/engine_artifact.service.js` (`localPath`, `materialize`, `pushToEngine`, `cleanupLocal`, `status`) và tích hợp vào `speech_lecture.service.js`, `book_preview.service.js`, `voice_demo.service.js`, `book.worker.js`, `book.editorial.js`. Khi chạy chung máy (shared volume/ổ đĩa), `materialize` dùng trực tiếp file local (0ms overhead); khi chạy khác máy, tự động tải stream an toàn qua HTTP và dọn thư mục tạm khi hoàn tất.
+- **Đóng gói Docker CUDA & Cloudflare Tunnel cho máy tính bàn RTX 4060:**
+  - Tạo `engine/Dockerfile.gpu` dùng chung base image `pytorch/pytorch:2.8.0-cuda12.8-cudnn-runtime` với `engine/vieneu_service/Dockerfile.gpu`, giữ nguyên PyTorch CUDA 12.8 để cả OpenVoice V2, Silero VAD và VieNeu đều chạy trên GPU NVIDIA.
+  - Tạo `deploy/compose.gpu-node.yaml` và script điều khiển `deploy/gpu-node.ps1` (`prepare`, `build`, `up`, `tunnel`, `status`, `logs`, `stop`) tích hợp sẵn container `cloudflare/cloudflared` để xuất HTTPS URL và khóa `BOOK_ENGINE_SECRET` cho Laptop hoặc Web Server.
+
 ## 5. Việc Tiếp Theo / TODO
 
 **Phase 2 local:**
@@ -863,9 +893,11 @@ sách nói dài và chuyển PostgreSQL chưa được commit/push ở phiên 17
 - [x] Tạo TTS/clone theo đoạn, ghép bằng FFmpeg và đo thời lượng kết quả.
 - [x] Rà soát giới hạn payload, phạm vi đọc PDF và tài nguyên Engine cho nội dung dài.
 - [x] Bổ sung hướng dẫn AI diễn đạt riêng, tránh nguyên văn/tái hiện chi tiết; ghi thông tin nguồn và nhãn AI ở job/kết quả/lịch sử/lời mở đầu âm thanh.
+- [x] Tối ưu tốc độ Engine (`Edge-TTS` in-process, tắt WavMark mặc định, cache `se.pth`, lọc chuẩn hóa giọng mẫu), biến thiên ngữ điệu `contour()` (`rate_percent`/`pitch_hz`/`pause_ms`) và rút ngắn luồng Gemini (`sectionCount`, song song `calibrate`, `editorialScriptBatch`, upload R2 bất đồng bộ).
 - [ ] Tạo/nghe sách thật ở 3 mốc thời lượng và 2 loại giọng; đối chiếu nguồn, độ dài, nhịp ghép và thời gian xử lý.
 - [ ] Kiểm thử refresh/restart, mất kết nối, hủy/retry, phân quyền job, idempotency và phục hồi đoạn R2 khi được yêu cầu.
-- [ ] Chốt chính sách lưu/xóa job lỗi và phương án vận chuyển file khi deploy Engine/worker khác máy.
+- [x] Phương án vận chuyển file âm thanh tự động khi deploy Engine/worker khác máy (`engine_artifact.service.js` + `/book/artifact`) và gói Docker GPU Node (`deploy/compose.gpu-node.yaml`, `deploy/gpu-node.ps1`).
+- [ ] Chốt chính sách lưu/xóa job lỗi lâu ngày.
 
 **Phase 5 / ưu tiên trung:**
 - [x] Working tree đã xóa 5 file service rỗng, module Lecture và bỏ mount route trong backend (chưa chạy lại toàn bộ ứng dụng trong phiên Phase 2).

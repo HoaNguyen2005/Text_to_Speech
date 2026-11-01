@@ -38,6 +38,18 @@ def normalize(source, destination):
     run_ffmpeg(['-i', str(source), '-ar', '24000', '-ac', '1', '-c:a', 'pcm_s16le', str(destination)])
 
 
+def normalize_reference(source, destination):
+    """Condition reference voice samples to reduce rumble/noise and stabilize loudness for OpenVoice."""
+    try:
+        run_ffmpeg([
+            '-i', str(source),
+            '-af', 'highpass=f=75,lowpass=f=10000,loudnorm=I=-18:TP=-1.5:LRA=9',
+            '-ar', '24000', '-ac', '1', '-c:a', 'pcm_s16le', str(destination),
+        ])
+    except Exception:
+        normalize(source, destination)
+
+
 def append_silence(source, destination, milliseconds):
     if not isinstance(milliseconds, int) or not 0 <= milliseconds <= 2000:
         raise ValueError('Khoảng nghỉ vượt giới hạn.')

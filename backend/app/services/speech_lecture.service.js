@@ -7,6 +7,7 @@ const config = require('../config/book');
 const User = require('../models/user.model');
 const History = require('../models/generated_lecture.model');
 const providers = require('./tts_provider.service');
+const artifact = require('./engine_artifact.service');
 const problem = (status,message) => Object.assign(new Error(message),{status});
 let running = 0;
 async function engine(endpoint,payload) {
@@ -16,9 +17,7 @@ async function engine(endpoint,payload) {
     return result;
 }
 function localFile(id,file) {
-    const directory=path.resolve(config.artifactRoot,id),resolved=path.resolve(file);
-    if(path.dirname(resolved)!==directory || !/^[a-z0-9_.-]+$/.test(path.basename(resolved)))throw problem(503,'Đường dẫn âm thanh không hợp lệ.');
-    return resolved;
+    return artifact.localPath(id, file, 'Đường dẫn âm thanh không hợp lệ.');
 }
 async function render(user,body,preview=false) {
     if(running>=1)throw problem(429,'Một bài giảng đang được tạo. Hãy chờ hoàn tất rồi thử lại.');
@@ -48,7 +47,7 @@ async function render(user,body,preview=false) {
         return {job_id:jobId,part_id:partId,text:current.text,mode,gender:voice.gender,style:'normal',
             ...settings, reference_key:voice.file_path||voice.voice_id,reference_file:voice.file_path?path.basename(voice.file_path):undefined,
             reference_audio_url:mode==='clone'&&storage.isStorageKey(voice.file_path)?await storage.resolveUrl(voice.file_path):undefined,
-            rate_percent:current.rate_percent,pitch_hz:0,pause_ms:current.pause_ms,
+            rate_percent:current.rate_percent,pitch_hz:current.pitch_hz||0,pause_ms:current.pause_ms,
             ...(current.experimental_cues ? {experimental_cues:true} : {})};
     }
     try {
@@ -77,8 +76,10 @@ async function render(user,body,preview=false) {
             const digest=path.basename(file).match(/^final_([a-f0-9]{64})[.]mp3$/)?.[1];
             if(!digest)throw problem(503,'Đường dẫn âm thanh không hợp lệ.');
             const clip=await engine('preview',{job_id:jobId,part_id:digest,merged:true});
-            return {buffer:await fs.readFile(localFile(jobId,clip.output_path)),duration_seconds:clip.duration_seconds};
+            const clipFile=await artifact.materialize(jobId,clip.output_path,'Đường dẫn âm thanh không hợp lệ.');
+            return {buffer:await fs.readFile(clipFile),duration_seconds:clip.duration_seconds};
         }
+        file=await artifact.materialize(jobId,merged.output_path,'Đường dẫn âm thanh không hợp lệ.');
         if(!Number.isFinite(merged.duration_seconds)||merged.duration_seconds>=3600)throw problem(400,'Âm thanh đạt 1 giờ. Hãy rút gọn nội dung.');
         async function publish(source,type) {
             const name=`studio-${jobId}-${path.basename(source)}`,key=`generated/${name}`;
@@ -103,6 +104,7 @@ async function render(user,body,preview=false) {
             else if(path.dirname(item)===path.resolve(__dirname,'../../public/audio/generated')&&path.basename(item).startsWith(`studio-${jobId}-`))await fs.unlink(item).catch(()=>{});
         }
         await engine('cleanup',{job_id:jobId}).catch(()=>console.warn('[SPEECH] Chưa dọn xong thư mục của lượt tạo bài giảng.'));
+        await artifact.cleanupLocal(jobId);
     }
 }
 module.exports={render};

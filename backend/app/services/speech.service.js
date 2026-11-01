@@ -2,10 +2,10 @@ const crypto = require('crypto');
 const expressions = require('./speech_expressions');
 const fail = message => { throw Object.assign(new Error(message), { status: 400, code: 'SPEECH_VALIDATION' }); };
 const profiles = {
-    natural: { rate: 0, paragraph: 400, section: 650 },
+    natural: { rate: 0, paragraph: 420, section: 700 },
     teaching: { rate: -4, paragraph: 600, section: 850 },
-    story: { rate: -5, paragraph: 550, section: 800 },
-    news: { rate: 8, paragraph: 250, section: 450 },
+    story: { rate: -5, paragraph: 550, section: 820 },
+    news: { rate: 8, paragraph: 260, section: 480 },
     relaxing: { rate: -10, paragraph: 750, section: 1000 },
 };
 const validProfile = value => value === 'auto' || Object.hasOwn(profiles, value);
@@ -121,18 +121,69 @@ function speak(text, config) {
     spoken = spoken.replace(/(?<![\p{L}\p{N}.,/])\d{1,15}(?:[.,]\d+)*(?![\p{L}\p{N}.,/])/gu, numeric);
     return spoken.replace(/\uE000([A-Z]+)\uE001/gu, (original, token) => protectedValues.get(token) ?? original);
 }
-function split(text) {
+function split(text, maxLen = 600) {
     const result = []; let remaining = text.trim();
-    while (remaining.length > 1200) {
-        const head = remaining.slice(0,1200);
-        let cut = Math.max(head.lastIndexOf('. '),head.lastIndexOf('? '),head.lastIndexOf('! '));
-        if (cut < 300) cut = head.lastIndexOf(' ');
-        cut = cut < 1 ? 1200 : cut+1;
-        const opening = remaining.lastIndexOf('[',cut-1), closing = remaining.indexOf(']',opening);
-        if (opening>=0 && closing>=cut && expressions.count(remaining.slice(opening,closing+1))) cut=opening || closing+1;
-        result.push(remaining.slice(0,cut).trim()); remaining = remaining.slice(cut).trim();
+    while (remaining.length > maxLen) {
+        const head = remaining.slice(0, maxLen);
+        let cut = Math.max(head.lastIndexOf('. '), head.lastIndexOf('? '), head.lastIndexOf('! '), head.lastIndexOf('; '));
+        if (cut < 180) cut = Math.max(cut, head.lastIndexOf(', '));
+        if (cut < 180) cut = head.lastIndexOf(' ');
+        cut = cut < 1 ? maxLen : cut + 1;
+        const opening = remaining.lastIndexOf('[', cut - 1), closing = remaining.indexOf(']', opening);
+        if (opening >= 0 && closing >= cut && expressions.count(remaining.slice(opening, closing + 1))) cut = opening || closing + 1;
+        result.push(remaining.slice(0, cut).trim()); remaining = remaining.slice(cut).trim();
     }
     if (remaining) result.push(remaining); return result;
+}
+function contour(text, baseRate, defaultPause, context = {}) {
+    const trimmed = text.trim();
+    const isIntro = context.sectionIndex < 0;
+    const isFirst = context.paragraphIndex === 0 && (context.totalParagraphs || 1) > 1;
+    const isLast = context.paragraphIndex === (context.totalParagraphs || 1) - 1;
+    const isFinalSection = context.sectionIndex === (context.totalSections || 1) - 1 && (context.totalSections || 1) > 1;
+    const reflective = /^(Tuy nhiên|Nhưng|Dù vậy|Thay vì|Điều quan trọng|Điểm cốt lõi|Tóm lại|Vì vậy|Do đó|Thực tế|Nói cách khác|Ngược lại|Hơn nữa)(?=\s|[,:;.!?]|$)/iu.test(trimmed);
+    const question = /[?？]\s*$/u.test(trimmed);
+    const exclaim = /[!！]\s*$/u.test(trimmed);
+
+    let rateDelta = 0;
+    let pitch = 0;
+    let pause = defaultPause;
+
+    if (isIntro) {
+        rateDelta = -2;
+        pitch = 1;
+        pause = Math.max(defaultPause, 700);
+    } else if (question) {
+        rateDelta = -1;
+        pitch = 2;
+        pause = Math.max(defaultPause, 600);
+    } else if (isLast && isFinalSection) {
+        rateDelta = -3;
+        pitch = -2;
+        pause = Math.min(2000, defaultPause + 150);
+    } else if (isLast) {
+        rateDelta = -2;
+        pitch = -1;
+    } else if (reflective) {
+        rateDelta = -2;
+        pitch = -1;
+        pause = Math.max(defaultPause, 520);
+    } else if (exclaim) {
+        rateDelta = 0;
+        pitch = 1;
+    } else if (isFirst) {
+        rateDelta = -1;
+        pitch = 1;
+    } else {
+        rateDelta = (context.paragraphIndex || 0) % 2 === 1 ? 1 : 0;
+        pitch = (context.paragraphIndex || 0) % 2 === 1 ? 1 : 0;
+    }
+
+    return {
+        rate: Math.max(-25, Math.min(50, baseRate + rateDelta)),
+        pitch: Math.max(-10, Math.min(10, pitch)),
+        pause,
+    };
 }
 function plan({ introduction = '', sections, speech = {}, style = 'normal', units_per_minute = 300, provider }) {
     if (!Number.isFinite(units_per_minute) || units_per_minute < 80 || units_per_minute > 600) fail('Tốc độ giọng đọc đo được không hợp lệ.');
@@ -141,25 +192,34 @@ function plan({ introduction = '', sections, speech = {}, style = 'normal', unit
     if (typeof introduction !== 'string' || introduction.length>2000 || !Array.isArray(sections) || !sections.length || sections.length > 100
         || sections.some(section=>!section || typeof section.text!=='string')) fail('Các đoạn đọc không hợp lệ.');
     const parts = [], changes = [], cleaned = [];
-    const add = (markup, profile, defaultPause, index) => {
-        const rate = config.rate_percent ?? profile.rate;
+    const add = (markup, profile, defaultPause, index, paragraphIndex = 0, totalParagraphs = 1) => {
+        const baseRate = config.rate_percent ?? profile.rate;
         const parsed = parse(markup,config.experimental_cues);
+        const shaped = contour(parsed.plain, baseRate, defaultPause, {
+            sectionIndex: index,
+            totalSections: sections.length,
+            paragraphIndex,
+            totalParagraphs,
+        });
         parsed.atoms.forEach((atom, position) => {
             const source = atom.text.trim(), spoken = config.experimental_cues ? expressions.spoken(source,part=>speak(part,config)) : speak(source, config);
             if (source !== spoken && changes.length < 100) changes.push({ section: index, before: source, after: spoken });
             const chunks = split(spoken);
             const last = position === parsed.atoms.length-1;
-            const pause = atom.explicit ? atom.pause_ms : last && source ? defaultPause : 0;
+            const pause = atom.explicit ? atom.pause_ms : last && source ? shaped.pause : 0;
             if (!chunks.length) {
-                if (pause) parts.push({ text: '', rate_percent: rate, pitch_hz: 0, pause_ms: pause, speech_version: 'speech-v1' });
-            } else chunks.forEach((text,i) => parts.push({ text, rate_percent: rate, pitch_hz: 0, pause_ms: i===chunks.length-1 ? pause : 100, speech_version: 'speech-v1',
-                ...(config.experimental_cues && expressions.count(text) ? {experimental_cues:true} : {}) }));
+                if (pause) parts.push({ text: '', rate_percent: shaped.rate, pitch_hz: 0, pause_ms: pause, speech_version: 'speech-v1' });
+            } else chunks.forEach((text,i) => {
+                const chunkPitch = chunks.length > 1 && i === chunks.length - 1 ? Math.max(-10, shaped.pitch - 1) : shaped.pitch;
+                parts.push({ text, rate_percent: shaped.rate, pitch_hz: chunkPitch, pause_ms: i===chunks.length-1 ? pause : 180, speech_version: 'speech-v1',
+                    ...(config.experimental_cues && expressions.count(text) ? {experimental_cues:true} : {}) });
+            });
         });
         return parsed.plain;
     };
     const fallback = style === 'news' ? 'news' : style === 'story' ? 'story' : 'natural';
     const globalProfile = config.profile === 'auto' ? fallback : config.profile;
-    if (introduction.trim()) add(introduction, profiles[globalProfile], 650, -1);
+    if (introduction.trim()) add(introduction, profiles[globalProfile], 700, -1, 0, 1);
     sections.forEach((section,index) => {
         const markup = section.delivery?.markup ?? section.text;
         if(typeof markup!=='string')fail('Văn bản đọc không hợp lệ.');
@@ -170,7 +230,7 @@ function plan({ introduction = '', sections, speech = {}, style = 'normal', unit
         paragraphs.forEach((paragraph,i) => {
             const choice = preferences.paragraph_profiles[i] || 'auto';
             const profile = profiles[choice === 'auto' ? sectionProfile : choice];
-            plain.push(add(paragraph, profile, i===paragraphs.length-1 ? profile.section : profile.paragraph, index));
+            plain.push(add(paragraph, profile, i===paragraphs.length-1 ? profile.section : profile.paragraph, index, i, paragraphs.length));
         });
         cleaned.push({ ...section, text: plain.join('\n\n'), delivery: { ...preferences, markup } });
     });

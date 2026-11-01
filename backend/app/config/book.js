@@ -9,7 +9,7 @@ module.exports = {
     version: 'book-v2-paraphrase-attribution',
     languageVersion: 'vi-full-diacritics-2',
     editorialVersion: 'grounded-review-1',
-    narrationVersion: 'paragraph-rhythm-1',
+    narrationVersion: 'paragraph-rhythm-2',
     maxChars: 1000000,
     minMinutes: 1,
     maxMinutes: 59,
@@ -18,7 +18,7 @@ module.exports = {
     // Bound upstream pressure; set to 1 for accounts with a small Gemini quota.
     analysisConcurrency: Math.min(2, Math.max(1, Number.parseInt(process.env.BOOK_ANALYSIS_CONCURRENCY, 10) || 1)),
     edgePrefetchConcurrency: Math.min(3, Math.max(1, Number.parseInt(process.env.EDGE_TTS_PREFETCH_CONCURRENCY, 10) || 3)),
-    geminiMinIntervalMs: Math.min(60000, Math.max(1000, Number.parseInt(process.env.GEMINI_MIN_INTERVAL_MS, 10) || 4000)),
+    geminiMinIntervalMs: Math.min(60000, Math.max(1000, Number.parseInt(process.env.GEMINI_MIN_INTERVAL_MS, 10) || 2000)),
     geminiMaxAutoRetries: Math.min(12, Math.max(1, Number.parseInt(process.env.GEMINI_MAX_AUTO_RETRIES, 10) || 8)),
     geminiRetryWindowMs: Math.min(120, Math.max(5, Number.parseInt(process.env.GEMINI_RETRY_WINDOW_MINUTES, 10) || 30)) * 60000,
     geminiMaxTotalRetries: 20,

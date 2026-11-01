@@ -7,9 +7,6 @@ import base64
 from glob import glob
 import numpy as np
 from pydub import AudioSegment
-import hashlib
-import base64
-import librosa
 
 model_size = "medium"
 # Run on GPU with FP16
@@ -148,11 +145,12 @@ def get_se(audio_path, vc_model, target_dir='processed', vad=True):
     audio_name = f"{version}_{hash_numpy_array(audio_path)}"
     se_path = os.path.join(target_dir, audio_name, 'se.pth')
 
-    # if os.path.isfile(se_path):
-    #     se = torch.load(se_path).to(device)
-    #     return se, audio_name
-    # if os.path.isdir(audio_path):
-    #     wavs_folder = audio_path
+    if os.path.isfile(se_path):
+        try:
+            se = torch.load(se_path, map_location=device, weights_only=True)
+            return se, audio_name
+        except Exception:
+            pass
     
     if vad:
         wavs_folder = split_audio_vad(audio_path, target_dir=target_dir, audio_name=audio_name)
@@ -164,4 +162,3 @@ def get_se(audio_path, vc_model, target_dir='processed', vad=True):
         raise NotImplementedError('No audio segments found!')
     
     return vc_model.extract_se(audio_segs, se_save_path=se_path), audio_name
-

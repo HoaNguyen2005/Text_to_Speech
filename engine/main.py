@@ -9,11 +9,11 @@ if sys.stdout.encoding.lower() != 'utf-8':
 from typing import Optional
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-import os
 import glob
 import time
 import tempfile
 import uuid
+import torch
 from urllib.request import urlopen, Request
 from urllib.parse import urlparse, unquote
 from tts_pipeline import LectureTTSPipeline
@@ -47,7 +47,9 @@ def readiness():
         ready = ready and directory.is_dir() and os.access(directory, os.R_OK | os.W_OK)
     if not ready:
         raise HTTPException(status_code=503, detail='Engine/model hoặc thư mục dùng chung chưa sẵn sàng.')
-    return {'status': 'ok', 'standard': True, 'clone': True}
+    device = getattr(getattr(pipeline, 'converter', None), 'device', 'cuda:0' if torch.cuda.is_available() else 'cpu')
+    gpu_name = torch.cuda.get_device_name(0) if torch.cuda.is_available() else None
+    return {'status': 'ok', 'standard': True, 'clone': True, 'device': str(device), 'gpu_name': gpu_name}
 
 class GenerateRequest(BaseModel):
     text: str

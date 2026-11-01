@@ -16,6 +16,7 @@ const config = require('../config/book');
 const content = require('./book_content.service');
 const speech = require('./speech.service');
 const storage = require('./storage.service');
+const artifact = require('./engine_artifact.service');
 const TTL = 7 * 86400000, LEASE = 90000;
 const problem = (status,message)=>Object.assign(new Error(message),{status});
 const active = new Set();
@@ -50,9 +51,7 @@ async function engine(endpoint,payload) {
     return result;
 }
 function localFile(id,file) {
-    const resolved=path.resolve(file);
-    if(path.dirname(resolved)!==path.join(config.artifactRoot,id))throw problem(503,'Đường dẫn nghe thử không hợp lệ.');
-    return resolved;
+    return artifact.localPath(id, file, 'Đường dẫn nghe thử không hợp lệ.');
 }
 async function allowed(job,user,identity=false) {
     const current=await Job.findOne({_id:job._id,user_id:user._id,status:'review',delete_requested:false,cancel_requested:false}).lean();
@@ -151,7 +150,7 @@ async function render(row,job,user) {
         const digest=path.basename(localFile(row._id,merged.output_path)).match(/^final_([a-f0-9]{64})[.]mp3$/)?.[1];
         if(!digest)throw problem(503,'Đường dẫn nghe thử không hợp lệ.');
         const clip=await engine('preview',{job_id:row._id,part_id:digest,merged:true});
-        const file=localFile(row._id,clip.output_path);
+        const file=await artifact.materialize(row._id,clip.output_path,'Đường dẫn nghe thử không hợp lệ.');
         if(!Number.isFinite(clip.duration_seconds)||clip.duration_seconds<=0||clip.duration_seconds>30.2)throw problem(503,'Thời lượng nghe thử không hợp lệ.');
         await guard();
         // Track before writing so even a partial publish is cleaned on failure.
@@ -173,6 +172,7 @@ async function render(row,job,user) {
         clearInterval(heartbeat);
         // Unique scratch ID prevents preview cleanup from touching full-book parts.
         try {await engine('cleanup',{job_id:row._id});}catch {console.warn('[BOOK PREVIEW] Chưa dọn được file tạm.');}
+        await artifact.cleanupLocal(row._id);
         if(published) {if(storage.isR2Enabled())await storage.deleteFile(key).catch(()=>{});else await fs.unlink(destination).catch(()=>{});}
         await WorkerLease.updateOne({_id:'book-preview-engine',owner:row.owner},{$set:{until:new Date(0)}});
     }
@@ -186,6 +186,7 @@ async function prune(jobId) {
         if(!claimed)continue;
         try {
             await engine('cleanup',{job_id:row._id});
+            await artifact.cleanupLocal(row._id);
             const filename=filenameFor(row);
             if(storage.isR2Enabled())await storage.deleteFile(`generated/${filename}`);
             else await fs.unlink(path.resolve(__dirname,'../../public/audio/generated',filename)).catch(error=>{if(error.code!=='ENOENT')throw error;});

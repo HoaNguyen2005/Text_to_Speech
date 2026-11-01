@@ -1,4 +1,4 @@
-"""Private, restart-safe audio artifacts for the local book worker."""
+"""Private, restart-safe audio artifacts for the local or remote book worker."""
 import hashlib
 import asyncio
 import hmac
@@ -12,11 +12,12 @@ from typing import List, Literal, Optional
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError, URLError
 
-from fastapi import Header, HTTPException
+from fastapi import Header, HTTPException, Request as FastAPIRequest
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from core_tts.base_tts import EdgeTTSForbiddenError, EdgeTTSCancelled
 from core_tts.edge_prefetch import EdgePrefetch, request_signature
-from core_tts.audio_files import concatenate, duration, normalize, append_silence, preview_clip
+from core_tts.audio_files import concatenate, duration, normalize, normalize_reference, append_silence, preview_clip
 from core_tts.model_lock import ModelLock
 from core_tts.experimental_cues import validate as validate_cues
 from runtime_paths import BACKEND_ROOT, BOOK_ARTIFACT_ROOT, SAMPLES
@@ -83,11 +84,23 @@ def authorize(value):
 
 
 def job_dir(job_id):
+    if not re.fullmatch(r'[a-f0-9]{24}', str(job_id or '')):
+        raise HTTPException(400, 'Mã công việc không hợp lệ.')
     directory = (ROOT / job_id).resolve()
     if directory.parent != ROOT.resolve():
         raise HTTPException(400, 'Mã công việc không hợp lệ.')
     directory.mkdir(parents=True, exist_ok=True)
     return directory
+
+
+def artifact_file(job_id: str, filename: str) -> Path:
+    if not re.fullmatch(r'[a-zA-Z0-9_.-]+', filename or '') or '..' in filename:
+        raise HTTPException(400, 'Tên file âm thanh không hợp lệ.')
+    directory = job_dir(job_id)
+    target = (directory / filename).resolve()
+    if target.parent != directory:
+        raise HTTPException(400, 'Đường dẫn file âm thanh không hợp lệ.')
+    return target
 
 
 def reference(request, directory):
@@ -133,7 +146,7 @@ def reference(request, directory):
                 raise HTTPException(503, detail={'code': 'VOICE_SAMPLE_NOT_FOUND', 'message': 'Không tìm thấy file giọng mẫu trên máy. Hãy tải lại giọng mẫu hoặc liên hệ quản trị viên.', 'retryable': False})
             shutil.copyfile(local, temporary)
         normalized = directory / f'ref_{key}.normalized.wav'
-        normalize(temporary, normalized)
+        normalize_reference(temporary, normalized)
         normalized.replace(file)
         return str(file)
     finally:
@@ -142,6 +155,41 @@ def reference(request, directory):
 
 def register_book_routes(app, get_pipeline):
     prefetch = EdgePrefetch()
+
+    @app.get('/book/artifact/{job_id}/{filename}')
+    def get_artifact(job_id: str, filename: str, x_book_engine_secret: Optional[str] = Header(default=None)):
+        authorize(x_book_engine_secret)
+        target = artifact_file(job_id, filename)
+        if not target.is_file():
+            raise HTTPException(404, 'Không tìm thấy đoạn âm thanh trên Engine.')
+        media_type = 'audio/mpeg' if filename.endswith('.mp3') else 'audio/wav'
+        return FileResponse(str(target), media_type=media_type, filename=filename)
+
+    @app.put('/book/artifact/{job_id}/{filename}')
+    async def put_artifact(job_id: str, filename: str, request: FastAPIRequest, x_book_engine_secret: Optional[str] = Header(default=None)):
+        authorize(x_book_engine_secret)
+        if not re.fullmatch(r'[a-f0-9]{64}\.wav', filename or ''):
+            raise HTTPException(400, 'Chỉ hỗ trợ khôi phục đoạn WAV hợp lệ.')
+        target = artifact_file(job_id, filename)
+        if target.is_file() and target.stat().st_size > 0:
+            return {'status': 'exists', 'output_path': str(target)}
+        temp = target.with_suffix('.upload')
+        total = 0
+        try:
+            with temp.open('wb') as out:
+                async for chunk in request.stream():
+                    if not chunk:
+                        continue
+                    total += len(chunk)
+                    if total > 50 * 1024 * 1024:
+                        raise HTTPException(413, 'Đoạn âm thanh tải lên vượt 50 MB.')
+                    out.write(chunk)
+            if total == 0:
+                raise HTTPException(400, 'Dữ liệu âm thanh rỗng.')
+            temp.replace(target)
+            return {'status': 'stored', 'output_path': str(target)}
+        finally:
+            temp.unlink(missing_ok=True)
 
     @app.post('/book/prefetch/open')
     def open_prefetch(request: PrefetchSession, x_book_engine_secret: Optional[str] = Header(default=None)):

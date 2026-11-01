@@ -12,7 +12,7 @@ const Voice = require('../app/models/voice.model');
 const History = require('../app/models/generated_lecture.model');
 const { BookCache, ReadingProfile, WorkerLease } = require('../app/models/book_cache.model');
 const { keycloakService } = require('../app/services/keycloak.service');
-const storage = require('../app/services/storage.service');
+const storage = require('../app/services/storage.service'), artifact = require('../app/services/engine_artifact.service');
 const llm = require('../app/services/book_llm.service');
 const reliability = require('../app/services/gemini_reliability');
 const language = require('../app/services/book_language');
@@ -56,10 +56,7 @@ async function engine(endpoint, payload, guard = async () => {}) {
     }
 }
 function artifactPath(jobId, file) {
-    const resolved = path.resolve(file);
-    const directory = path.join(config.artifactRoot, String(jobId));
-    if (path.dirname(resolved) !== directory || !/^[a-z0-9_.-]+$/.test(path.basename(resolved))) throw new Error('Engine trả đường dẫn âm thanh không hợp lệ.');
-    return resolved;
+    return artifact.localPath(jobId, file, 'Engine trả đường dẫn âm thanh không hợp lệ.');
 }
 async function exists(file) { try { await fs.access(file); return true; } catch { return false; } }
 async function restore(key, file) {
@@ -75,7 +72,7 @@ async function restore(key, file) {
     const temp = `${file}.download`;
     try {
         await streamPipeline(Readable.fromWeb(response.body), bound, require('fs').createWriteStream(temp));
-        await fs.rename(temp, file);
+        await fs.rename(temp, file); await artifact.pushToEngine(path.basename(path.dirname(file)), file).catch(() => {});
         return true;
     } finally { await fs.unlink(temp).catch(() => {}); }
 }
@@ -177,7 +174,7 @@ async function processJob(job, aiProgress) {
     if (checkpoint.version && checkpoint.version !== config.version) throw new Error('Pipeline đã đổi phiên bản. Tạo yêu cầu mới để giữ dữ liệu nhất quán.');
     checkpoint.version = config.version;
     if (job.workflow_version === 'review-v1') {
-        await require('./book.editorial')(job, { checkpoint, guard, save, timed, engine, artifactPath, restore, exists, workerId, Interrupted });
+        await require('./book.editorial')(job, { checkpoint, guard, save, timed, engine, artifactPath, materialize: artifact.materialize, restore, exists, workerId, Interrupted });
         return;
     }
     const sourceChunks = llm.splitText(job.source);
@@ -338,7 +335,7 @@ async function processJob(job, aiProgress) {
         }
         if (!saved) {
             const audio = await makePart(texts[i], id);
-            const file = artifactPath(job._id, audio.output_path);
+            const file = storage.isR2Enabled() ? await artifact.materialize(job._id, audio.output_path, 'Engine trả đường dẫn âm thanh không hợp lệ.') : artifactPath(job._id, audio.output_path);
             if (!Number.isFinite(audio.duration_seconds) || audio.duration_seconds <= 0) throw new Error('Đoạn âm thanh thiếu thời lượng.');
             const storageKey = `generated/book-${job._id}-${id}.wav`;
             if (storage.isR2Enabled()) await timed('upload', () => storage.uploadFile(file, storageKey, 'audio/wav'));
@@ -356,7 +353,7 @@ async function processJob(job, aiProgress) {
     if (merged.duration_seconds >= config.maxAudioSeconds) {
         throw new Error('Thời lượng âm thanh sau ghép đã đạt 1 giờ. Hãy tạo yêu cầu mới với số phút ngắn hơn.');
     }
-    const finalPath = artifactPath(job._id, merged.output_path);
+    const finalPath = await artifact.materialize(job._id, merged.output_path, 'Engine trả đường dẫn âm thanh không hợp lệ.');
     await save('publishing', 97, 'Đang lưu âm thanh và lịch sử.');
     const filename = `book-${job._id}-${path.basename(finalPath)}`;
     let audioKey;
@@ -415,7 +412,7 @@ async function cleanupTerminal() {
             if (!await Job.exists({ _id: job._id, status: job.status, updatedAt: job.updatedAt })) continue;
             if (job.delete_requested && await History.exists({ book_job_id: job._id })) continue;
             if(job.delete_requested && !await require('../app/services/book_preview.service').prune(String(job._id)))continue;
-            await engine('cleanup', { job_id: String(job._id) });
+            await engine('cleanup', { job_id: String(job._id) }); await artifact.cleanupLocal(String(job._id));
             if (job.delete_requested) {
                 await storage.deleteDiscardedBookAudio(String(job._id));
                 // Retain only the submission identity and required operational fields.

@@ -26,13 +26,25 @@ class OpenVoiceConverter:
         # Nếu chưa có thư mục checkpoints/converter, ta tạo một hàm tải tự động
         self._ensure_weights()
         
-        self.tone_color_converter = ToneColorConverter(os.path.join(self.ckpt_converter, 'config.json'), device=self.device)
+        # Tắt nhúng thủy vân WavMark mặc định để tăng tốc độ suy luận trên CPU ~25-35% và giữ âm thanh trong trẻo
+        enable_watermark = os.environ.get('OPENVOICE_WATERMARK', '0').strip() in ('1', 'true', 'yes')
+        try:
+            tau_val = float(os.environ.get('OPENVOICE_TAU', '0.35'))
+            self.tau = min(0.8, max(0.1, tau_val))
+        except ValueError:
+            self.tau = 0.35
+
+        self.tone_color_converter = ToneColorConverter(
+            os.path.join(self.ckpt_converter, 'config.json'),
+            device=self.device,
+            enable_watermark=enable_watermark
+        )
         self.tone_color_converter.load_ckpt(os.path.join(self.ckpt_converter, 'checkpoint.pth'))
 
         # Cache vector âm sắc (SE) theo file giọng mẫu → không phải extract lại mỗi lần sinh
         self._se_cache = {}
 
-        print(f"  [OPENVOICE INIT] Nạp mô hình thành công!")
+        print(f"  [OPENVOICE INIT] Nạp mô hình thành công! (tau={self.tau}, watermark={enable_watermark})")
         
     def _ensure_weights(self):
         """Tải weights của ToneColorConverter nếu chưa có"""
@@ -79,7 +91,7 @@ class OpenVoiceConverter:
             print(f"    -> [OPENVOICE] Dùng cache âm sắc có sẵn cho: {os.path.basename(reference_audio_path)}")
         else:
             target_se, audio_name = se_extractor.get_se(reference_audio_path, self.tone_color_converter, target_dir=extraction_dir, vad=True)
-            if len(self._se_cache) >= 16:
+            if len(self._se_cache) >= 32:
                 self._se_cache.pop(next(iter(self._se_cache)))
             self._se_cache[reference_key] = target_se
         
@@ -110,6 +122,7 @@ class OpenVoiceConverter:
             src_se=source_se, 
             tgt_se=target_se, 
             output_path=output_path,
+            tau=self.tau,
             message="@MyShell"
         )
         print(f"[TTS TIMING] conversion_seconds={time.perf_counter() - conversion_start:.2f}")

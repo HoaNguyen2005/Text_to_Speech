@@ -1,3 +1,4 @@
+import asyncio
 import os
 import re
 import uuid
@@ -35,13 +36,17 @@ class EdgeTTSModel:
 
     @staticmethod
     def _sanitize(text: str) -> str:
-        """Dọn văn bản để tránh lỗi NoAudioReceived / ngắt nhịp của Edge-TTS."""
-        text = text.replace('...', '.').replace('..', '.')
-        # Biến gạch nối thành dấu phẩy để ngắt nhịp tự nhiên thay vì khựng lại
-        text = text.replace('-', ', ').replace('—', ', ')
-        # Xóa các loại dấu ngoặc và ngoặc kép — Edge-TTS rất dễ crash hoặc ngừng với ký tự này
-        for ch in ['"', '“', '”', '«', '»', '(', ')', '[', ']']:
+        """Dọn văn bản để tránh lỗi NoAudioReceived và giữ nhịp ngắt câu tự nhiên."""
+        text = text.replace('...', '. ').replace('..', '. ')
+        # Giữ nhịp nghỉ tự nhiên cho dấu gạch ngang dài/ngắn bằng dấu chấm phẩy hoặc dấu phẩy
+        text = re.sub(r'\s*[—–]\s*', '; ', text)
+        text = re.sub(r'\s+-\s+', ', ', text)
+        # Xóa các loại dấu ngoặc kép/ngoặc đơn dễ làm Edge-TTS khựng nhưng giữ nhịp phẩy nhẹ
+        for ch in ['"', '“', '”', '«', '»']:
             text = text.replace(ch, '')
+        text = re.sub(r'\s*[\(\[\{]\s*', ', ', text)
+        text = re.sub(r'\s*[\)\]\}]\s*', ', ', text)
+        text = re.sub(r',\s*([,.;!?])', r'\1', text)
         return re.sub(r'\s+', ' ', text).strip()
 
     @staticmethod
@@ -87,10 +92,69 @@ class EdgeTTSModel:
 
     # ---------- Sinh audio ----------
 
+    def _run_edge_tts_inproc(self, text: str, voice: str, output_path: str, rate: str = None, pitch: str = None, cancel_event=None) -> bool:
+        """Gọi trực tiếp edge_tts.Communicate trong bộ nhớ để bỏ chi phí khởi tạo subprocess."""
+        import edge_tts
+
+        if cancel_event is not None and cancel_event.is_set():
+            raise EdgeTTSCancelled()
+
+        kwargs = {}
+        if rate:
+            kwargs["rate"] = rate
+        if pitch:
+            kwargs["pitch"] = pitch
+
+        async def _stream_to_file():
+            communicate = edge_tts.Communicate(text, voice, **kwargs)
+            wrote_bytes = 0
+            with open(output_path, "wb") as audio_file:
+                async for chunk in communicate.stream():
+                    if cancel_event is not None and cancel_event.is_set():
+                        raise EdgeTTSCancelled()
+                    if chunk.get("type") == "audio":
+                        data = chunk.get("data")
+                        if data:
+                            audio_file.write(data)
+                            wrote_bytes += len(data)
+            return wrote_bytes > 0
+
+        loop = asyncio.new_event_loop()
+        try:
+            return loop.run_until_complete(asyncio.wait_for(_stream_to_file(), timeout=180))
+        finally:
+            try:
+                loop.run_until_complete(loop.shutdown_asyncgens())
+            except Exception:
+                pass
+            loop.close()
+
     def _run_edge_tts(self, text: str, voice: str, output_path: str, rate: str = None, pitch: str = None, cancel_event=None) -> bool:
-        """Gọi Edge-TTS qua CLI (tránh xung đột asyncio với FastAPI). Trả về True nếu thành công."""
+        """Ưu tiên gọi Edge-TTS trực tiếp trong tiến trình; fallback sang CLI nếu cần."""
         import sys
         self._last_edge_error = None
+        if cancel_event is not None and cancel_event.is_set():
+            raise EdgeTTSCancelled()
+
+        try:
+            if self._run_edge_tts_inproc(text, voice, output_path, rate=rate, pitch=pitch, cancel_event=cancel_event):
+                if os.path.exists(output_path) and os.path.getsize(output_path) > 0:
+                    return True
+        except EdgeTTSCancelled:
+            if os.path.exists(output_path):
+                try:
+                    os.remove(output_path)
+                except OSError:
+                    pass
+            raise
+        except Exception as err:
+            err_text = f"{type(err).__name__}: {err}"
+            if re.search(r'(?:WSServerHandshakeError|status)\b.*?\b403\b|\b403\b.*?(?:WSServerHandshakeError|Forbidden)', err_text, re.IGNORECASE):
+                self._last_edge_error = 'forbidden'
+                safe_error = re.sub(r'''(?:https?|wss?)://[^\s'"<>]+''', '[URL]', err_text.strip())
+                print(f"    -> [EDGE-TTS ERROR] {safe_error}")
+                return False
+
         cmd = [
             sys.executable, "-m", "edge_tts",
             "--text", text,
@@ -104,8 +168,6 @@ class EdgeTTSModel:
 
         if cancel_event is not None and cancel_event.is_set():
             raise EdgeTTSCancelled()
-        # communicate() drains both pipes; polling also works on Windows without
-        # depending on Uvicorn's event-loop/subprocess implementation.
         with subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                               text=True, encoding='utf-8', errors='replace') as process:
             deadline = time.monotonic() + 180
