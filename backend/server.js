@@ -2,10 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const database = require('./app/db/postgres');
 const path = require('path');
-const dotenv = require('dotenv');
-dotenv.config({ path: path.join(__dirname, '.env.keycloak.local'), quiet: true });
-dotenv.config({ path: path.join(__dirname, '.env.books.local'), quiet: true });
-dotenv.config({ path: path.join(__dirname, '.env'), quiet: true });
+require('./app/config/env');
 const runtime = require('./app/config/runtime').getRuntimeConfig();
 
 const app = express();

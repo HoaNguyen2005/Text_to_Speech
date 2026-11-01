@@ -1,0 +1,20 @@
+{
+  "name": "text2speech-workspace",
+  "private": true,
+  "scripts": {
+    "build": "npm --prefix frontend run build",
+    "start": "npm --prefix backend start",
+    "dev": "npm --prefix frontend run dev",
+    "worker:books": "npm --prefix backend run worker:books",
+    "db:migrate": "npm --prefix backend run db:migrate",
+    "db:status": "npm --prefix backend run db:status",
+    "neon:check": "node backend/scripts/check_neon.js",
+    "neon:import:preview": "node backend/scripts/import_postgres_neon.js",
+    "neon:import": "node backend/scripts/import_postgres_neon.js --execute",
+    "neon:docker-env": "node backend/scripts/configure_neon_docker.js"
+  },
+  "dependencies": {
+    "@neon/config": "^1.10.0",
+    "@neon/env": "^1.6.8"
+  }
+}

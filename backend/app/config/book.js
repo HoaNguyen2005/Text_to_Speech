@@ -1,8 +1,5 @@
 const path = require('path');
-const dotenv = require('dotenv');
-dotenv.config({ path: path.join(__dirname, '../../.env.keycloak.local'), quiet: true });
-dotenv.config({ path: path.join(__dirname, '../../.env.books.local'), quiet: true });
-dotenv.config({ path: path.join(__dirname, '../../.env'), quiet: true });
+require('./env');
 const runtime = require('./runtime').getRuntimeConfig();
 
 module.exports = {

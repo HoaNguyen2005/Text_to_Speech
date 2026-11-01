@@ -821,6 +821,19 @@ Mốc Phase 2–3/giao diện ngày 13/10 là `9f5791c`; mốc sách nói dài +
   - Tạo `engine/Dockerfile.gpu` dùng chung base image `pytorch/pytorch:2.8.0-cuda12.8-cudnn-runtime` với `engine/vieneu_service/Dockerfile.gpu`, giữ nguyên PyTorch CUDA 12.8 để cả OpenVoice V2, Silero VAD và VieNeu đều chạy trên GPU NVIDIA.
   - Tạo `deploy/compose.gpu-node.yaml` và script điều khiển `deploy/gpu-node.ps1` (`prepare`, `build`, `up`, `tunnel`, `status`, `logs`, `stop`) tích hợp sẵn container `cloudflare/cloudflared` để xuất HTTPS URL và khóa `BOOK_ENGINE_SECRET` cho Laptop hoặc Web Server.
 
+### 01/11/2026 — Kết nối PostgreSQL ứng dụng với Neon
+
+- Cài Neon CLI 8.16.0, chạy `neon init -y --org-id org-rough-queen-02852755 --project-id billowing-firefly-62369175 --branch production --services postgres`. Sau khi người dùng hoàn tất OAuth bằng `npx --yes neon@latest login`, `neon config plan`/`neon deploy` xác nhận Postgres khớp policy và tải 3 biến vào `.env.local`. Không tạo project khác, không bật Neon Auth/Data API hay thay Keycloak/R2.
+- Thêm root `package.json`/lockfile và `neon.ts`, lệnh build/start/dev/worker/db/kiểm tra từ repo root. File `.neon`, env private và backup không được Git theo dõi.
+- Tạo `backend/app/config/env.js`: biến tiến trình > env root do Neon quản lý > env Backend cũ, dùng chung cho server, worker và công cụ DB. Giữ driver `pg` và transaction/repository hiện có. Runtime dùng pooled `DATABASE_URL`; migration dùng pool riêng qua `DATABASE_URL_UNPOOLED`; Neon bắt buộc TLS kiểm tra chứng chỉ/hostname và bật channel binding. Hỗ trợ database Neon `neondb`, vẫn chặn database Keycloak/hệ thống.
+- Áp dụng đủ 9 migration lên Neon trống. `import_postgres_neon.js` đọc snapshot PostgreSQL local trong transaction read-only/repeatable-read, chỉ nhập khi đích trống và schema khớp; chặn job/nghe thử/đồng bộ đang chạy, lưu backup trước nhập, đối chiếu hash từng bảng và commit nguyên khối. Không ghi/xóa nguồn; đặt lease cũ hết hạn ở đích.
+- Tạm dừng Backend/worker sau khi xác nhận không có tác vụ đang chạy; chuyển 3 tài khoản, 5 giọng, 33 job, 11 lịch sử, cùng cache/profile/preview/control tables. Giữ nguyên mapping Keycloak, owner/private/global của giọng và R2 key. Snapshot trước chuyển: `backend/data/neon-backups/local-postgres-1793507856139.json` (private).
+- `configure_neon_docker.js` chỉ thay hai biến database trong `deploy/backend.env`, sao lưu cấu hình cũ vào `deploy/backend.pre-neon-1793507869283.env`. Build lại image Backend và recreate Backend/worker thành công; `postgres_status.js` chạy **trong container** xác nhận database `neondb`, 3/5/33/11 bản ghi tương ứng, 3 mapping Keycloak, worker lease active. Backend/worker cùng các service còn lại healthy. PostgreSQL local vẫn chạy cho Keycloak.
+- Sửa `backup:postgres` để dump database đang được chọn thay vì âm thầm dump local. Neon hiện là PostgreSQL 18.6; pg_dump 17.11 trong container local không tương thích, đã dùng client `postgres:18-alpine` tạm thời + CA hệ thống + TLS verify-full/channel binding. Backup cloud thành công: `keycloak/backups/app-postgres-1793508266495.dump`, 2.274.842 byte; không nâng cấp database Keycloak.
+- **Kiểm chứng theo yêu cầu:** `npm run build` exit 0, Vite 8.2.2, 414 modules, built in 1.09s (còn cảnh báo chunk PDF >500 kB). `npm run neon:check` PASS: TLS encrypted/certificate verified, CRUD repository/worker lease/rollback, khởi động Express thật, health 200, voices 200 với đúng 2 giọng công khai và không lộ giọng private, history không token 401. Web 5173 HTTP 200 và API 3000 trả `{"status":"ok"}` sau khi bật lại Docker.
+- **Lỗi đã xử lý:** quyền npm/config CLI, OAuth timeout 60 giây, terminal người dùng chưa nhận `neon` (dùng npx), pg_dump 17/server 18. Chưa kiểm thử đăng nhập bằng người dùng thật/Gemini/TTS hoặc restore dump cloud. Neon mới là phần database; Vue/Express/worker/Keycloak/Engine vẫn chạy trên máy hiện tại. Theo dõi Usage vì worker/healthcheck truy vấn định kỳ có thể giữ compute Neon hoạt động.
+- Bổ sung `NEON.md`, cập nhật README/env example. Không commit/push Git trong phiên này.
+
 ## 5. Việc Tiếp Theo / TODO
 
 **Phase 2 local:**
@@ -852,6 +865,7 @@ Mốc Phase 2–3/giao diện ngày 13/10 là `9f5791c`; mốc sách nói dài +
 - [ ] Cân nhắc tối ưu chunk PDF lớn trước deploy.
 
 **Phase 4:**
+- [x] Chuyển database ứng dụng lên Neon production; migrate/copy/đối chiếu dữ liệu, TLS/CRUD/API/worker healthy, backup cloud thành công ngày 01/11/2026. Xem NEON.md.
 - [x] 1a: Build image Backend/worker và cấu hình kết nối container; image local `text2speech-backend:phase4.1`, đã bật ở mục 1c.
 - [x] 1b: Build image Engine CPU, FFmpeg, OpenVoice và cấu hình weights/cache; tag text2speech-engine:phase4.1, đã nạp model/bật ở mục 1c.
 - [x] 1c: Frontend và Compose local, mạng nội bộ, volume âm thanh dùng chung, tái sử dụng PostgreSQL/Keycloak hiện có; 7 service healthy, chưa kiểm thử toàn luồng.
@@ -916,7 +930,7 @@ Mốc Phase 2–3/giao diện ngày 13/10 là `9f5791c`; mốc sách nói dài +
 - Admin ứng dụng được quản lý qua Keycloak/AdminPanel; create_admin.js đã bỏ. Từ thư mục backend, `node seed_voices.js` chỉ bổ sung mẫu chuẩn male/female còn thiếu; giữ nguyên giọng hiện có, chủ sở hữu, trạng thái và file. Không dùng seed để chuyển quyền sở hữu giọng cá nhân.
 - Engine lần đầu chạy phải tải weights (~260MB); cần FFmpeg trong `engine/venv/Scripts/`.
 - Stack local: từ repo root chạy `docker compose --env-file keycloak/.env -f keycloak/compose.yaml up -d --wait postgres mailpit keycloak`; Admin Console `http://localhost:8080/admin/`, Mailpit `http://localhost:8025`. MongoDB migration profile chỉ phục vụ công cụ lịch sử, không cần cho runtime. Secrets nằm trong `keycloak/.env`. Không dùng `down -v` nếu cần giữ dữ liệu.
-- PostgreSQL ứng dụng: xem `POSTGRES_MIGRATION.md`. Backend/worker đọc `backend/.env.postgres.local` (`tts_app`, cổng Windows 5433); Keycloak dùng database riêng. Dữ liệu đã nhập, không cần nhập lại mỗi lần bật máy. `npm run db:status` xem trạng thái; `npm run backup:postgres` tạo backup ứng dụng. Không xóa file cấu hình private hoặc volume.
+- PostgreSQL ứng dụng từ 01/11/2026: Neon `production/neondb`, xem `NEON.md`. Chạy native đọc env root `.env.local`; Docker đọc hai URL Neon trong `deploy/backend.env`. `.env.postgres.local` và `tts_app` local được giữ làm nguồn/đường lui; Keycloak vẫn dùng database local riêng. Root `npm run db:status` xem trạng thái; `npm --prefix backend run backup:postgres` dump database đang chọn (Neon dùng client PostgreSQL 18 tạm thời). Không chạy lại nhập dữ liệu mỗi lần bật máy, không xóa private config/volume và không dùng công cụ prepare local để ghi đè cấu hình Neon.
 - Runtime Phase 3: xem `keycloak/PHASE3.md`; backend đọc service account từ `backend/.env.keycloak.local`. Mở frontend http://localhost:5173 để đăng nhập realm tts-local bằng mật khẩu Keycloak.
 - Theme xác thực: xem `keycloak/THEME.md`; source nằm trong `keycloak/themes/text2speech/login/`. Áp dụng vào realm local đã có bằng `node backend/scripts/configure_keycloak_theme.js`.
 - Khi sửa frontend, dùng đúng đường dẫn `views/user/` và `views/admin/`; khung điều hướng nằm ở `layouts/AppShell.vue`, CSS chung ở `assets/workspace.css`. Các script xem trước tạm không thuộc luồng vận hành ứng dụng.

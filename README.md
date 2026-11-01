@@ -27,7 +27,7 @@ và nghe thử đến xuất MP3/SRT, lưu lịch sử và tiếp tục khi có 
 
 2. **Backend Gateway (Node.js + Express):**
    - Cầu nối giữa Frontend và AI Engine, đồng thời host tĩnh các file âm thanh kết quả.
-   - Xác thực access token Keycloak bằng JWKS, phân quyền `user`/`admin`; **PostgreSQL `tts_app`** giữ hồ sơ, giọng mẫu, lịch sử và công việc sách nói; database `keycloak` tách riêng cho xác thực.
+   - Xác thực access token Keycloak bằng JWKS, phân quyền `user`/`admin`; **PostgreSQL ứng dụng** (`neondb` trên Neon, `tts_app` khi chạy local) giữ hồ sơ, giọng mẫu, lịch sử và công việc sách nói; database `keycloak` tách riêng cho xác thực.
    - Tích hợp Google Gemini cho tính năng tóm tắt sách.
    - Thư mục: `backend/` — Cổng mặc định: `3000` (cấu hình qua biến `PORT`)
 
@@ -38,7 +38,7 @@ và nghe thử đến xuất MP3/SRT, lưu lịch sử và tiếp tục khi có 
 
 ```
 Frontend (5173) ──► Backend Gateway (3000) ──► AI Engine (8000)
-                        ├── PostgreSQL tts_app      └─ Edge-TTS + OpenVoice V2
+                        ├── PostgreSQL Neon         └─ Edge-TTS + OpenVoice V2
                         ├── Gemini
                         └── R2
 Frontend ──► Keycloak (8080) ──► PostgreSQL keycloak (database riêng)
@@ -46,7 +46,13 @@ Frontend ──► Keycloak (8080) ──► PostgreSQL keycloak (database riên
 
 ## Chuyển database ứng dụng sang PostgreSQL
 
-Mã hiện tại dùng `pg` và database `tts_app`, giữ nguyên ID đã liên kết Keycloak.
+**Cập nhật 01/11/2026:** Backend/worker đã chuyển sang PostgreSQL Neon nhánh
+`production`. Đã chuyển và đối chiếu 3 tài khoản, 5 giọng, 33 job và 11 lịch sử;
+Keycloak vẫn dùng PostgreSQL local riêng. Xem [NEON.md](NEON.md) để cấu hình,
+migrate, backup, kiểm tra hoặc quay lại cấu hình trước. Neon chỉ lưu database,
+chưa phải hosting cho toàn bộ hệ thống.
+
+Mã hiện tại dùng `pg`, giữ nguyên ID đã liên kết Keycloak; database local ban đầu là `tts_app`.
 **Ngày 17/10/2026 đã chuyển dữ liệu local:** 3 tài khoản (1 admin), 3 giọng mẫu và 1 worker lease;
 nguồn hiện không có lịch sử/job sách nói. Backend và worker đã kết nối PostgreSQL.
 Trên máy hiện tại không cần nhập lại khi khởi động; khi dựng từ nguồn khác cần hoàn tất nhập

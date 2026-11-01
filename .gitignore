@@ -1,5 +1,8 @@
 # Environments
 .env
+.env.local
+backend/.env.local
+frontend/.env.local
 backend/.env.migration.local
 backend/.env.keycloak.local
 backend/.env.books.local
@@ -47,3 +50,4 @@ engine/*.mp3
 engine/*.wav
 *.mp4
 *.avi
+.neon
