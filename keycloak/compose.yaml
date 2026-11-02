@@ -75,6 +75,14 @@ services:
       timeout: 5s
       retries: 20
 
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    command: ["tunnel", "--no-autoupdate", "--url", "http://keycloak:8080"]
+    depends_on:
+      keycloak:
+        condition: service_healthy
+
 volumes:
   mailpit-data:
   keycloak-postgres-data:
