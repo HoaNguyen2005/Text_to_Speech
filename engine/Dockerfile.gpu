@@ -22,12 +22,13 @@ RUN find /etc/apt -type f \( -name '*.list' -o -name '*.sources' \) -exec sed -i
 
 COPY requirements.container.txt /tmp/requirements/requirements.container.txt
 RUN --mount=type=cache,target=/root/.cache/pip \
-    python -c "import torch, torchaudio; open('/tmp/torch-constraints.txt', 'w').write(f'torch=={torch.__version__}\ntorchaudio=={torchaudio.__version__}\n')" \
+    python -c "import importlib.metadata as m; lines = []; [lines.append(f'{p}=={m.version(p)}') for p in ('torch','torchaudio') if m. distributions() and any(d.metadata['Name']==p for d in m.distributions())]; open('/tmp/torch-constraints.txt','w').write('\n'.join(lines)+'\n')" \
     && pip install --prefer-binary -c /tmp/torch-constraints.txt -r /tmp/requirements/requirements.container.txt \
+    && (python -c "import torchaudio" 2>/dev/null || pip install --prefer-binary --index-url https://download.pytorch.org/whl/cu128 torchaudio==2.8.0) \
     && pip freeze > /opt/engine-installed.txt
 
-RUN groupadd --gid 1000 tts \
-    && useradd --uid 1000 --gid 1000 --create-home tts \
+RUN (groupadd --gid 1000 tts || true) \
+    && (useradd --uid 1000 --gid 1000 --create-home tts || useradd --create-home tts) \
     && mkdir -p /app/engine/checkpoints/converter /app/engine/processed \
         /app/backend/data/book-audio /app/backend/public/audio/samples \
         /app/backend/public/audio/generated /home/tts/.cache \
@@ -41,4 +42,3 @@ COPY --chown=tts:tts openvoice/ ./openvoice/
 USER tts
 EXPOSE 8000
 CMD ["python", "-u", "main.py"]
-
