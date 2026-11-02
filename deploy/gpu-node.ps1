@@ -1,9 +1,10 @@
 param(
-    [ValidateSet('all', 'prepare', 'build', 'up', 'tunnel', 'status', 'logs', 'stop')]
+    [ValidateSet('all', 'prepare', 'build', 'up', 'tunnel', 'register', 'status', 'logs', 'stop')]
     [string]$Action = 'status',
     [ValidateSet('engine', 'vieneu', 'tunnel')]
     [string]$Service,
-    [string]$Secret = ''
+    [string]$Secret = '',
+    [string]$BackendUrl = 'https://text2speech-backend.onrender.com'
 )
 $ErrorActionPreference = 'Stop'
 $taskRoot = Split-Path $PSScriptRoot -Parent
@@ -62,6 +63,41 @@ function Ensure-EnvFile {
     return $currentSecret
 }
 
+function Register-EngineNode {
+    param([string]$TunnelUrl, [string]$EngineSecret)
+    $targets = @($BackendUrl.TrimEnd('/'), 'http://127.0.0.1:3000') | Select-Object -Unique
+    $body = @{
+        role       = 'gpu'
+        engine_url = $TunnelUrl
+        label      = "PC-GPU-$($env:COMPUTERNAME)"
+    } | ConvertTo-Json -Compress
+
+    foreach ($target in $targets) {
+        try {
+            $resp = Invoke-RestMethod -Uri "$target/api/speech/engine-register" -Method Post `
+                -Headers @{ 'X-Book-Engine-Secret' = $EngineSecret; 'Content-Type' = 'application/json' } `
+                -Body $body -TimeoutSec 20
+            Write-Host "[AUTO-REGISTER] Đã đăng ký node GPU với $target -> $($resp.engine_url) (device=$($resp.device))" -ForegroundColor Green
+        } catch {
+            if ($target -notmatch '127\.0\.0\.1') {
+                Write-Warning "[AUTO-REGISTER] Chưa đăng ký được với $target : $($_.Exception.Message)"
+            }
+        }
+    }
+}
+
+function Unregister-EngineNode {
+    param([string]$EngineSecret)
+    $targets = @($BackendUrl.TrimEnd('/'), 'http://127.0.0.1:3000') | Select-Object -Unique
+    foreach ($target in $targets) {
+        try {
+            Invoke-RestMethod -Uri "$target/api/speech/engine-register/gpu" -Method Delete `
+                -Headers @{ 'X-Book-Engine-Secret' = $EngineSecret } -TimeoutSec 10 | Out-Null
+            Write-Host "[AUTO-UNREGISTER] Đã báo tắt node GPU với $target (hệ thống tự chuyển về CPU)" -ForegroundColor Yellow
+        } catch {}
+    }
+}
+
 if ($Action -eq 'prepare') {
     $resolvedSecret = Ensure-EnvFile -ProvidedSecret $Secret
     Write-Host ""
@@ -102,12 +138,10 @@ function Start-TunnelAndPrint {
         Write-Host "==================================================================" -ForegroundColor Green
         Write-Host "  CLOUDFLARE TUNNEL CHO ENGINE GPU (RTX 4060) ĐÃ SẴN SÀNG!        " -ForegroundColor Green
         Write-Host "==================================================================" -ForegroundColor Green
-        Write-Host "Hãy cập nhật 3 biến môi trường sau trên Render.com (hoặc Laptop):" -ForegroundColor Yellow
-        Write-Host ""
         Write-Host "ENGINE_URL=$tunnelUrl" -ForegroundColor Cyan
-        Write-Host "BOOK_ENGINE_URL=$tunnelUrl" -ForegroundColor Cyan
         Write-Host "BOOK_ENGINE_SECRET=$resolvedSecret" -ForegroundColor Cyan
         Write-Host "==================================================================" -ForegroundColor Green
+        Register-EngineNode -TunnelUrl $tunnelUrl -EngineSecret $resolvedSecret
     } else {
         Write-Host "[GPU NODE] Đang khởi tạo liên kết Cloudflare Tunnel. Xem lại bằng: .\deploy\gpu-node.ps1 logs -Service tunnel" -ForegroundColor Yellow
     }
@@ -132,7 +166,7 @@ switch ($Action) {
             Write-Warning "Engine đang khởi động thêm: $($_.Exception.Message)"
         }
 
-        Write-Host "[3/3] Đang mở Cloudflare Tunnel cho Engine..." -ForegroundColor Cyan
+        Write-Host "[3/3] Đang mở Cloudflare Tunnel và tự động đăng ký với Backend..." -ForegroundColor Cyan
         Start-TunnelAndPrint
         exit 0
     }
@@ -152,9 +186,15 @@ switch ($Action) {
             } catch {
                 Write-Warning "Engine đang khởi động thêm: $($_.Exception.Message)"
             }
+            Start-TunnelAndPrint
+            exit 0
         }
     }
     'tunnel' {
+        Start-TunnelAndPrint
+        exit 0
+    }
+    'register' {
         Start-TunnelAndPrint
         exit 0
     }
@@ -167,6 +207,10 @@ switch ($Action) {
         & $taskDockerPath @argsList
     }
     'stop' {
+        $resolvedSecret = Get-EngineSecret
+        if ($resolvedSecret -and (-not $Service -or $Service -ne 'vieneu')) {
+            Unregister-EngineNode -EngineSecret $resolvedSecret
+        }
         $argsList = $baseCompose + @('--profile', 'tunnel', 'stop')
         if ($Service) { $argsList += $Service }
         & $taskDockerPath @argsList

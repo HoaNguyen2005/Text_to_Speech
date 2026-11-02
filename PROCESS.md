@@ -834,6 +834,20 @@ Mốc Phase 2–3/giao diện ngày 13/10 là `9f5791c`; mốc sách nói dài +
 - **Lỗi đã xử lý:** quyền npm/config CLI, OAuth timeout 60 giây, terminal người dùng chưa nhận `neon` (dùng npx), pg_dump 17/server 18. Chưa kiểm thử đăng nhập bằng người dùng thật/Gemini/TTS hoặc restore dump cloud. Neon mới là phần database; Vue/Express/worker/Keycloak/Engine vẫn chạy trên máy hiện tại. Theo dõi Usage vì worker/healthcheck truy vấn định kỳ có thể giữ compute Neon hoạt động.
 - Bổ sung `NEON.md`, cập nhật README/env example. Không commit/push Git trong phiên này.
 
+### 02/11/2026 — Tự động đăng ký Tunnel & Chuyển đổi linh hoạt (Auto-Failover) giữa GPU (PC) và CPU (Laptop)
+
+- **Bối cảnh:** Máy tính bàn có GPU NVIDIA RTX 4060 không phải lúc nào cũng bật; đường dẫn Cloudflare Quick Tunnel (`https://xxxx.trycloudflare.com`) thay đổi mỗi lần khởi động lại container. Người dùng yêu cầu hệ thống tự động ưu tiên dùng GPU khi máy bàn bật, tự động chuyển về dùng CPU trên Laptop cho toàn bộ tính năng (cả OpenVoice và VieNeu) khi máy bàn tắt, và tự động cập nhật địa chỉ Tunnel mà không cần copy-paste lại biến môi trường trên Render.com.
+- **Triển khai:**
+  - Mở rộng `backend/app/config/runtime.js` và `backend/app/config/book.js`: hỗ trợ thêm biến dự phòng `ENGINE_FALLBACK_URL` và hàm `validateEngineUrl`.
+  - Nâng cấp `backend/app/services/engine_artifact.service.js`:
+    - Lưu và đọc đăng ký động của 2 node `engine-node:gpu` và `engine-node:cpu` trong bảng `worker_leases` trên PostgreSQL (dùng chung cho cả Render Backend và Worker mà không cần tạo bảng mới).
+    - Bổ sung `resolveEngineUrl(jobId, options)` và `fetchWithFailover(pathSuffix, initFactory, options)`: ưu tiên kiểm tra theo thứ tự `registered-gpu` → `env-primary` (`ENGINE_URL`) → `registered-cpu` → `env-fallback` (`ENGINE_FALLBACK_URL`). Ghim địa chỉ Engine theo `jobId` trong suốt vòng đời một job; nếu máy bàn tắt giữa chừng (lỗi mạng hoặc Cloudflare trả mã `530`/`502`/`504`), tự động chuyển tiếp (failover) sang node CPU dự phòng.
+  - Bổ sung 2 endpoint xác thực bằng `X-Book-Engine-Secret` tại `backend/app/routes/speech.route.js`:
+    - `POST /api/speech/engine-register`: đăng ký hoặc cập nhật URL Tunnel hiện tại của node `gpu` hoặc `cpu`.
+    - `DELETE /api/speech/engine-register/:role`: gỡ đăng ký ngay khi tắt máy bàn để chuyển về CPU tức thì (0ms delay).
+  - Cập nhật toàn bộ các điểm gọi Engine (`speech_lecture.service.js`, `book_preview.service.js`, `voice_demo.service.js`, `edge_prefetch.service.js`, `workers/book.worker.js`, `server.js`) sang dùng `fetchWithFailover`. Trong `book.worker.js`, nếu máy bàn tắt giữa chừng khi đang tạo sách dài, worker tự động đẩy các đoạn `.wav` đã tạo trước đó sang Engine CPU dự phòng khi ghép file (`merge`).
+  - Cập nhật `deploy/gpu-node.ps1`, `deploy/stack.ps1`, `deploy/compose.app.yaml` và `PC_AGENT_SETUP.md`: tự động lấy link Cloudflare Tunnel và gọi `/api/speech/engine-register` ngay khi bật stack trên PC hoặc Laptop.
+
 ## 5. Việc Tiếp Theo / TODO
 
 **Phase 2 local:**

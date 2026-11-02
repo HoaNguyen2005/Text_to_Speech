@@ -25,6 +25,7 @@ module.exports = {
         { voice_id: 'standard-male', name: 'Nam Minh', gender: 'male', file_path: '' },
     ],
     engineUrl: runtime.engineUrl,
+    engineFallbackUrl: runtime.engineFallbackUrl,
     engineSecret: process.env.BOOK_ENGINE_SECRET || '',
     engineTimeout: 20 * 60 * 1000,
     leaseMs: 90000,

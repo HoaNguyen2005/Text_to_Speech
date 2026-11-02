@@ -32,14 +32,19 @@ async function engine(endpoint, payload, guard = async () => {}) {
     for (let attempt = 0; attempt < 3; attempt++) {
         await guard();
         try {
-            const response = await fetch(`${config.engineUrl}/book/${endpoint}`, {
-                method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Book-Engine-Secret': config.engineSecret },
-                body: JSON.stringify(payload), signal: AbortSignal.timeout(config.engineTimeout),
-            });
-            const result = await response.json();
+            const { response } = await artifact.fetchWithFailover(
+                `/book/${endpoint}`,
+                () => ({
+                    method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Book-Engine-Secret': config.engineSecret },
+                    body: JSON.stringify(payload), signal: AbortSignal.timeout(config.engineTimeout),
+                }),
+                { jobId: payload?.job_id }
+            );
+            const result = await response.json().catch(() => ({}));
             if (!response.ok) {
                 const detail = typeof result.detail === 'string' ? result.detail : result.detail?.message;
                 const error = new Error(response.status === 403 ? 'Khóa nội bộ Engine không khớp. Khởi động lại Backend/Engine/worker.' : detail || 'Engine chưa sẵn sàng.');
+                error.status = response.status;
                 error.retryable = response.status >= 500 && result.detail?.retryable !== false;
                 throw error;
             }
@@ -48,6 +53,7 @@ async function engine(endpoint, payload, guard = async () => {}) {
         } catch (error) {
             if (error instanceof Interrupted) throw error;
             if ((error.retryable || error.name === 'TimeoutError' || error.name === 'TypeError') && attempt < 2) {
+                artifact.invalidateEngineCache();
                 await llm.delay(4000 * (attempt + 1)); continue;
             }
             if (error.name === 'TimeoutError' || error.name === 'TypeError') throw new Error('Không kết nối được Engine hoặc đoạn âm thanh quá hạn. Chạy Engine rồi thử lại.');
@@ -335,7 +341,7 @@ async function processJob(job, aiProgress) {
         }
         if (!saved) {
             const audio = await makePart(texts[i], id);
-            const file = storage.isR2Enabled() ? await artifact.materialize(job._id, audio.output_path, 'Engine trả đường dẫn âm thanh không hợp lệ.') : artifactPath(job._id, audio.output_path);
+            const file = await artifact.materialize(job._id, audio.output_path, 'Engine trả đường dẫn âm thanh không hợp lệ.');
             if (!Number.isFinite(audio.duration_seconds) || audio.duration_seconds <= 0) throw new Error('Đoạn âm thanh thiếu thời lượng.');
             const storageKey = `generated/book-${job._id}-${id}.wav`;
             if (storage.isR2Enabled()) await timed('upload', () => storage.uploadFile(file, storageKey, 'audio/wav'));
@@ -348,7 +354,22 @@ async function processJob(job, aiProgress) {
         throw new Error('Thời lượng âm thanh đã đạt 1 giờ. Hãy tạo yêu cầu mới với số phút ngắn hơn; hệ thống không tự cắt nội dung.');
     }
     await save('merge', 94);
-    const merged = await timed('merge', () => engine('merge', { job_id: String(job._id), part_ids: checkpoint.parts.map((p) => p.part_id) }, guard));
+    let merged;
+    try {
+        merged = await timed('merge', () => engine('merge', { job_id: String(job._id), part_ids: checkpoint.parts.map((p) => p.part_id) }, guard));
+    } catch (mergeError) {
+        if (mergeError.status === 409) {
+            for (const part of checkpoint.parts) {
+                const partFile = path.join(config.artifactRoot, String(job._id), `${part.part_id}.wav`);
+                if (await exists(partFile) || await restore(part.storage_key, partFile)) {
+                    await artifact.pushToEngine(job._id, partFile).catch(() => {});
+                }
+            }
+            merged = await timed('merge', () => engine('merge', { job_id: String(job._id), part_ids: checkpoint.parts.map((p) => p.part_id) }, guard));
+        } else {
+            throw mergeError;
+        }
+    }
     if (!Number.isFinite(merged.duration_seconds) || merged.duration_seconds <= 0) throw new Error('Thời lượng âm thanh sau ghép không hợp lệ.');
     if (merged.duration_seconds >= config.maxAudioSeconds) {
         throw new Error('Thời lượng âm thanh sau ghép đã đạt 1 giờ. Hãy tạo yêu cầu mới với số phút ngắn hơn.');

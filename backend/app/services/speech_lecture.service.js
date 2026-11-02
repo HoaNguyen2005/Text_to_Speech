@@ -11,8 +11,17 @@ const artifact = require('./engine_artifact.service');
 const problem = (status,message) => Object.assign(new Error(message),{status});
 let running = 0;
 async function engine(endpoint,payload) {
-    const response=await fetch(`${config.engineUrl}/book/${endpoint}`,{method:'POST',headers:{'Content-Type':'application/json','X-Book-Engine-Secret':config.engineSecret},body:JSON.stringify(payload),signal:AbortSignal.timeout(config.engineTimeout)});
-    const result=await response.json();
+    const { response } = await artifact.fetchWithFailover(
+        `/book/${endpoint}`,
+        () => ({
+            method:'POST',
+            headers:{'Content-Type':'application/json','X-Book-Engine-Secret':config.engineSecret},
+            body:JSON.stringify(payload),
+            signal:AbortSignal.timeout(config.engineTimeout),
+        }),
+        { jobId: payload?.job_id }
+    );
+    const result=await response.json().catch(()=>({}));
     if (!response.ok) throw problem(503,typeof result.detail==='string'?result.detail:result.detail?.message||'Engine chưa sẵn sàng.');
     return result;
 }

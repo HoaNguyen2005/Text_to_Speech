@@ -37,9 +37,17 @@ async function cacheExists(row) {
     catch {return false;}
 }
 async function engine(endpoint,payload) {
-    const response=await fetch(`${config.engineUrl}/book/${endpoint}`,{method:'POST',headers:{'Content-Type':'application/json','X-Book-Engine-Secret':config.engineSecret},
-        body:JSON.stringify(payload),signal:AbortSignal.timeout(config.engineTimeout)});
-    const result=await response.json();
+    const { response } = await artifact.fetchWithFailover(
+        `/book/${endpoint}`,
+        () => ({
+            method:'POST',
+            headers:{'Content-Type':'application/json','X-Book-Engine-Secret':config.engineSecret},
+            body:JSON.stringify(payload),
+            signal:AbortSignal.timeout(config.engineTimeout),
+        }),
+        { jobId: payload?.job_id }
+    );
+    const result=await response.json().catch(()=>({}));
     if(!response.ok) {
         // Only forward authored diagnostics from known private Engine failures.
         const detail=result.detail;

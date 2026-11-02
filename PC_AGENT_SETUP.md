@@ -14,7 +14,7 @@ Dự án **Text2Speech** đang chạy theo kiến trúc Hybrid Cloud:
 - **Vai trò của PC này (Máy bàn RTX 4060):**
   1. Chạy **Engine TTS (Edge-TTS + OpenVoice V2)** và **VieNeu-TTS** bằng Docker với **CUDA 12.8 trên GPU NVIDIA RTX 4060**.
   2. Chạy container **Cloudflare Tunnel (`cloudflared`)** để mở đường dẫn HTTPS công khai (`https://xxxx.trycloudflare.com`) trỏ vào cổng `8000` của Engine.
-  3. Xuất đường dẫn Tunnel để điền vào biến `ENGINE_URL` và `BOOK_ENGINE_URL` trên Render.com (hoặc trên Laptop).
+  3. **Tự động đăng ký (Auto-Register)** đường dẫn Tunnel lên Backend (`https://text2speech-backend.onrender.com/api/speech/engine-register`) để hệ thống tự ưu tiên dùng GPU khi PC bật và tự chuyển về CPU Laptop khi PC tắt mà **không cần copy-paste lại biến môi trường trên Render**.
 
 ---
 
@@ -88,13 +88,16 @@ Sau khi Bước 3 hoàn tất, AI Agent hãy chạy lệnh kiểm tra sau:
 ---
 
 ### Bước 5: Báo cáo kết quả cho Người dùng
-Sau khi xác nhận thành công, AI Agent hãy in rõ 3 biến môi trường sau để người dùng dán vào mục **Environment** của service `text2speech_backend` trên **Render.com**:
+Lệnh ở Bước 3 đã **tự động đăng ký** đường dẫn Cloudflare Tunnel của máy bàn lên Backend Render (`https://text2speech-backend.onrender.com`). Nếu cần đăng ký lại thủ công bất kỳ lúc nào, chỉ cần chạy:
 
-```env
-ENGINE_URL=https://<ten-ngau-nhien>.trycloudflare.com
-BOOK_ENGINE_URL=https://<ten-ngau-nhien>.trycloudflare.com
-BOOK_ENGINE_SECRET=fa6f5f632c22bd99916a8db84d50f720085bebefa945bfbb6e91e7ce509bc489
+```powershell
+.\deploy\gpu-node.ps1 -Action register
 ```
+
+AI Agent hãy báo cáo cho người dùng:
+- Trạng thái GPU (`device = "cuda:0"`, tên card RTX 4060).
+- Đường dẫn Cloudflare Tunnel hiện tại (`https://<ten-ngau-nhien>.trycloudflare.com`).
+- Xác nhận dòng `[AUTO-REGISTER] Đã đăng ký node GPU với https://text2speech-backend.onrender.com` đã thành công.
 
 ---
 
@@ -103,7 +106,9 @@ BOOK_ENGINE_SECRET=fa6f5f632c22bd99916a8db84d50f720085bebefa945bfbb6e91e7ce509bc
 | Thao tác | Lệnh PowerShell |
 | :--- | :--- |
 | Xem trạng thái các container GPU & Tunnel | `.\deploy\gpu-node.ps1 -Action status` |
-| Bật lại trạm GPU + lấy link Tunnel mới sau khi bật máy | `.\deploy\gpu-node.ps1 -Action up` rồi `.\deploy\gpu-node.ps1 -Action tunnel` |
+| Bật lại trạm GPU + tự động đăng ký link Tunnel mới lên Cloud | `.\deploy\gpu-node.ps1 -Action up` |
+| Đăng ký lại link Tunnel hiện tại lên Cloud Backend | `.\deploy\gpu-node.ps1 -Action register` |
 | Xem lại link Cloudflare Tunnel hiện tại | `.\deploy\gpu-node.ps1 -Action logs -Service tunnel` |
 | Xem log xử lý âm thanh của Engine GPU | `.\deploy\gpu-node.ps1 -Action logs -Service engine` |
-| Tắt trạm GPU khi không sử dụng | `.\deploy\gpu-node.ps1 -Action stop` |
+| Tắt trạm GPU (tự động báo Cloud chuyển ngay về CPU Laptop) | `.\deploy\gpu-node.ps1 -Action stop` |
+

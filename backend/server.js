@@ -87,7 +87,8 @@ app.post('/api/generate-lecture', verifyToken, async (req, res) => {
         // 4. Gọi sang Python FastAPI Engine thực sự
         //    Khi bật R2: gửi kèm presigned URL của file giọng mẫu để Engine tự tải
         //    (Engine không còn đọc trực tiếp filesystem của Backend)
-        console.log(`\n[DEBUG - AI FORWARDING] Đang gửi yêu cầu sang Python Engine tại ${runtime.engineUrl}/generate...`);
+        const activeEngineUrl = await require('./app/services/engine_artifact.service').resolveEngineUrl();
+        console.log(`\n[DEBUG - AI FORWARDING] Đang gửi yêu cầu sang Python Engine tại ${activeEngineUrl}/generate...`);
 
         let reference_audio_url, voiceGender, referenceFile;
         if (teacher_id) {
@@ -106,7 +107,7 @@ app.post('/api/generate-lecture', verifyToken, async (req, res) => {
 
         try {
             // Sử dụng fetch API có sẵn trong Node.js > 18
-            const aiResponse = await fetch(`${runtime.engineUrl}/generate`, {
+            const { response: aiResponse } = await require('./app/services/engine_artifact.service').fetchWithFailover('/generate', () => ({
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -116,7 +117,7 @@ app.post('/api/generate-lecture', verifyToken, async (req, res) => {
                     reference_audio_url: reference_audio_url,
                     gender: voiceGender, reference_file: referenceFile
                 })
-            });
+            }));
 
             if (!aiResponse.ok) {
                 const errorData = await aiResponse.json();

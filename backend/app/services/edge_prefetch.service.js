@@ -1,6 +1,7 @@
 // Only Edge network requests overlap. Rendering/checkpoints remain ordered.
 const crypto = require('crypto');
 const config = require('../config/book');
+const artifact = require('./engine_artifact.service');
 
 module.exports = async function edgePrefetch({ jobId, provider, parts, payload, guard = async () => {}, skip = () => false,
     timed = async (stage, operation) => operation() }) {
@@ -12,11 +13,15 @@ module.exports = async function edgePrefetch({ jobId, provider, parts, payload, 
     const pending = new Map();
     let closed = false, interrupted, timer, checking, closePromise;
     async function request(endpoint, body, signal = undefined, timeout = 20000) {
-        const response = await fetch(`${config.engineUrl}/book/${endpoint}`, {
-            method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Book-Engine-Secret': config.engineSecret },
-            body: JSON.stringify(body), signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(timeout)]) : AbortSignal.timeout(timeout),
-        });
-        const result = await response.json();
+        const { response } = await artifact.fetchWithFailover(
+            `/book/${endpoint}`,
+            () => ({
+                method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Book-Engine-Secret': config.engineSecret },
+                body: JSON.stringify(body), signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(timeout)]) : AbortSignal.timeout(timeout),
+            }),
+            { jobId: String(jobId) }
+        );
+        const result = await response.json().catch(() => ({}));
         if (!response.ok) {
             const error = new Error(typeof result.detail === 'string' ? result.detail : result.detail?.message || 'Không tải trước được âm thanh Edge-TTS.');
             error.retryable = response.status >= 500 && result.detail?.retryable !== false;
