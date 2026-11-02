@@ -10,6 +10,9 @@ from typing import Optional
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 import glob
+import json
+import re
+import threading
 import time
 import tempfile
 import uuid
@@ -141,6 +144,102 @@ def generate_audio(request: GenerateRequest):
                 pass
 
 register_book_routes(app, lambda: pipeline)
+
+
+def _discover_tunnel_url() -> Optional[str]:
+    metrics_url = os.getenv('TUNNEL_METRICS_URL', '').strip()
+    if metrics_url:
+        try:
+            with urlopen(Request(metrics_url, headers={'User-Agent': 'TTS-Engine-AutoRegister/1.0'}), timeout=5) as resp:
+                text = resp.read().decode('utf-8', errors='ignore')
+                matches = re.findall(r'https://[a-z0-9-]+\.trycloudflare\.com', text)
+                if matches:
+                    return matches[-1]
+        except Exception:
+            pass
+    log_file = os.getenv('TUNNEL_LOG_FILE', '').strip()
+    if log_file and os.path.isfile(log_file):
+        try:
+            with open(log_file, 'r', encoding='utf-8', errors='ignore') as f:
+                matches = re.findall(r'https://[a-z0-9-]+\.trycloudflare\.com', f.read())
+                if matches:
+                    return matches[-1]
+        except Exception:
+            pass
+    return None
+
+
+def _auto_register_loop():
+    role = os.getenv('ENGINE_NODE_ROLE', '').strip().lower()
+    if role not in ('gpu', 'cpu'):
+        role = 'gpu' if torch.cuda.is_available() else 'cpu'
+    backends = [u.strip().rstrip('/') for u in os.getenv('REMOTE_BACKEND_URLS', 'https://text2speech-backend.onrender.com').split(',') if u.strip()]
+    if not SECRET or not backends:
+        return
+    last_url = None
+    last_sent = 0.0
+    while True:
+        try:
+            tunnel_url = _discover_tunnel_url()
+            now = time.time()
+            if tunnel_url and (tunnel_url != last_url or now - last_sent >= 120):
+                payload = json.dumps({
+                    'role': role,
+                    'engine_url': tunnel_url,
+                    'label': f'docker-{role}-{os.getenv("HOSTNAME", "node")}',
+                }).encode('utf-8')
+                ok_any = False
+                for base in backends:
+                    try:
+                        req = Request(
+                            f'{base}/api/speech/engine-register',
+                            data=payload,
+                            headers={
+                                'Content-Type': 'application/json',
+                                'X-Book-Engine-Secret': SECRET,
+                                'User-Agent': 'TTS-Engine-AutoRegister/1.0',
+                            },
+                            method='POST',
+                        )
+                        with urlopen(req, timeout=15) as resp:
+                            if 200 <= resp.status < 300:
+                                ok_any = True
+                                if tunnel_url != last_url:
+                                    print(f'[AUTO-REGISTER] Đã tự động đăng ký node {role.upper()} ({tunnel_url}) -> {base}')
+                    except Exception as err:
+                        if tunnel_url != last_url:
+                            print(f'[AUTO-REGISTER] Chờ kết nối tới {base}: {err}')
+                if ok_any:
+                    last_url = tunnel_url
+                    last_sent = now
+        except Exception:
+            pass
+        time.sleep(10)
+
+
+@app.on_event('startup')
+def _start_auto_register():
+    if os.getenv('TUNNEL_METRICS_URL') or os.getenv('TUNNEL_LOG_FILE'):
+        threading.Thread(target=_auto_register_loop, daemon=True, name='tunnel-auto-register').start()
+
+
+@app.on_event('shutdown')
+def _unregister_on_shutdown():
+    role = os.getenv('ENGINE_NODE_ROLE', '').strip().lower()
+    if role == 'gpu' and SECRET:
+        backends = [u.strip().rstrip('/') for u in os.getenv('REMOTE_BACKEND_URLS', 'https://text2speech-backend.onrender.com').split(',') if u.strip()]
+        for base in backends:
+            try:
+                req = Request(
+                    f'{base}/api/speech/engine-register/gpu',
+                    headers={'X-Book-Engine-Secret': SECRET, 'User-Agent': 'TTS-Engine-AutoRegister/1.0'},
+                    method='DELETE',
+                )
+                with urlopen(req, timeout=5):
+                    pass
+            except Exception:
+                pass
+
 
 if __name__ == "__main__":
     import uvicorn

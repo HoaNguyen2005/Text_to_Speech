@@ -119,7 +119,7 @@ Ensure-EnvFile -ProvidedSecret $Secret | Out-Null
 $baseCompose = @('compose', '-f', $composeFile)
 
 function Start-TunnelAndPrint {
-    $argsList = $baseCompose + @('--profile', 'tunnel', 'up', '-d', 'tunnel')
+    $argsList = $baseCompose + @('up', '-d', 'tunnel')
     & $taskDockerPath @argsList
     if ($LASTEXITCODE -ne 0) { throw 'Không bật được container Cloudflare Tunnel.' }
 
@@ -199,10 +199,10 @@ switch ($Action) {
         exit 0
     }
     'status' {
-        & $taskDockerPath @baseCompose --profile tunnel ps
+        & $taskDockerPath @baseCompose ps
     }
     'logs' {
-        $argsList = $baseCompose + @('--profile', 'tunnel', 'logs', '--tail', '80')
+        $argsList = $baseCompose + @('logs', '--tail', '80')
         if ($Service) { $argsList += $Service }
         & $taskDockerPath @argsList
     }
@@ -211,7 +211,7 @@ switch ($Action) {
         if ($resolvedSecret -and (-not $Service -or $Service -ne 'vieneu')) {
             Unregister-EngineNode -EngineSecret $resolvedSecret
         }
-        $argsList = $baseCompose + @('--profile', 'tunnel', 'stop')
+        $argsList = $baseCompose + @('stop')
         if ($Service) { $argsList += $Service }
         & $taskDockerPath @argsList
     }
