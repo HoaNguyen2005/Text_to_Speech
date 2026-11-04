@@ -1,5 +1,8 @@
 # VieNeu-TTS dùng thử và đánh giá phương án cloud + PC
 
+Phần **Dùng trên web** giải thích cách chọn VieNeu-TTS cho bài giảng và sách nói.
+Để thiết lập trạm GPU độc lập, xem [PC_AGENT_SETUP.md](PC_AGENT_SETUP.md).
+
 ## Phạm vi ngày 23/10/2026
 
 VieNeu được thêm theo nhánh `if provider === vieneu`; giữ nguyên Edge-TTS + OpenVoice và để Edge làm mặc định. Không thay model của yêu cầu cũ. Giọng và Engine của sách được chụp vào `selected_voice`, giữ khi retry; hash audio có provider/phiên bản để không trộn cache.
@@ -10,7 +13,7 @@ Tài liệu mới của tác giả có VieNeu v3 Turbo mã nguồn mở. Tích h
 
 1. Tại Bài giảng hoặc Sách nói, chọn **Bộ tạo giọng → VieNeu-TTS**.
 2. Sách nói: chọn giọng có sẵn Hải Đăng, Trúc Ly, Thiện Minh (mẫu kể chuyện), Mai Anh (mẫu bản tin), hoặc giọng cá nhân có quyền dùng. Bài giảng dùng thư viện giọng mẫu hiện có.
-3. Xem cách đọc → Nghe thử → duyệt/tạo âm thanh như trước. SRT, khoảng nghỉ, bản nháp, lịch sử và quyền truy cập vẫn dùng luồng hiện tại.
+3. Nghe thử nếu cần. Với sách nói, đọc và duyệt bản tóm tắt trước khi tạo toàn bộ âm thanh.
 4. Muốn quay lại, chọn Edge-TTS + OpenVoice trước khi gửi yêu cầu mới. Yêu cầu cũ không đổi Engine khi bạn đổi dropdown tạo yêu cầu mới.
 
 VieNeu tạo tiếng nói và clone trực tiếp, không cần tạo âm thanh Edge rồi chuyển qua OpenVoice. Mẫu clone được chuẩn hóa và lấy 8 giây đầu để tái sử dụng embedding trong dịch vụ. Chọn mẫu rõ tiếng, không nhạc, không khoảng im lặng dài ở đầu. Tính giống giọng phải nghe đánh giá thực tế.
@@ -51,7 +54,7 @@ Overlay chỉ cấp NVIDIA GPU cho VieNeu; không thay CPU image/requirements c�
 | Gộp viết và đối chiếu vào cùng prompt | Giữ đối chiếu riêng. Tự kiểm tra trong cùng lượt viết không tương đương lượt đánh giá độc lập, đặc biệt sau các lỗi lệch nguyên tác. Checkpoint chỉ kiểm tra lại mục thay đổi để tiết kiệm lượt. |
 | Giảm 28 phút xuống 2–4 phút | Chưa có bằng chứng trên dữ liệu/máy này. Cần đo riêng phân tích, viết, đối chiếu, chờ quota, TTS, ghép, upload; phân biệt model nóng và lần tải weights đầu tiên. Không hứa thời gian toàn luồng từ benchmark TTS của tác giả. |
 
-## Luồng cloud đề xuất cho bước sau
+## Phương án cloud được đề xuất ngày 23/10/2026
 
 ```mermaid
 flowchart LR

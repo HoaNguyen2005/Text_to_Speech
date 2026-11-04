@@ -1,21 +1,52 @@
 <script setup>
-import {onMounted,ref} from 'vue';
+import { onMounted, ref } from 'vue';
 import api from '@/services/api';
-import {session,manageAccount} from '@/services/auth';
-import {notify} from '@/composables/useNotifications';
+import { session, manageAccount } from '@/services/auth';
+import { notify } from '@/composables/useNotifications';
 import StudioBanner from '@/components/StudioBanner.vue';
 import UiIcon from '@/components/UiIcon.vue';
-const form=ref({fullName:'',gender:'other',profile_version:0}),loading=ref(true),saving=ref(false),failed=ref(false);
-async function load(){
-  loading.value=true;failed.value=false;
-  try{const {data}=await api.get('/api/auth/me');session.value={user:data.user};form.value={fullName:data.user.fullName||'',gender:data.user.gender||'other',profile_version:data.user.profile_version||0};}
-  catch(error){failed.value=true;notify(error.response?.data?.error||'Không tải được thông tin cá nhân.',{kind:'error'});}finally{loading.value=false;}
+const form = ref({ fullName: '', gender: 'other', profile_version: 0 });
+const loading = ref(true);
+const saving = ref(false);
+const failed = ref(false);
+
+function applyProfile(user) {
+  form.value = {
+    fullName: user.fullName || '',
+    gender: user.gender || 'other',
+    profile_version: user.profile_version || 0,
+  };
+  session.value = { user };
 }
-async function save(){
-  if(saving.value)return;saving.value=true;
-  try{const {data}=await api.patch('/api/auth/me',{...form.value,fullName:form.value.fullName.trim()});session.value={user:data.user};form.value={fullName:data.user.fullName,gender:data.user.gender,profile_version:data.user.profile_version};notify('Đã cập nhật thông tin cá nhân.',{kind:'success'});}
-  catch(error){notify(error.response?.data?.error||'Không lưu được thông tin cá nhân.',{kind:'error'});}finally{saving.value=false;}
+
+async function load() {
+  loading.value = true;
+  failed.value = false;
+  try {
+    const { data } = await api.get('/api/auth/me');
+    applyProfile(data.user);
+  } catch (error) {
+    failed.value = true;
+    notify(error.response?.data?.error || 'Không tải được thông tin cá nhân.', { kind: 'error' });
+  } finally {
+    loading.value = false;
+  }
 }
+
+async function save() {
+  if (saving.value) return;
+  saving.value = true;
+  try {
+    const { data } = await api.patch('/api/auth/me', { ...form.value, fullName: form.value.fullName.trim() });
+    applyProfile(data.user);
+    notify('Đã cập nhật thông tin cá nhân.', { kind: 'success' });
+  } catch (error) {
+    notify(error.response?.data?.error || 'Không lưu được thông tin cá nhân.', { kind: 'error' });
+  } finally {
+    saving.value = false;
+  }
+}
+
 onMounted(load);
 </script>
 <template>

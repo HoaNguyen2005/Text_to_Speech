@@ -121,17 +121,15 @@ function Unregister-EngineNode {
     }
 }
 
+Ensure-EnvFile -ProvidedSecret $Secret | Out-Null
+
 if ($Action -eq 'prepare') {
-    $resolvedSecret = Ensure-EnvFile -ProvidedSecret $Secret
     Write-Host ""
     Write-Host "=== CAU HINH KET NOI TREN RENDER.COM / LAPTOP ===" -ForegroundColor Yellow
-    Write-Host "BOOK_ENGINE_SECRET=$resolvedSecret"
     Write-Host "ENGINE_URL=https://<ten-mien-tunnel>"
     Write-Host "BOOK_ENGINE_URL=https://<ten-mien-tunnel>"
     exit 0
 }
-
-Ensure-EnvFile -ProvidedSecret $Secret | Out-Null
 
 function Test-DockerAvailable {
     if (-not (Get-Process -Name 'vmmem*' -ErrorAction SilentlyContinue)) { return $false }
@@ -398,7 +396,6 @@ function Invoke-NativeGpuNode {
                 Write-Host "  CLOUDFLARE TUNNEL CHO ENGINE GPU (RTX 4060) DA SAN SANG!        " -ForegroundColor Green
                 Write-Host "==================================================================" -ForegroundColor Green
                 Write-Host "ENGINE_URL=$tunnelUrl" -ForegroundColor Cyan
-                Write-Host "BOOK_ENGINE_SECRET=$resolvedSecret" -ForegroundColor Cyan
                 Write-Host "==================================================================" -ForegroundColor Green
                 Register-EngineNode -TunnelUrl $tunnelUrl -EngineSecret $resolvedSecret
             } else {
@@ -489,7 +486,6 @@ function Start-TunnelAndPrint {
         Write-Host "  CLOUDFLARE TUNNEL CHO ENGINE GPU (RTX 4060) DA SAN SANG!        " -ForegroundColor Green
         Write-Host "==================================================================" -ForegroundColor Green
         Write-Host "ENGINE_URL=$tunnelUrl" -ForegroundColor Cyan
-        Write-Host "BOOK_ENGINE_SECRET=$resolvedSecret" -ForegroundColor Cyan
         Write-Host "==================================================================" -ForegroundColor Green
         Register-EngineNode -TunnelUrl $tunnelUrl -EngineSecret $resolvedSecret
     } else {

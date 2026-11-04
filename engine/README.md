@@ -1,12 +1,10 @@
-# Hướng Dẫn Cài Đặt Text-to-Speech Engine (Edge-TTS + OpenVoice)
+# Cài đặt và vận hành TTS Engine
 
 Đây là Python Engine đảm nhiệm việc chuyển đổi văn bản thành giọng nói (TTS) và nhân bản âm sắc (Voice Cloning).
 
-**Cập nhật Phase 4 (20/10/2026):** máy hiện tại đã chạy Engine CPU trong Compose,
-kèm FFmpeg và model. Mở Docker Desktop rồi chạy `.\deploy\stack.ps1 up` từ repo root
-để bật toàn stack; xem [PHASE4.md](../PHASE4.md). Không chạy thêm `python main.py`
-khi container đang giữ cổng 8000. Các bước bên dưới dành cho chế độ terminal;
-muốn dùng lại cần dừng service Engine Docker (và chuyển worker/backend theo hướng dẫn).
+Nếu chạy **CPU bằng Docker**, mở Docker Desktop rồi chạy `.\deploy\stack.ps1 up` từ thư mục gốc. Xem [PHASE4.md](../PHASE4.md).
+Nếu dựng **trạm GPU trên máy bàn**, xem [PC_AGENT_SETUP.md](../PC_AGENT_SETUP.md).
+Các bước cài Python dưới đây dành cho chế độ chạy trực tiếp. Dừng container Engine trước để dùng cổng 8000.
 
 ## Yêu Cầu Hệ Thống
 - Python 3.9 hoặc 3.10

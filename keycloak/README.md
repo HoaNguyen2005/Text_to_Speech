@@ -1,5 +1,8 @@
 # Keycloak + PostgreSQL local — Phase 2 và 3
 
+Để bật web đã cấu hình, dùng [hướng dẫn chạy dự án](../README.md#chạy-trên-máy-hiện-tại).
+Tài liệu này ghi lại cách dựng Keycloak và chuyển tài khoản lần đầu. Nếu cần sửa giao diện xác thực, xem [THEME.md](THEME.md).
+
 ## Trạng thái
 
 Stack local đã chạy; realm `tts-local` có roles `user`/`admin`, client SPA `tts-frontend` (Authorization Code + PKCE S256) và client API `tts-backend` (bearer-only). Access token được cấu hình audience `tts-backend` và claim `mongoUserId`.
@@ -23,8 +26,7 @@ Ngày 10/10/2026 đã sao chép và nhập **3 tài khoản thật, gồm 1 admi
 
 Cần Docker Desktop ở chế độ Linux containers và Node.js 22 trở lên. Từ repo root:
 
-Các bước cài phần mềm, cấu hình và bật lại sau khi khởi động máy cũng được trình bày
-trong [README chính — Keycloak + PostgreSQL local](../README.md#keycloak--postgresql-local).
+Các bước dưới đây dành cho lần thiết lập Keycloak hoặc khôi phục môi trường local.
 
 ```powershell
 # Lần đầu, cài thư viện backend theo package-lock.json

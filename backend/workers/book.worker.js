@@ -1,9 +1,11 @@
 // Run independently of HTTP: npm run worker:books. PostgreSQL checkpoints survive restarts.
 const config = require('../app/config/book');
+const { getKeycloakConfig } = require('../app/config/keycloak');
 const database = require('../app/db/postgres');
 const crypto = require('crypto');
 const fs = require('fs/promises');
 const path = require('path');
+const { setTimeout: delay } = require('node:timers/promises');
 const { pipeline: streamPipeline } = require('stream/promises');
 const { Readable, Transform } = require('stream');
 const Job = require('../app/models/book_job.model');
@@ -12,7 +14,8 @@ const Voice = require('../app/models/voice.model');
 const History = require('../app/models/generated_lecture.model');
 const { BookCache, ReadingProfile, WorkerLease } = require('../app/models/book_cache.model');
 const { keycloakService } = require('../app/services/keycloak.service');
-const storage = require('../app/services/storage.service'), artifact = require('../app/services/engine_artifact.service');
+const storage = require('../app/services/storage.service');
+const artifact = require('../app/services/engine_artifact.service');
 const llm = require('../app/services/book_llm.service');
 const reliability = require('../app/services/gemini_reliability');
 const language = require('../app/services/book_language');
@@ -54,7 +57,8 @@ async function engine(endpoint, payload, guard = async () => {}) {
             if (error instanceof Interrupted) throw error;
             if ((error.retryable || error.name === 'TimeoutError' || error.name === 'TypeError') && attempt < 2) {
                 artifact.invalidateEngineCache();
-                await llm.delay(4000 * (attempt + 1)); continue;
+                await delay(4000 * (attempt + 1));
+                continue;
             }
             if (error.name === 'TimeoutError' || error.name === 'TypeError') throw new Error('Không kết nối được Engine hoặc đoạn âm thanh quá hạn. Chạy Engine rồi thử lại.');
             throw error;
@@ -125,17 +129,18 @@ async function processJob(job, aiProgress) {
             throw new Error('Tài khoản không hoạt động hoặc đang chờ đồng bộ. Hãy liên hệ quản trị viên trước khi thử lại.');
         }
         if (forceIdentity || Date.now() - lastIdentityAt > 60000) {
-            if (require('../app/config/keycloak').getKeycloakConfig().clientSecret) {
+            currentRole = owner.role || 'user';
+            if (getKeycloakConfig().clientSecret) {
                 try {
                     const identity = await keycloakService().identity(owner.keycloakId);
-                    if (!identity.user.enabled || (identity.user.attributes?.legacyStatus?.[0] && identity.user.attributes.legacyStatus[0] !== 'active')) throw new Error('Tài khoản đã bị vô hiệu hóa trên Keycloak.');
+                    const legacyStatus = identity.user.attributes?.legacyStatus?.[0];
+                    if (!identity.user.enabled || (legacyStatus && legacyStatus !== 'active')) {
+                        throw new Error('Tài khoản đã bị vô hiệu hóa trên Keycloak.');
+                    }
                     currentRole = identity.role;
-                } catch (err) {
-                    if (err.code === 'KEYCLOAK_UNAVAILABLE') currentRole = owner.role || 'user';
-                    else throw err;
+                } catch (error) {
+                    if (error.code !== 'KEYCLOAK_UNAVAILABLE') throw error;
                 }
-            } else {
-                currentRole = owner.role || 'user';
             }
             lastIdentityAt = Date.now();
         }
@@ -466,7 +471,10 @@ async function main() {
     if (process.env.BOOK_WORKER_ID_FILE) await fs.writeFile(process.env.BOOK_WORKER_ID_FILE, workerId, { mode: 0o600 });
     console.log('[BOOK WORKER] Sẵn sàng. Đóng bằng Ctrl+C; yêu cầu đang làm sẽ tiếp tục ở lần chạy sau.');
     while (!stopping) {
-        if (!await claimGlobalLease()) { await llm.delay(5000); continue; }
+        if (!await claimGlobalLease()) {
+            await delay(5000);
+            continue;
+        }
         leaseLost = false;
         heartbeat = setInterval(() => maintainLease().catch(() => { leaseLost = true; }), 10000);
         try {
@@ -474,7 +482,12 @@ async function main() {
                 const job = await Job.findOneAndUpdate({ $or: [{ status: 'queued', delete_requested: false, $or: [{ next_attempt_at: null }, { next_attempt_at: { $lte: new Date() } }] }, { status: 'processing', lease_until: { $lte: new Date() } }] },
                     { $set: { status: 'processing', next_attempt_at: null, lease_owner: workerId, lease_until: new Date(Date.now() + config.leaseMs) }, $inc: { runs: 1 } },
                     { sort: { createdAt: 1 }, returnDocument: 'after' }).select('+source +checkpoint');
-                if (!job) { await database.pruneExpired(); await cleanupTerminal(); await llm.delay(3000); continue; }
+                if (!job) {
+                    await database.pruneExpired();
+                    await cleanupTerminal();
+                    await delay(3000);
+                    continue;
+                }
                 activeJob = job._id;
                 const aiProgress = { retryState: job.retry_state || {}, successes: 0 };
                 try {

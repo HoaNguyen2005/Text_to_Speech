@@ -4,11 +4,12 @@ Project: `billowing-firefly-62369175`, organization `org-rough-queen-02852755`, 
 
 ## Phạm vi
 
-Neon lưu database **ứng dụng**: hồ sơ, giọng đọc, lịch sử, bản nháp, job và checkpoint.
-Giữ Express + `pg` + worker hiện có; không đổi sang ORM hoặc driver HTTP.
-Keycloak tiếp tục dùng database riêng trong Docker. R2 vẫn lưu audio và Gemini vẫn viết nội dung.
-`neon deploy` áp dụng cấu hình dịch vụ Neon; lệnh này không đưa Vue, Express,
-Keycloak hay Engine lên hosting công khai. Máy cá nhân tắt thì các dịch vụ local đó vẫn dừng.
+Neon lưu hồ sơ, giọng đọc, lịch sử và yêu cầu sách nói. Express và worker kết nối qua `pg`.
+Keycloak có database riêng. R2 lưu audio, còn Gemini xử lý nội dung sách.
+
+Để chạy trên máy đã cấu hình, dùng [hướng dẫn Docker](README.md#chạy-trên-máy-hiện-tại).
+Các bước bên dưới dành cho lần thiết lập Neon, chuyển dữ liệu, cập nhật kết nối hoặc kiểm tra backup.
+`neon deploy` áp dụng cấu hình cho database Neon. Cách chạy các thành phần còn lại nằm trong [README.md](README.md).
 
 ## Cấu hình
 

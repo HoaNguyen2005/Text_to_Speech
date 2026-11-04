@@ -3,7 +3,6 @@ const language = require('./book_language');
 const crypto = require('crypto');
 const reliability = require('./gemini_reliability');
 const budget = require('./gemini_budget');
-const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const units = (text) => text.trim().split(/\s+/u).filter(Boolean).length;
 
 function sectionCount(minutes) {
@@ -194,7 +193,7 @@ async function script(brief, plan, sectionIndex, target, previous, guard, { draf
     if (missingOutput && !best) throw new Error('Kịch bản vẫn có đoạn thiếu dấu tiếng Việt sau 2 lượt viết. Đã dừng trước bước tạo âm thanh; hãy thử lại.');
     throw new Error(`Kịch bản mục ${sectionIndex + 1} có ${best?.units || 0} âm tiết, mục tiêu ${minimum}–${maximum}. Bản nháp đã được lưu; có thể thử lại để chỉnh độ dài.`);
 }
-module.exports = { units, sectionCount, splitText, note, reduce, outline, script, delay, SUMMARY_POLICY };
+module.exports = { units, sectionCount, splitText, note, reduce, outline, script, SUMMARY_POLICY };
 
 // Editorial workflow keeps structured facts and checks the final prose against
 // retrieved original excerpts. An AI check is an aid, not proof of accuracy.

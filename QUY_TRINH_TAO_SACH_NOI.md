@@ -1,7 +1,6 @@
 # Quy trình tạo sách nói từ tài liệu
 
-**Cập nhật:** 25/10/2026  
-**Phạm vi:** Luồng sách nói đang sử dụng trên hệ thống — `review-v1`.
+Tài liệu mô tả luồng sách nói `review-v1`. Nếu chỉ cần thao tác trên web, xem [Bắt đầu](BOOK_AUDIO.md#bắt-đầu). Nếu yêu cầu bị kẹt hoặc audio lỗi, xem [Chẩn đoán](BOOK_AUDIO.md#chẩn-đoán).
 
 **Bộ chọn giọng mới:** giữ lựa chọn bộ tạo giọng, bỏ ô Loại giọng đọc. Popup
 có Giọng hệ thống (preset model + mẫu admin) và Giọng của bạn (mẫu riêng), kèm
@@ -180,9 +179,9 @@ tự quyết định đổi tên giọng hoặc chuyển nam/nữ giữa các đ
 
 ## 6. Bước 4 — Chọn tốc độ và tùy chọn đọc
 
-Khi tạo yêu cầu mới, sidebar cho chọn tốc độ chung. Nhóm tùy chọn chi tiết
-(phong cách từng đoạn, chuẩn hóa và từ điển) được chỉnh ở phần cấu hình của
-bản duyệt sau khi đã có bản tóm tắt. Phần này giải thích công dụng của cả hai.
+Bạn có thể chỉnh tốc độ chung trước khi gửi yêu cầu và trong màn hình duyệt.
+Phong cách theo đoạn, chuẩn hóa và từ điển bên dưới mô tả cấu hình xử lý nội bộ
+hoặc cấu hình đã lưu. Màn hình duyệt sách nói hiện chỉ hiển thị thanh tốc độ.
 
 ### 6.1. Thanh tốc độ chung
 
@@ -391,7 +390,7 @@ Khi bấm nghe thử hoặc duyệt, giao diện lưu các thay đổi trước 
 |---|---|
 | Nội dung tóm tắt | Sửa ở bản duyệt; mặc định đối chiếu lại các mục bị ảnh hưởng, hoặc chủ động chọn tự duyệt sau khi sửa tay. |
 | Tốc độ đọc | Dùng giá trị mới nhất trong bản duyệt khi bấm nghe thử/duyệt tạo. |
-| Phong cách, chuẩn hóa, từ điển | Lưu cùng cấu hình bản duyệt và áp dụng cho lần tạo kế tiếp. |
+| Phong cách, chuẩn hóa, từ điển | Dùng cấu hình đã lưu. Các điều khiển chi tiết đang ẩn trong màn hình duyệt sách nói. |
 | Giọng đọc | Giữ giọng đã chụp lúc gửi yêu cầu tóm tắt. |
 | Bộ tạo giọng | Giữ Edge hoặc VieNeu đã chọn lúc gửi yêu cầu. |
 | Số phút mục tiêu | Giữ mốc ban đầu đã dùng để viết bản tóm tắt. |

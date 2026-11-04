@@ -1,9 +1,12 @@
 # Phase 4 — Đóng gói Docker và triển khai web
 
-Thực hiện lần lượt, mỗi lượt hoàn thành một mục nhỏ. Ý đầu tiên là đóng gói và chạy
-được trên máy hiện tại; chia thành 1a–1c để dễ theo dõi. Các bước production thực hiện sau.
+Để bật stack local đã cấu hình, chạy `.\deploy\stack.ps1 up` từ thư mục gốc sau khi Docker Desktop sẵn sàng.
+Để cập nhật hoặc kiểm tra trạng thái container, xem [các lệnh thường dùng](README.md#chạy-trên-máy-hiện-tại).
+Nếu cấu hình PostgreSQL trên Neon, dùng [NEON.md](NEON.md) để đồng bộ biến Docker sau khi chuẩn bị file env. Xem [PC_AGENT_SETUP.md](PC_AGENT_SETUP.md) để chạy Engine GPU trên máy bàn.
 
-## Tiến độ
+## Tiến độ tại mốc đóng gói local
+
+Bảng này ghi lại mốc 20/10/2026. Các bước Neon, trạm GPU và tunnel về sau được ghi trong [PROCESS.md](PROCESS.md).
 
 | Mục | Công việc | Trạng thái |
 | --- | --- | --- |
@@ -247,6 +250,8 @@ Khi đổi Gemini/R2/service secret trong env Windows:
 node backend/scripts/init_docker_local.js --refresh
 .\deploy\stack.ps1 up
 ```
+
+Nếu dùng Neon, chạy `npm run neon:docker-env` sau lệnh `--refresh` và trước lệnh `up` để khôi phục URL Neon vào cấu hình Docker.
 
 Nếu muốn đổi URL public/realm/client cho môi trường khác, cần cập nhật đồng bộ
 Compose, Frontend build args, Keycloak client và CORS; script prepare này chỉ dành

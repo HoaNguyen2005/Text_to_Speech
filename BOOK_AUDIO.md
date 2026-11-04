@@ -1,53 +1,18 @@
 # Sách nói tùy chọn 1–59 phút
 
-## Bật các dịch vụ local
+## Bắt đầu
 
-**Chẩn đoán giọng cá nhân:** file có tên trong danh sách không bảo đảm object
-`samples/...` còn tồn tại trên R2. Xóa tay object R2 không cập nhật PostgreSQL.
-Engine nay báo riêng thiếu file mẫu (404), lỗi quyền (401/403), lỗi kết nối hoặc
-lỗi VieNeu; không quy tất cả thành Edge/OpenVoice/FFmpeg. Trường hợp Thanh Hòa
-ngày 25/10 đã khôi phục đúng bản gốc local lên key R2 bị thiếu. Job lỗi có thể
-**Tiếp tục từ phần lỗi** sau khi kho mẫu được sửa; không cần tóm tắt lại.
+Mở [hướng dẫn chạy dự án](README.md#chạy-trên-máy-hiện-tại) để bật frontend, Backend, worker và Engine.
+Chế độ chạy trực tiếp cần cấu hình Gemini, PostgreSQL và khóa Engine theo [README.md](README.md).
+Stack Docker dùng biến riêng trong thư mục deploy. Nếu database đang ở Neon, đồng bộ kết nối theo [NEON.md](NEON.md).
 
-**Cập nhật 25/10/2026:** đã thêm migration `008-book-preview-cache`. Sao lưu và
-chạy migration trước khi bật Backend/worker mới. Nghe thử được Backend xử lý
-riêng, có cache 7 ngày và ưu tiên giữa các đoạn TTS; không phải chờ hàng đợi
-sách nặng. `countTokens` chỉ gọi gần ngân sách đầu vào (mặc định 24.000 token),
-prompt nhỏ ước lượng cục bộ. Yêu cầu mới phân tích theo nhóm thích ứng và có
-thể gộp phân tích + dàn ý; ID nguồn nhỏ vẫn giữ nguyên. Đối chiếu gom tối đa
-3 mục/lượt với cache từng mục theo nội dung, bằng chứng, ngữ cảnh và model.
-Sửa tay có lựa chọn tự duyệt rõ ràng, mặc định tắt; không gán nhãn AI xác nhận.
-Xem quy trình cập nhật trong [QUY_TRINH_TAO_SACH_NOI.md](QUY_TRINH_TAO_SACH_NOI.md).
+1. Mở **Sách nói AI**, tải tài liệu hoặc dán nội dung rồi nhập tên sách.
+2. Chọn 10/20/30 phút hoặc nhập số phút nguyên từ 1 đến 59. Chọn bộ tạo giọng, giọng cụ thể và tốc độ.
+3. Bấm **Tạo bản tóm tắt**. Khi bản duyệt xuất hiện, đọc lại, sửa nếu cần và nghe thử tối đa 30 giây.
+4. Bấm **Duyệt và tạo âm thanh**. Theo dõi trong **Yêu cầu gần đây** và mở kết quả từ **Lịch sử**.
 
-**Chế độ Docker (đã chuẩn bị trên máy, 20/10/2026):** mở Docker Desktop rồi chạy
-`.\deploy\stack.ps1 up` tại repo root. Stack bật cả worker và Engine, không cần
-terminal riêng. Xem [PHASE4.md](PHASE4.md). Các bước sau dành cho chế độ terminal;
-không chạy đồng thời hai worker. Đổi env Windows cần chạy
-`node backend/scripts/init_docker_local.js --refresh` rồi `up` để cập nhật env Docker.
-
-Giữ Docker Desktop, Keycloak và PostgreSQL chạy. Database `tts_app` lưu hồ sơ, giọng, lịch sử và công việc sách nói; database `keycloak` quản lý tài khoản xác thực. Hoàn tất [chuyển dữ liệu PostgreSQL](POSTGRES_MIGRATION.md) trước khi bật Backend/worker.
-
-1. Điền `GEMINI_API_KEY` thật và một `GEMINI_MODEL` hỗ trợ JSON structured output trong `backend/.env`. Ví dụ cấu hình dùng alias `gemini-flash-latest`; có thể thay bằng tên model bạn được cấp quyền. Thay env cần khởi động lại worker.
-2. Từ thư mục `backend`, chạy một lần:
-
-   ```powershell
-   npm run books:init
-   ```
-
-   Lệnh tạo `backend/.env.books.local` chứa khóa nội bộ ngẫu nhiên. Backend, worker và Engine cùng đọc file; file bị Git bỏ qua. Chạy lại giữ nguyên khóa. Không đưa khóa vào frontend.
-
-3. Mở các terminal riêng:
-
-   | Thư mục | Lệnh | Vai trò |
-   | --- | --- | --- |
-   | `backend` | `npm start` | API, cổng 3000 |
-   | `backend` | `npm run worker:books` | Xử lý hàng đợi |
-   | `engine` | `.\venv\Scripts\python.exe main.py` | TTS, cổng 8000 |
-   | `frontend` | `npm run dev` | Giao diện, cổng 5173 |
-
-   Engine cần FFmpeg/FFprobe trong PATH hoặc `engine/venv/Scripts`. Giọng tiêu chuẩn dùng Edge-TTS; giọng cá nhân cần thêm OpenVoice và weights. Engine mặc định chỉ nghe `127.0.0.1`; chỉ đổi `ENGINE_HOST` khi cấu hình mạng riêng cho deploy.
-
-4. Đăng nhập bằng tài khoản người dùng, mở **Sách nói AI**, tải/dán sách, nhập tên sách/tài liệu, tác giả và nguồn. Kiểm tra tên gợi ý từ tên file; tác giả/nguồn chưa biết có thể để trống và sẽ hiển thị “Chưa cung cấp”. Chọn nhanh 10/20/30 hoặc nhập số phút nguyên **1–59**, chọn loại giọng và **giọng cụ thể**, rồi bấm **Tạo bản tóm tắt để xem trước**. Khi trạng thái là **Chờ duyệt nội dung**, bạn có thể dùng ngay, sửa trực tiếp hoặc yêu cầu AI chỉnh một mục/toàn bộ. Nghe thử tối đa 30 giây nếu muốn, sau đó bấm **Duyệt và tạo âm thanh**. Tiến độ nằm trong **Yêu cầu gần đây**, âm thanh hoàn thành nằm trong **Lịch sử**.
+Xem [Quy trình tạo sách nói](QUY_TRINH_TAO_SACH_NOI.md) nếu cần biết cách mỗi bước xử lý tài liệu hoặc âm thanh.
+Phần dưới ghi lại các thay đổi kỹ thuật, quy trình cập nhật và cách chẩn đoán.
 
 ### Cập nhật luồng duyệt nội dung (22/10/2026)
 
@@ -180,6 +145,15 @@ Vue → POST /api/book-jobs → lưu PostgreSQL → trả job ID ngay
 - Unique `book_job_id` trong lịch sử và mã yêu cầu do frontend tạo giúp gửi lại/khôi phục không tạo kết quả trùng. API vẫn giữ endpoint tóm tắt ngắn cũ để tương thích, trang Sách nói dùng hàng đợi mới.
 
 ## Chẩn đoán
+
+### Giọng mẫu có trong danh sách nhưng không phát
+
+**Chẩn đoán giọng cá nhân:** file có tên trong danh sách không bảo đảm object
+`samples/...` còn tồn tại trên R2. Xóa tay object R2 không cập nhật PostgreSQL.
+Engine nay báo riêng thiếu file mẫu (404), lỗi quyền (401/403), lỗi kết nối hoặc
+lỗi VieNeu; không quy tất cả thành Edge/OpenVoice/FFmpeg. Trường hợp Thanh Hòa
+ngày 25/10 đã khôi phục đúng bản gốc local lên key R2 bị thiếu. Job lỗi có thể
+**Tiếp tục từ phần lỗi** sau khi kho mẫu được sửa; không cần tóm tắt lại.
 
 ### Gemini: điều tiết và tự tiếp tục (22/10/2026)
 

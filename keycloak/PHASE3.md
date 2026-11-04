@@ -1,5 +1,8 @@
 # Phase 3 — Xác thực ứng dụng bằng Keycloak local
 
+Keycloak quản lý thông tin đăng nhập. Hồ sơ, giọng đọc và lịch sử nằm trong PostgreSQL ứng dụng.
+Xem [NEON.md](../NEON.md) khi dùng database ứng dụng trên Neon và [THEME.md](THEME.md) khi chỉnh biểu mẫu xác thực.
+
 ## Cập nhật database ứng dụng 17/10/2026
 
 Backend/worker đã được chuyển mã sang PostgreSQL database `tts_app`, tách database `keycloak`.
@@ -14,33 +17,14 @@ Frontend/backend đã dùng Keycloak realm `tts-local`. MongoDB ứng dụng gi�
 
 ## Bật ứng dụng trên máy hiện tại
 
-1. Mở Docker Desktop và chờ Engine chạy.
-2. Từ repo root bật stack:
+Mở Docker Desktop, chạy `.\deploy\stack.ps1 up` từ thư mục gốc rồi mở [Text2Speech](http://localhost:5173).
+Nếu chạy Node và Vue trực tiếp, chỉ bật các dịch vụ xác thực local bằng Compose:
 
-   ```powershell
-   docker compose --env-file keycloak/.env -f keycloak/compose.yaml --profile migration up -d --wait
-   ```
+```powershell
+docker compose --env-file keycloak/.env -f keycloak/compose.yaml up -d --wait postgres mailpit keycloak
+```
 
-3. Mở terminal backend:
-
-   ```powershell
-   cd backend
-   npm ci
-   npm start
-   ```
-
-4. Mở terminal frontend:
-
-   ```powershell
-   cd frontend
-   npm ci
-   npm run dev
-   ```
-
-5. Mở http://localhost:5173, bấm **Đăng nhập** hoặc **Tạo tài khoản**.
-6. Khi tạo âm thanh, chạy thêm Engine theo `engine/README.md`.
-
-Sau mỗi lần mở máy chỉ bật services; không chạy lại migration/cleanup. Node cần phù hợp với frontend: `^22.18.0 || >=24.12.0`.
+Tiếp tục theo [hướng dẫn phát triển](../README.md#chạy-từng-dịch-vụ-để-phát-triển). Chạy migration và cleanup khi thực hiện một đợt chuyển dữ liệu.
 
 ## Đăng nhập và mật khẩu
 

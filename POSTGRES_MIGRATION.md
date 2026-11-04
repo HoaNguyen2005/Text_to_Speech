@@ -1,5 +1,7 @@
 # Chuyển dữ liệu ứng dụng từ MongoDB sang PostgreSQL
 
+Tài liệu này dành cho đợt chuyển từ MongoDB sang PostgreSQL local. Nếu ứng dụng đã có dữ liệu PostgreSQL và cần chuyển lên Neon, dùng [NEON.md](NEON.md).
+
 ## Kết quả trên máy hiện tại — 17/10/2026
 
 - Đã nhập nguồn Atlas: 3 tài khoản (1 admin, đủ 3 mapping Keycloak), 3 giọng mẫu, 1 worker lease. Nguồn có 0 lịch sử, 0 job và 0 cache; không có document legacy ngoài mapping.

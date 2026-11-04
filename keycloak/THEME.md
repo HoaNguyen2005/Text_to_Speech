@@ -1,7 +1,7 @@
 # Theme Text2Speech
 
 Theme `text2speech` kế thừa `keycloak.v2` của Keycloak **26.8.0**. Giao diện studio
-đồng bộ với Vue: xanh ngọc, card bo góc, nền sáng dịu hoặc nền tối xanh đậm và font hệ thống.
+đồng bộ với Vue qua bảng màu tím, card bo góc và font hệ thống ở cả chế độ sáng và tối.
 Giao diện mặc định tiếng Việt; người dùng có thể chọn English.
 
 ## Light/Dark mode và đồng bộ với website
@@ -46,7 +46,7 @@ Cookie chỉ chứa `vi`/`en`, host-only, SameSite=Lax, Path=/, tối đa một 
 khi HTTPS. Cookie bị chặn hoặc app/auth khác hostname thì không cam kết đồng bộ
 ngược; client vẫn truyền locale khi mở trang đăng nhập/đăng ký.
 
-Focus của ô nhập dùng một viền xanh nhẹ và bóng mờ ở wrapper, loại outline đen
+Focus của ô nhập dùng màu nhấn của theme và bóng mờ ở wrapper, loại outline đen
 của input bên trong. Trạng thái focus bàn phím và viền đỏ của trường lỗi vẫn được giữ.
 
 ## Căn chỉnh biểu mẫu

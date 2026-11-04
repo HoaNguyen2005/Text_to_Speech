@@ -13,7 +13,6 @@ const bars = [16, 30, 22, 45, 32, 62, 40, 76, 54, 92, 68, 100, 74, 50, 86, 60, 4
       <div v-if="$slots.default" class="banner-actions"><slot /></div>
     </div>
     <div class="banner-art" aria-hidden="true">
-      <span class="banner-orbit orbit-one" /><span class="banner-orbit orbit-two" />
       <div class="banner-wave"><span v-for="(bar, index) in bars" :key="index" :style="{ height: bar + '%' }" /></div>
       <span class="banner-art-caption"><UiIcon name="headphones" />{{ $t("TỪ CHỮ VIẾT ĐẾN THANH ÂM") }}</span>
     </div>

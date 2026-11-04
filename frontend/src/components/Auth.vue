@@ -122,7 +122,7 @@ const waveform = [14, 24, 18, 36, 52, 32, 68, 84, 54, 40, 70, 96, 78, 48, 62, 90
   flex-direction: column;
   padding: 0 48px;
   color: var(--welcome-ink);
-  background: var(--canvas);
+  background: radial-gradient(ellipse at 24% 34%, var(--accent-soft), transparent 56%), var(--canvas);
 }
 .welcome-header, .welcome-main, .welcome-footer { width: 100%; max-width: 1120px; margin: 0 auto; }
 .welcome-header { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 30px 0; }
@@ -135,23 +135,23 @@ const waveform = [14, 24, 18, 36, 52, 32, 68, 84, 54, 40, 70, 96, 78, 48, 62, 90
 .welcome-story { min-width: 0; }
 .story-eyebrow { display: flex; align-items: center; gap: 9px; margin: 0 0 22px; color: var(--text-body); font-size: 11px; font-weight: 700; letter-spacing: 1.8px; }
 .story-eyebrow > span { width: 6px; height: 6px; border-radius: 50%; background: var(--welcome-accent); }
-#welcome-title { margin: 0; font-size: clamp(36px, 4.2vw, 54px); font-weight: 750; line-height: 1.15; letter-spacing: -2.5px; }
+#welcome-title { margin: 0; font-size: clamp(38px, 4.6vw, 64px); font-weight: 780; line-height: 1.12; letter-spacing: -.045em; }
 #welcome-title > span { color: var(--welcome-accent); }
 .story-description { max-width: 480px; margin: 24px 0 0; color: var(--text-body); font-size: 16px; line-height: 1.85; }
-.sound-illustration { margin-top: 32px; padding: 24px; border: 1px solid var(--hero-line); border-radius: 18px; background: var(--hero-bg); box-shadow: var(--shadow); }
+.sound-illustration { margin-top: 28px; padding: 24px; border: 1px solid var(--hero-line); border-radius: 18px; background: radial-gradient(ellipse at top right, var(--hero-line), transparent 75%), var(--hero-bg); box-shadow: var(--shadow-float); }
 .sound-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.sound-label { display: inline-flex; align-items: center; gap: 8px; color: var(--text-body); font-size: 12px; font-weight: 500; }
+.sound-label { display: inline-flex; align-items: center; gap: 8px; color: var(--hero-ink); font-size: 12px; font-weight: 600; }
 .sound-label svg { width: 17px; height: 17px; }
-.sound-badge { padding: 5px 8px; border-radius: 6px; background: var(--accent-soft); color: var(--accent); font-size: 11px; white-space: nowrap; }
+.sound-badge { padding: 5px 8px; border: 1px solid var(--wave-faint); border-radius: 999px; color: var(--hero-accent); font-size: 11px; white-space: nowrap; }
 .sound-wave { display: flex; align-items: center; justify-content: space-between; gap: 5px; height: 72px; margin: 24px 0 20px; }
 .sound-wave > span { width: 5px; max-height: 100%; border-radius: 10px; background: var(--wave-faint); }
-.sound-wave > span:nth-child(n+8):nth-child(-n+29) { background: var(--accent); }
-.sound-wave > span:nth-child(n+15):nth-child(-n+23) { background: var(--accent); }
-.sound-caption { display: flex; align-items: center; gap: 12px; color: var(--muted); font-size: 11px; }
-.sound-line { flex: 1; height: 1px; background: var(--line); }
+.sound-wave > span:nth-child(n+8):nth-child(-n+29) { background: var(--wave-mid); }
+.sound-wave > span:nth-child(n+15):nth-child(-n+23) { background: var(--hero-accent); }
+.sound-caption { display: flex; align-items: center; gap: 12px; color: var(--hero-muted); font-size: 11px; }
+.sound-line { flex: 1; height: 1px; background: var(--wave-faint); }
 .welcome-features { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; padding: 0; margin: 28px 0 0; list-style: none; }
 .welcome-features li { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; min-width: 0; }
-.feature-icon { display: grid; place-items: center; width: 32px; height: 32px; border: 1px solid var(--line); border-radius: 9px; background: var(--surface); color: var(--text-body); }
+.feature-icon { display: grid; place-items: center; width: 36px; height: 36px; border: 1px solid var(--accent-line); border-radius: 10px; background: var(--accent-soft); color: var(--accent); }
 .feature-icon svg { width: 17px; height: 17px; }
 .welcome-features strong, .welcome-features small { display: block; }
 .welcome-features strong { font-size: 13px; font-weight: 600; line-height: 1.5; }

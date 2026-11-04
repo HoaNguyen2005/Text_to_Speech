@@ -1,115 +1,57 @@
-# Hướng Dẫn Tự Động Cho AI Agent Trên PC (Trạm GPU RTX 4060 & Cloudflare Tunnel)
+# Thiết lập trạm GPU RTX 4060
 
-> **Dành cho AI Agent trên PC:** Khi người dùng yêu cầu bạn thiết lập dự án trên máy tính bàn (PC có GPU NVIDIA RTX 4060), hãy đọc toàn bộ tài liệu này và **thực thi tuần tự các bước từ Bước 1 đến Bước 5** mà không cần hỏi lại các cấu hình đã có sẵn bên dưới.
+Máy bàn chạy Engine và VieNeu-TTS với CUDA qua Docker hoặc trực tiếp trên Windows. Cloudflare Tunnel đưa API Engine ra ngoài qua HTTPS. Engine đăng ký URL với Backend để hệ thống ưu tiên GPU và có thể chọn CPU dự phòng khi GPU không sẵn sàng.
 
----
+## Chuẩn bị
 
-## 1. Bối cảnh kiến trúc hệ thống hiện tại
-
-Dự án **Text2Speech** đang chạy theo kiến trúc Hybrid Cloud:
-- **Frontend (Vue 3 / Vite):** Đã deploy trên **Cloudflare Pages** tại `https://text2speech-at0.pages.dev`.
-- **Backend API (Node.js / Express):** Đã deploy trên **Render.com** tại `https://text2speech-backend.onrender.com`.
-- **Database (PostgreSQL 18):** Đã chạy trên **Neon Cloud** (`neondb`).
-- **Object Storage:** Đã chạy trên **Cloudflare R2**.
-- **Vai trò của PC này (Máy bàn RTX 4060):**
-  1. Chạy **Engine TTS (Edge-TTS + OpenVoice V2)** và **VieNeu-TTS** bằng Docker với **CUDA 12.8 trên GPU NVIDIA RTX 4060**.
-  2. Chạy container **Cloudflare Tunnel (`cloudflared`)** để mở đường dẫn HTTPS công khai (`https://xxxx.trycloudflare.com`) trỏ vào cổng `8000` của Engine.
-  3. **Tự động đăng ký (Auto-Register)** đường dẫn Tunnel lên Backend (`https://text2speech-backend.onrender.com/api/speech/engine-register`) để hệ thống tự ưu tiên dùng GPU khi PC bật và tự chuyển về CPU Laptop khi PC tắt mà **không cần copy-paste lại biến môi trường trên Render**.
-
----
-
-## 2. Quy trình thực thi tự động cho AI Agent trên PC
-
-### Bước 1: Kiểm tra Git, Docker Desktop và GPU NVIDIA
-Chạy lệnh kiểm tra trạng thái Git, Docker daemon và GPU trong WSL2/Docker:
+Từ thư mục gốc của repo, kiểm tra mã nguồn và driver NVIDIA. Nếu dùng Docker, mở Docker Desktop ở chế độ Linux containers trên WSL2 và kiểm tra Docker:
 
 ```powershell
-git pull origin main
+git status --short
 nvidia-smi
 docker info --format "{{.ServerVersion}}"
 ```
 
-- Nếu `docker info` báo lỗi chưa kết nối được daemon: hãy khởi chạy Docker Desktop (`Start-Process "C:\Program Files\Docker\Docker\Docker Desktop.exe"`) và chờ đến khi `docker info` trả về phiên bản thành công.
-- Đảm bảo thư mục `backend/data/book-audio`, `backend/public/audio/samples`, `backend/public/audio/generated`, và `engine/checkpoints/converter` tồn tại:
-  ```powershell
-  New-Item -ItemType Directory -Force -Path "backend/data/book-audio", "backend/public/audio/samples", "backend/public/audio/generated", "engine/checkpoints/converter" | Out-Null
-  ```
+Dùng bản mã mới nhất đã được đồng bộ cho máy bàn. Chuẩn bị model OpenVoice và các thư mục dữ liệu theo [engine/README.md](engine/README.md).
 
----
+## Cấu hình khóa dùng chung
 
-### Bước 2: Khởi tạo file môi trường GPU (`deploy/engine.gpu.env`)
-Để đồng bộ khóa bảo mật với Backend trên Render.com (đã cài sẵn khóa `BOOK_ENGINE_SECRET`), hãy chạy lệnh `prepare` với đúng khóa sau:
+`BOOK_ENGINE_SECRET` của GPU phải khớp với khóa đang cấu hình cho Backend và Engine CPU dự phòng. Lấy khóa qua kênh riêng, lưu trong `deploy/engine.gpu.env` và giữ file ngoài Git.
+
+Nếu chưa có file env, tạo mẫu bằng lệnh sau rồi điền giá trị đúng vào dòng `BOOK_ENGINE_SECRET` bằng trình soạn thảo:
 
 ```powershell
-.\deploy\gpu-node.ps1 -Action prepare -Secret "fa6f5f632c22bd99916a8db84d50f720085bebefa945bfbb6e91e7ce509bc489"
+.\deploy\gpu-node.ps1 -Action prepare
 ```
 
-*(Lệnh này sẽ tạo file `deploy/engine.gpu.env` bị Git bỏ qua, cấu hình `VIENEU_URL=http://vieneu:8001` và `OPENVOICE_WATERMARK=0`).*
+Nếu trước đây khóa từng xuất hiện trong tài liệu hoặc log chia sẻ, hãy thay khóa đồng bộ trên Backend, worker và cả hai Engine, sau đó khởi động lại các dịch vụ nhận biến mới.
 
----
-
-### Bước 3: Build 2 Image GPU (CUDA 12.8) và Bật Container + Cloudflare Tunnel
-Chạy lệnh tổng hợp `all` trong `deploy/gpu-node.ps1` (lần đầu build có thể mất 5–15 phút để tải base image `pytorch/pytorch:2.8.0-cuda12.8-cudnn-runtime` và cài đặt thư viện):
+## Build và chạy
 
 ```powershell
-.\deploy\gpu-node.ps1 -Action all -Secret "fa6f5f632c22bd99916a8db84d50f720085bebefa945bfbb6e91e7ce509bc489"
+.\deploy\gpu-node.ps1 -Action all
 ```
 
-Nếu muốn chạy từng bước riêng để dễ theo dõi tiến trình:
-```powershell
-# 3.1. Build image Engine GPU và VieNeu GPU
-.\deploy\gpu-node.ps1 -Action build
+Khi Docker sẵn sàng, lệnh build image CUDA và khởi động cụm dịch vụ. Khi Docker không khả dụng, script chạy trực tiếp trên Windows.
 
-# 3.2. Khởi chạy container Engine + VieNeu trên GPU và đợi healthy
-.\deploy\gpu-node.ps1 -Action up
+### Chạy trực tiếp trên Windows
 
-# 3.3. Bật container Cloudflare Tunnel và lấy URL https://....trycloudflare.com
-.\deploy\gpu-node.ps1 -Action tunnel
-```
+- Chuẩn bị Node.js, Python, FFmpeg và môi trường `engine/venv` đã cài phụ thuộc của Engine cùng PyTorch hỗ trợ CUDA. Script dùng môi trường này để chuẩn bị môi trường VieNeu và tải `cloudflared` nếu cần.
+- Để chạy worker trên máy bàn, cấu hình `DATABASE_URL` cho cùng PostgreSQL mà Backend đang dùng. Có thể đặt trong `.env.local` ở gốc dự án hoặc trong `deploy/engine.gpu.env`. Cấu hình thêm các khóa dịch vụ của worker như Gemini và R2 theo [BOOK_AUDIO.md](BOOK_AUDIO.md).
+- Worker gọi Engine qua `127.0.0.1:8000` và dùng thư mục âm thanh chung `backend/data/book-audio`. Xem log worker bằng `.\deploy\gpu-node.ps1 -Action logs -Service worker` trong chế độ này.
 
----
+## Kiểm tra
 
-### Bước 4: Kiểm tra xác nhận GPU & Đường truyền Tunnel
-Sau khi Bước 3 hoàn tất, AI Agent hãy chạy lệnh kiểm tra sau:
+1. Chạy `Invoke-RestMethod http://127.0.0.1:8000/health/ready`. Kết quả mong đợi là `status: ok`, thiết bị CUDA và tên card RTX 4060.
+2. Xem log tunnel và kiểm tra đường dẫn `/health/ready` từ URL HTTPS được in ra.
+3. Xem log đăng ký để xác nhận Backend đã nhận node GPU. Nếu đã có tunnel mà đăng ký lỗi, chạy lại `register` sau khi kiểm tra khóa và địa chỉ Backend.
 
-1. **Kiểm tra Engine local đã nhận GPU RTX 4060 chưa:**
-   ```powershell
-   Invoke-RestMethod -Uri "http://127.0.0.1:8000/health/ready"
-   ```
-   - Kết quả mong đợi: `status = "ok"`, `device = "cuda:0"`, `gpu_name = "NVIDIA GeForce RTX 4060..."`.
+| Việc cần làm | Lệnh |
+| --- | --- |
+| Xem trạng thái | `.\deploy\gpu-node.ps1 -Action status` |
+| Xem log Engine | `.\deploy\gpu-node.ps1 -Action logs -Service engine` |
+| Xem URL tunnel | `.\deploy\gpu-node.ps1 -Action logs -Service tunnel` |
+| Đăng ký lại với Backend | `.\deploy\gpu-node.ps1 -Action register` |
+| Dừng trạm GPU | `.\deploy\gpu-node.ps1 -Action stop` |
 
-2. **Lấy URL Cloudflare Tunnel từ log và kiểm tra từ Internet:**
-   ```powershell
-   .\deploy\gpu-node.ps1 -Action logs -Service tunnel
-   ```
-   - Tìm dòng chứa `https://<ten-ngau-nhien>.trycloudflare.com`.
-   - Gọi thử `Invoke-RestMethod -Uri "https://<ten-ngau-nhien>.trycloudflare.com/health/ready"` để chắc chắn trả về `status = "ok"`.
-
----
-
-### Bước 5: Báo cáo kết quả cho Người dùng
-Lệnh ở Bước 3 đã **tự động đăng ký** đường dẫn Cloudflare Tunnel của máy bàn lên Backend Render (`https://text2speech-backend.onrender.com`). Nếu cần đăng ký lại thủ công bất kỳ lúc nào, chỉ cần chạy:
-
-```powershell
-.\deploy\gpu-node.ps1 -Action register
-```
-
-AI Agent hãy báo cáo cho người dùng:
-- Trạng thái GPU (`device = "cuda:0"`, tên card RTX 4060).
-- Đường dẫn Cloudflare Tunnel hiện tại (`https://<ten-ngau-nhien>.trycloudflare.com`).
-- Xác nhận dòng `[AUTO-REGISTER] Đã đăng ký node GPU với https://text2speech-backend.onrender.com` đã thành công.
-
----
-
-## 3. Các lệnh quản lý nhanh hằng ngày trên PC
-
-| Thao tác | Lệnh PowerShell |
-| :--- | :--- |
-| Xem trạng thái các container GPU & Tunnel | `.\deploy\gpu-node.ps1 -Action status` |
-| Bật lại trạm GPU + tự động đăng ký link Tunnel mới lên Cloud | `.\deploy\gpu-node.ps1 -Action up` |
-| Đăng ký lại link Tunnel hiện tại lên Cloud Backend | `.\deploy\gpu-node.ps1 -Action register` |
-| Xem lại link Cloudflare Tunnel hiện tại | `.\deploy\gpu-node.ps1 -Action logs -Service tunnel` |
-| Xem log xử lý âm thanh của Engine GPU | `.\deploy\gpu-node.ps1 -Action logs -Service engine` |
-| Tắt trạm GPU (tự động báo Cloud chuyển ngay về CPU Laptop) | `.\deploy\gpu-node.ps1 -Action stop` |
-| Xem log của Book Worker | `.\deploy\gpu-node.ps1 -Action logs -Service worker` |
-
+URL tunnel có thể đổi sau khi khởi động lại. Nếu cần kiểm tra Backend khác, truyền `-BackendUrl` cho lệnh đăng ký thủ công. Cấu hình tự đăng ký trong container nằm ở `REMOTE_BACKEND_URLS` trong `deploy/compose.gpu-node.yaml`.

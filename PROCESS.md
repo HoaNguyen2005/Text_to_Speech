@@ -77,7 +77,9 @@ frontend/src/
 
 ---
 
-## 2. Trạng Thái Hiện Tại (20/10/2026)
+## 2. Trạng thái tại mốc 20/10/2026
+
+Các số liệu và ghi chú Git bên dưới thuộc mốc 20/10/2026. Hướng dẫn chạy hiện tại nằm trong [README.md](README.md). Các thay đổi mới hơn được ghi theo ngày ở mục Nhật ký làm việc.
 
 - **Git:** nhánh `main`, remote `origin` là `HoaNguyen2005/Text_to_Speech`. Mốc Phase 2–3 và giao diện đã push: `9f5791c` (`feat: complete local Keycloak auth and redesign application UI`). Thay đổi sách nói 10/20/30 phút và chuyển PostgreSQL đang ở working tree, chưa commit/push. Commit trước mốc là `8bcf244`, trước đó là `ea6f282` (R2).
 - **Luồng end-to-end đã hoạt động ở các phiên trước:** đăng nhập → tạo bài giảng → clone giọng → nghe kết quả → lịch sử. Sau lần làm mới giao diện chưa chạy lại pipeline AI/Gemini.
@@ -859,6 +861,26 @@ Mốc Phase 2–3/giao diện ngày 13/10 là `9f5791c`; mốc sách nói dài +
   - Cập nhật `backend/workers/book.worker.js`: khi chạy trên node thuần tính toán không có kết nối Admin API Keycloak local, worker tự động fallback đọc trạng thái tài khoản từ PostgreSQL (`users`) mà không bị crash.
 - **Tương thích ngược 100% với Laptop:**
   - Trên Laptop có Docker Desktop, cụm Docker Compose (`.\deploy\stack.ps1 up`) vẫn chạy bình thường với đầy đủ Keycloak và các container như trước.
+
+### 04/11/2026 — Làm mới giao diện với UI UX Pro Max
+
+- Dùng kết quả tra cứu AI-Native UI của skill UI UX Pro Max để chọn tông tím cho điều hướng và nút chính, cyan cho minh họa sóng âm. Áp dụng qua các biến màu sáng/tối hiện có trong Vue và đồng bộ bảng màu, favicon cho trang đăng nhập và đăng ký Keycloak.
+- Làm gọn thanh điều hướng, tăng độ rõ của trạng thái trang đang chọn, đổi khối mở đầu chung thành bảng sóng âm, làm nổi tiêu đề và vùng tải tài liệu. Màn hình nhỏ dùng điều hướng dạng lưới và cỡ chữ 16 px cho ô nhập chính.
+- Chromium kiểm tra trang chào, bài giảng, sách nói, lịch sử, giọng đọc, hồ sơ và quản trị ở 375/768/1024/1440 px với cả hai giao diện sáng/tối. Dùng dữ liệu mẫu và kiểm tra tràn ngang. Docker đang tắt nên chưa dựng lại container và chưa kiểm tra trang xác thực Keycloak đang chạy.
+
+### 04/11/2026 — Dọn mã và tài liệu theo Ponytail
+
+- Worker và lớp điều tiết Gemini dùng bộ hẹn giờ Promise của Node.js. Giữ thời gian chờ hiện có và bỏ phụ thuộc của worker vào hàm hẹn giờ xuất từ module LLM.
+- Viết rõ luồng tải và lưu hồ sơ, dùng chung bước cập nhật biểu mẫu và phiên. Tách các bước tải giọng và tạo danh mục giọng để dễ theo dõi.
+- Giữ toàn bộ file Markdown. Dùng README làm mục tra cứu, đánh dấu các mốc lịch sử và chuyển hướng dẫn vận hành đến tài liệu phù hợp.
+- Gỡ giá trị khóa Engine từng được ghi trong hướng dẫn GPU và bỏ việc in khóa từ script. Cần thay khóa trên các dịch vụ đang dùng giá trị cũ vì lịch sử Git vẫn có thể chứa khóa.
+- Kiểm tra build frontend, cú pháp các module Node đã sửa và liên kết nội bộ của 13 file Markdown. Dùng dữ liệu giả để kiểm tra đồng bộ hồ sơ sau tải/lưu và xác nhận lệnh GPU `prepare` ghi khóa vào file riêng mà không in giá trị.
+
+### 04/11/2026 — Đồng bộ bản GPU và dọn lần hai
+
+- Giữ chế độ CUDA chạy trực tiếp và worker nền từ GitHub. Hướng dẫn GPU bổ sung điều kiện chạy trực tiếp trên Windows và cách xem log worker.
+- Dùng chung nhánh lấy vai trò từ PostgreSQL khi worker thiếu cấu hình quản trị Keycloak hoặc Keycloak tạm thời không khả dụng. Vẫn kiểm tra tài khoản vô hiệu hóa khi Keycloak phản hồi.
+- Lệnh chuẩn bị và cả hai chế độ tunnel chỉ hiển thị URL, khóa được đọc từ cấu hình riêng để đăng ký Engine.
 
 ## 5. Việc Tiếp Theo / TODO
 

@@ -1,7 +1,7 @@
 const crypto = require('crypto');
+const { setTimeout: delay } = require('node:timers/promises');
 const db = require('../db/postgres');
 const config = require('../config/book');
-const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 const queues = new Map();
 const modelName = () => (process.env.GEMINI_MODEL || 'gemini-flash-latest').replace(/[^a-zA-Z0-9/_.-]/g, '').slice(0, 120);
 const scope = () => 'gemini-limit-' + crypto.createHash('sha256').update(`${process.env.GEMINI_API_KEY || ''}:${modelName()}`).digest('hex');

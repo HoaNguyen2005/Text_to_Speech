@@ -29,7 +29,6 @@ const navigation = computed(() => isAdmin.value
         </router-link>
       </nav>
       <div class="sidebar-bottom">
-        <div class="sidebar-note"><UiIcon :name="isAdmin ? 'shield' : 'headphones'" /><strong>{{ isAdmin ? $t("Quản lý tập trung") : $t("Sáng tạo theo cách của bạn") }}</strong><p>{{ isAdmin ? $t("Tài khoản và giọng đọc trong cùng một không gian.") : $t("Từ ý tưởng đến bài giảng và sách nói tiếng Việt.") }}</p></div>
         <button type="button" class="sidebar-logout" @click="$emit('logout')"><UiIcon name="logout" />{{ $t("Đăng xuất") }}</button>
       </div>
     </aside>
