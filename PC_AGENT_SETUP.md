@@ -111,4 +111,5 @@ AI Agent hãy báo cáo cho người dùng:
 | Xem lại link Cloudflare Tunnel hiện tại | `.\deploy\gpu-node.ps1 -Action logs -Service tunnel` |
 | Xem log xử lý âm thanh của Engine GPU | `.\deploy\gpu-node.ps1 -Action logs -Service engine` |
 | Tắt trạm GPU (tự động báo Cloud chuyển ngay về CPU Laptop) | `.\deploy\gpu-node.ps1 -Action stop` |
+| Xem log của Book Worker | `.\deploy\gpu-node.ps1 -Action logs -Service worker` |
 

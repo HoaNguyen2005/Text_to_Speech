@@ -125,9 +125,18 @@ async function processJob(job, aiProgress) {
             throw new Error('Tài khoản không hoạt động hoặc đang chờ đồng bộ. Hãy liên hệ quản trị viên trước khi thử lại.');
         }
         if (forceIdentity || Date.now() - lastIdentityAt > 60000) {
-            const identity = await keycloakService().identity(owner.keycloakId);
-            if (!identity.user.enabled || (identity.user.attributes?.legacyStatus?.[0] && identity.user.attributes.legacyStatus[0] !== 'active')) throw new Error('Tài khoản đã bị vô hiệu hóa trên Keycloak.');
-            currentRole = identity.role;
+            if (require('../app/config/keycloak').getKeycloakConfig().clientSecret) {
+                try {
+                    const identity = await keycloakService().identity(owner.keycloakId);
+                    if (!identity.user.enabled || (identity.user.attributes?.legacyStatus?.[0] && identity.user.attributes.legacyStatus[0] !== 'active')) throw new Error('Tài khoản đã bị vô hiệu hóa trên Keycloak.');
+                    currentRole = identity.role;
+                } catch (err) {
+                    if (err.code === 'KEYCLOAK_UNAVAILABLE') currentRole = owner.role || 'user';
+                    else throw err;
+                }
+            } else {
+                currentRole = owner.role || 'user';
+            }
             lastIdentityAt = Date.now();
         }
         owner.role = currentRole;

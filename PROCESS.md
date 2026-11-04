@@ -848,6 +848,18 @@ Mốc Phase 2–3/giao diện ngày 13/10 là `9f5791c`; mốc sách nói dài +
   - Cập nhật toàn bộ các điểm gọi Engine (`speech_lecture.service.js`, `book_preview.service.js`, `voice_demo.service.js`, `edge_prefetch.service.js`, `workers/book.worker.js`, `server.js`) sang dùng `fetchWithFailover`. Trong `book.worker.js`, nếu máy bàn tắt giữa chừng khi đang tạo sách dài, worker tự động đẩy các đoạn `.wav` đã tạo trước đó sang Engine CPU dự phòng khi ghép file (`merge`).
   - Cập nhật `deploy/gpu-node.ps1`, `deploy/stack.ps1`, `deploy/compose.app.yaml` và `PC_AGENT_SETUP.md`: tự động lấy link Cloudflare Tunnel và gọi `/api/speech/engine-register` ngay khi bật stack trên PC hoặc Laptop.
 
+### 04/11/2026 — Bổ sung chế độ Native CUDA & Book Worker trên trạm GPU PC
+
+- **Hỗ trợ Native Windows CUDA cho `deploy/gpu-node.ps1`:**
+  - Tự động nhận diện khi máy host không có Docker Desktop / WSL2 (tránh lỗi `0x80040154 Class not registered` trên các bản Windows rút gọn/gaming).
+  - Khởi chạy trực tiếp các tiến trình nền bằng Windows Process: `engine` (cổng 8000, Python CUDA RTX 4060), `vieneu` (cổng 8001, VieNeu-TTS v3 Turbo CUDA), và `tunnel` (`cloudflared.exe`).
+- **Tích hợp Book Worker chạy đồng thời trên PC:**
+  - Bổ sung quản lý tiến trình `workers/book.worker.js` trong `gpu-node.ps1` ngay trên PC cùng với Engine và Tunnel (`engine` + `vieneu` + `worker` + `tunnel`).
+  - Tận dụng lưu trữ SSD local (`backend/data/book-audio`) với độ trễ 0ms giữa worker và engine, giảm tải bộ nhớ và tránh nguy cơ tràn RAM / timeout trên máy chủ Render Free.
+  - Cập nhật `backend/workers/book.worker.js`: khi chạy trên node thuần tính toán không có kết nối Admin API Keycloak local, worker tự động fallback đọc trạng thái tài khoản từ PostgreSQL (`users`) mà không bị crash.
+- **Tương thích ngược 100% với Laptop:**
+  - Trên Laptop có Docker Desktop, cụm Docker Compose (`.\deploy\stack.ps1 up`) vẫn chạy bình thường với đầy đủ Keycloak và các container như trước.
+
 ## 5. Việc Tiếp Theo / TODO
 
 **Phase 2 local:**
