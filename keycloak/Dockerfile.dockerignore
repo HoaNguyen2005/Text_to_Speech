@@ -1,0 +1,13 @@
+*
+!Dockerfile
+!themes/
+themes/*
+!themes/text2speech/
+!themes/text2speech/**
+!keycloak/
+keycloak/*
+!keycloak/Dockerfile
+!keycloak/themes/
+keycloak/themes/*
+!keycloak/themes/text2speech/
+!keycloak/themes/text2speech/**
