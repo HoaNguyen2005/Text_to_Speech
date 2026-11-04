@@ -96,6 +96,58 @@
       "directAccessGrantsEnabled": false,
       "serviceAccountsEnabled": false,
       "fullScopeAllowed": false
+    },
+    {
+      "clientId": "tts-admin-service",
+      "name": "Text to Speech Backend Service Account",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "bearerOnly": false,
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "fullScopeAllowed": false,
+      "secret": "tts-admin-service-secret-2026"
+    }
+  ],
+  "users": [
+    {
+      "username": "admin",
+      "email": "admin@tts.local",
+      "firstName": "Quản trị viên",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "Admin@123456",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "admin",
+        "user"
+      ],
+      "attributes": {
+        "gender": [
+          "other"
+        ]
+      }
+    },
+    {
+      "username": "service-account-tts-admin-service",
+      "enabled": true,
+      "serviceAccountClientId": "tts-admin-service",
+      "clientRoles": {
+        "realm-management": [
+          "view-users",
+          "query-users",
+          "manage-users",
+          "view-realm"
+        ]
+      }
     }
   ]
 }

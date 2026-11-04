@@ -1,0 +1,31 @@
+# Stage 1: Build Keycloak with custom theme & postgres driver optimized
+FROM quay.io/keycloak/keycloak:26.1.0 AS builder
+
+ENV KC_HEALTH_ENABLED=true
+ENV KC_METRICS_ENABLED=true
+ENV KC_DB=postgres
+
+WORKDIR /opt/keycloak
+
+# Copy custom themes and realm definition
+COPY keycloak/themes/text2speech /opt/keycloak/themes/text2speech
+COPY keycloak/realm-export.json /opt/keycloak/data/import/tts-local-realm.json
+
+# Pre-build Quarkus augmentation to minimize memory & startup time on Render
+RUN /opt/keycloak/bin/kc.sh build
+
+# Stage 2: Production runtime image
+FROM quay.io/keycloak/keycloak:26.1.0
+COPY --from=builder /opt/keycloak/ /opt/keycloak/
+
+WORKDIR /opt/keycloak
+
+ENV KC_HTTP_ENABLED=true
+ENV KC_PROXY_HEADERS=xforwarded
+ENV KC_HOSTNAME_STRICT=false
+ENV KC_HTTP_RELATIVE_PATH=/
+ENV JAVA_OPTS="-Xms128m -Xmx350m -XX:MetaspaceSize=96M -XX:MaxMetaspaceSize=160m -XX:+UseG1GC -XX:MaxGCPauseMillis=20 -XX:+ExitOnOutOfMemoryError"
+
+EXPOSE 8080
+
+ENTRYPOINT ["/opt/keycloak/bin/kc.sh", "start", "--optimized", "--import-realm"]
