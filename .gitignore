@@ -51,3 +51,6 @@ engine/*.wav
 *.mp4
 *.avi
 .neon
+.agents/
+skills-lock.json
+

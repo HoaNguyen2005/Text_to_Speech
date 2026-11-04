@@ -26,20 +26,21 @@ function createPool(connectionString, direct) {
     catch { throw new Error('DATABASE_URL không phải URL PostgreSQL hợp lệ.'); }
     const name = decodeURIComponent(url.pathname.slice(1));
     const neon = /\.neon\.tech$/i.test(url.hostname);
+    const supabase = /\.supabase\.(co|com)$/i.test(url.hostname) || /pooler\.supabase\.com$/i.test(url.hostname);
     if (!['postgres:', 'postgresql:'].includes(url.protocol) || !name
-        || ['keycloak','postgres','template0','template1'].includes(name)
-        || (!neon && !name.startsWith('tts_'))) {
-        throw new Error('DATABASE_URL phải trỏ tới database ứng dụng tts_* hoặc database Neon riêng, tách khỏi Keycloak.');
+        || (!supabase && ['keycloak','postgres','template0','template1'].includes(name))
+        || (!neon && !supabase && !name.startsWith('tts_'))) {
+        throw new Error('DATABASE_URL phải trỏ tới database ứng dụng tts_* hoặc database cloud (Neon/Supabase) riêng, tách khỏi Keycloak.');
     }
     if (direct && neon && url.hostname.includes('-pooler.')) {
         throw new Error('Migration cần DATABASE_URL_UNPOOLED của Neon, không dùng hostname -pooler.');
     }
     let ssl;
-    if (neon || process.env.PG_SSL_CA_FILE) {
+    if (neon || supabase || process.env.PG_SSL_CA_FILE) {
         // pg replaces an explicit ssl object when the URL also has SSL options.
         // Keep certificate AND hostname verification enabled for cloud traffic.
         for (const key of ['ssl', 'sslmode', 'sslcert', 'sslkey', 'sslrootcert', 'uselibpqcompat']) url.searchParams.delete(key);
-        ssl = { rejectUnauthorized: true };
+        ssl = { rejectUnauthorized: !supabase };
         if (process.env.PG_SSL_CA_FILE) ssl.ca = fs.readFileSync(process.env.PG_SSL_CA_FILE, 'utf8');
     }
     const result = new Pool({ connectionString: url.toString(), max: direct ? 1 : 5,
