@@ -19,7 +19,7 @@ Mở [Text2Speech](http://localhost:5173). Compose khởi động frontend, API,
 | Build giao diện mới | `.\deploy\stack.ps1 build -Service frontend` |
 | Dừng stack và giữ dữ liệu | `.\deploy\stack.ps1 stop` |
 
-Lần đầu dựng máy mới, xem phần cấu hình Compose trong [PHASE4.md](PHASE4.md). Nếu dùng Neon, lấy cấu hình theo [NEON.md](NEON.md) rồi đồng bộ biến PostgreSQL bằng `npm run neon:docker-env`. Công cụ `stack.ps1 prepare` tạo cấu hình cho PostgreSQL local. Giữ các file env và backup trong phạm vi riêng tư.
+Lần đầu dựng máy mới, xem phần cấu hình Compose trong [PHASE4.md](PHASE4.md). Nếu dùng Supabase PostgreSQL, đặt chuỗi kết nối Session Pooler vào `DATABASE_URL` trong `.env.local` hoặc `deploy/backend.env`. Công cụ `stack.ps1 prepare` tạo cấu hình cho PostgreSQL local. Giữ các file env và backup trong phạm vi riêng tư.
 
 ## Dùng ứng dụng
 
@@ -39,7 +39,7 @@ Lần đầu dựng máy mới, xem phần cấu hình Compose trong [PHASE4.md]
 | `keycloak/` | Đăng nhập, đăng ký và quản lý quyền truy cập. PostgreSQL của Keycloak dùng database riêng. | 8080 |
 | `deploy/` | Cấu hình Docker, trạm GPU và đăng ký Engine dự phòng. | — |
 
-PostgreSQL ứng dụng lưu hồ sơ, giọng, yêu cầu và lịch sử. Các bản ghi trỏ tới tệp trong R2 hoặc thư mục audio local. Cấu hình triển khai trong repo dùng Neon cho dữ liệu ứng dụng, Pages cho frontend, Render cho API và các trạm Engine CPU/GPU. Xem cách thiết lập trạm GPU trong [PC_AGENT_SETUP.md](PC_AGENT_SETUP.md).
+PostgreSQL ứng dụng lưu hồ sơ, giọng, yêu cầu và lịch sử. Các bản ghi trỏ tới tệp trong R2 hoặc thư mục audio local. Cấu hình triển khai trong repo dùng Supabase cho dữ liệu ứng dụng, Pages cho frontend, Render cho API và các trạm Engine CPU/GPU. Xem cách thiết lập trạm GPU trong [PC_AGENT_SETUP.md](PC_AGENT_SETUP.md).
 
 ## Chạy từng dịch vụ để phát triển
 
@@ -47,7 +47,7 @@ Dừng container tương ứng trước khi dùng chung cổng. Chạy một wor
 
 - Cài Node dependencies bằng `npm ci --prefix backend` và `npm ci --prefix frontend`.
 - Cấu hình realm và service account theo [keycloak/PHASE3.md](keycloak/PHASE3.md). Địa chỉ API và Keycloak của frontend nằm trong [frontend/.env.example](frontend/.env.example).
-- Cấu hình database bằng [NEON.md](NEON.md) hoặc quy trình [PostgreSQL local](POSTGRES_MIGRATION.md). Khai báo Gemini và R2 theo [backend/.env.example](backend/.env.example).
+- Cấu hình database theo [POSTGRES_MIGRATION.md](POSTGRES_MIGRATION.md) hoặc điền `DATABASE_URL` của Supabase vào `.env.local`. Khai báo Gemini và R2 theo [backend/.env.example](backend/.env.example).
 - Tạo khóa Engine local bằng `npm --prefix backend run books:init`. Cài Python, FFmpeg và chạy Engine theo [engine/README.md](engine/README.md).
 - Mở terminal riêng cho `npm start`, `npm run worker:books` và `npm run dev` tại thư mục gốc. Dùng `npm run build` để kiểm tra bản build frontend.
 
@@ -57,8 +57,7 @@ Dừng container tương ứng trước khi dùng chung cổng. Chạy một wor
 | --- | --- |
 | Chạy Docker, cập nhật container, xem log | [PHASE4.md](PHASE4.md) |
 | Thiết lập trạm GPU RTX 4060 và tunnel | [PC_AGENT_SETUP.md](PC_AGENT_SETUP.md) |
-| Kết nối Neon, migration và backup | [NEON.md](NEON.md) |
-| Đọc lịch sử chuyển từ MongoDB hoặc khôi phục môi trường local | [POSTGRES_MIGRATION.md](POSTGRES_MIGRATION.md) |
+| Đọc lịch sử chuyển từ MongoDB hoặc cấu hình PostgreSQL | [POSTGRES_MIGRATION.md](POSTGRES_MIGRATION.md) |
 | Xử lý lỗi sách nói, Gemini, preview, audio và SRT | [BOOK_AUDIO.md](BOOK_AUDIO.md) |
 | Hiểu luồng tóm tắt, đối chiếu, duyệt và tổng hợp audio | [QUY_TRINH_TAO_SACH_NOI.md](QUY_TRINH_TAO_SACH_NOI.md) |
 | Cài và chẩn đoán Engine, FFmpeg, OpenVoice | [engine/README.md](engine/README.md) |

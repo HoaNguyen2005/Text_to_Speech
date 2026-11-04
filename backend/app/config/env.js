@@ -1,8 +1,8 @@
 const path = require('path');
 const dotenv = require('dotenv');
 
-// Injected deployment variables win. Neon writes at the repository root; read
-// those files before the older backend-only PostgreSQL configuration.
+// Injected deployment variables win. Read repo-root .env.local/.env before
+// the older backend-only PostgreSQL configuration.
 const backend = path.resolve(__dirname, '../..');
 const root = path.resolve(backend, '..');
 for (const file of [

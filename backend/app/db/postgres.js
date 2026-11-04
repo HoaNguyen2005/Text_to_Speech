@@ -25,28 +25,23 @@ function createPool(connectionString, direct) {
     try { url = new URL(connectionString); }
     catch { throw new Error('DATABASE_URL không phải URL PostgreSQL hợp lệ.'); }
     const name = decodeURIComponent(url.pathname.slice(1));
-    const neon = /\.neon\.tech$/i.test(url.hostname);
     const supabase = /\.supabase\.(co|com)$/i.test(url.hostname) || /pooler\.supabase\.com$/i.test(url.hostname);
     if (!['postgres:', 'postgresql:'].includes(url.protocol) || !name
         || (!supabase && ['keycloak','postgres','template0','template1'].includes(name))
-        || (!neon && !supabase && !name.startsWith('tts_'))) {
-        throw new Error('DATABASE_URL phải trỏ tới database ứng dụng tts_* hoặc database cloud (Neon/Supabase) riêng, tách khỏi Keycloak.');
-    }
-    if (direct && neon && url.hostname.includes('-pooler.')) {
-        throw new Error('Migration cần DATABASE_URL_UNPOOLED của Neon, không dùng hostname -pooler.');
+        || (!supabase && !name.startsWith('tts_'))) {
+        throw new Error('DATABASE_URL phải trỏ tới database ứng dụng tts_* hoặc database Supabase riêng, tách khỏi Keycloak.');
     }
     let ssl;
-    if (neon || supabase || process.env.PG_SSL_CA_FILE) {
+    if (supabase || process.env.PG_SSL_CA_FILE) {
         // pg replaces an explicit ssl object when the URL also has SSL options.
-        // Keep certificate AND hostname verification enabled for cloud traffic.
         for (const key of ['ssl', 'sslmode', 'sslcert', 'sslkey', 'sslrootcert', 'uselibpqcompat']) url.searchParams.delete(key);
         ssl = { rejectUnauthorized: !supabase };
         if (process.env.PG_SSL_CA_FILE) ssl.ca = fs.readFileSync(process.env.PG_SSL_CA_FILE, 'utf8');
     }
     const result = new Pool({ connectionString: url.toString(), max: direct ? 1 : 5,
-        connectionTimeoutMillis: neon ? 30000 : 10000, idleTimeoutMillis: 30000,
+        connectionTimeoutMillis: 10000, idleTimeoutMillis: 30000,
         statement_timeout: 30000, application_name: 'text2speech',
-        ...(neon ? { enableChannelBinding: true } : {}), ...(ssl ? { ssl } : {}) });
+        ...(ssl ? { ssl } : {}) });
     result.on('error', () => console.error('[PostgreSQL] Kết nối nền bị gián đoạn.'));
     return result;
 }

@@ -1,6 +1,6 @@
 # Chuyển dữ liệu ứng dụng từ MongoDB sang PostgreSQL
 
-Tài liệu này dành cho đợt chuyển từ MongoDB sang PostgreSQL local. Nếu ứng dụng đã có dữ liệu PostgreSQL và cần chuyển lên Neon, dùng [NEON.md](NEON.md).
+Tài liệu này dành cho đợt chuyển từ MongoDB sang PostgreSQL local hoặc Supabase PostgreSQL.
 
 ## Kết quả trên máy hiện tại — 17/10/2026
 

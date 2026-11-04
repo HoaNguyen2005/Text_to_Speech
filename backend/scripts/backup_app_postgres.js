@@ -9,18 +9,12 @@ const output = fs.openSync(filename,'wx',0o600);
 let completed = false;
 try {
     const url = new URL(process.env.DATABASE_URL_UNPOOLED || process.env.DATABASE_URL);
-    if (/\.neon\.tech$/i.test(url.hostname)) {
-        if (url.hostname.includes('-pooler.') || process.env.PG_SSL_CA_FILE) throw new Error('Use direct Neon URL and a supported CA mount.');
-        // Docker copies named environment values from its client process. The
-        // password is never an argument or printed to the terminal.
+    if (/\.supabase\.(co|com)$/i.test(url.hostname) || /pooler\.supabase\.com$/i.test(url.hostname)) {
         const credentials = { PGHOST: url.hostname, PGPORT: url.port || '5432',
             PGDATABASE: decodeURIComponent(url.pathname.slice(1)), PGUSER: decodeURIComponent(url.username),
-            PGPASSWORD: decodeURIComponent(url.password), PGSSLMODE: 'verify-full',
-            PGSSLROOTCERT: 'system', PGCHANNELBINDING: 'require' };
-        // Neon production uses PostgreSQL 18. A temporary client container avoids
-        // upgrading the PostgreSQL 17 instance that still stores Keycloak data.
+            PGPASSWORD: decodeURIComponent(url.password), PGSSLMODE: 'require' };
         dockerClientCommand(['run','--rm', ...Object.keys(credentials).flatMap(key => ['-e', key]),
-            'postgres:18-alpine','pg_dump','-Fc','--no-owner','--no-acl'],
+            'postgres:17-alpine','pg_dump','-Fc','--no-owner','--no-acl'],
         { env: { ...process.env, ...credentials }, stdio:['ignore',output,'pipe'] });
     } else {
         if (!['localhost', '127.0.0.1'].includes(url.hostname) || url.pathname !== '/tts_app') throw new Error('Unsupported local database.');

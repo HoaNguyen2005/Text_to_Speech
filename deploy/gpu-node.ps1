@@ -374,7 +374,7 @@ function Invoke-NativeGpuNode {
                     Write-Warning "[GPU WORKER] Book Worker chua khoi dong duoc. Xem log: .\deploy\gpu-node.ps1 -Action logs -Service worker"
                 }
             } else {
-                Write-Warning "[GPU WORKER] Chua tim thay DATABASE_URL (Neon PostgreSQL) trong .env.local / deploy/engine.gpu.env de chay Worker tren PC."
+                Write-Warning "[GPU WORKER] Chua tim thay DATABASE_URL (Supabase PostgreSQL) trong .env.local / deploy/engine.gpu.env de chay Worker tren PC."
             }
 
             & $PSCommandPath -Action tunnel -Secret $resolvedSecret -BackendUrl $BackendUrl

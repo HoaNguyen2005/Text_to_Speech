@@ -4,7 +4,7 @@
 
 Mở [hướng dẫn chạy dự án](README.md#chạy-trên-máy-hiện-tại) để bật frontend, Backend, worker và Engine.
 Chế độ chạy trực tiếp cần cấu hình Gemini, PostgreSQL và khóa Engine theo [README.md](README.md).
-Stack Docker dùng biến riêng trong thư mục deploy. Nếu database đang ở Neon, đồng bộ kết nối theo [NEON.md](NEON.md).
+Stack Docker dùng biến riêng trong thư mục deploy. Nếu database đang ở Supabase, cấu hình `DATABASE_URL` trong `.env.local` hoặc `deploy/backend.env`.
 
 1. Mở **Sách nói AI**, tải tài liệu hoặc dán nội dung rồi nhập tên sách.
 2. Chọn 10/20/30 phút hoặc nhập số phút nguyên từ 1 đến 59. Chọn bộ tạo giọng, giọng cụ thể và tốc độ.

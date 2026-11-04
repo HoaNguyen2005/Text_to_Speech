@@ -1,7 +1,7 @@
 # Phase 3 — Xác thực ứng dụng bằng Keycloak local
 
 Keycloak quản lý thông tin đăng nhập. Hồ sơ, giọng đọc và lịch sử nằm trong PostgreSQL ứng dụng.
-Xem [NEON.md](../NEON.md) khi dùng database ứng dụng trên Neon và [THEME.md](THEME.md) khi chỉnh biểu mẫu xác thực.
+Xem [POSTGRES_MIGRATION.md](../POSTGRES_MIGRATION.md) khi cấu hình database ứng dụng và [THEME.md](THEME.md) khi chỉnh biểu mẫu xác thực.
 
 ## Cập nhật database ứng dụng 17/10/2026
 

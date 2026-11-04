@@ -2,11 +2,11 @@
 
 Để bật stack local đã cấu hình, chạy `.\deploy\stack.ps1 up` từ thư mục gốc sau khi Docker Desktop sẵn sàng.
 Để cập nhật hoặc kiểm tra trạng thái container, xem [các lệnh thường dùng](README.md#chạy-trên-máy-hiện-tại).
-Nếu cấu hình PostgreSQL trên Neon, dùng [NEON.md](NEON.md) để đồng bộ biến Docker sau khi chuẩn bị file env. Xem [PC_AGENT_SETUP.md](PC_AGENT_SETUP.md) để chạy Engine GPU trên máy bàn.
+Nếu cấu hình PostgreSQL trên Supabase, đặt `DATABASE_URL` vào `.env.local` hoặc `deploy/backend.env`. Xem [PC_AGENT_SETUP.md](PC_AGENT_SETUP.md) để chạy Engine GPU trên máy bàn.
 
 ## Tiến độ tại mốc đóng gói local
 
-Bảng này ghi lại mốc 20/10/2026. Các bước Neon, trạm GPU và tunnel về sau được ghi trong [PROCESS.md](PROCESS.md).
+Bảng này ghi lại mốc 20/10/2026. Các bước Supabase, trạm GPU và tunnel về sau được ghi trong [PROCESS.md](PROCESS.md).
 
 | Mục | Công việc | Trạng thái |
 | --- | --- | --- |
@@ -251,7 +251,7 @@ node backend/scripts/init_docker_local.js --refresh
 .\deploy\stack.ps1 up
 ```
 
-Nếu dùng Neon, chạy `npm run neon:docker-env` sau lệnh `--refresh` và trước lệnh `up` để khôi phục URL Neon vào cấu hình Docker.
+Nếu dùng database Supabase, kiểm tra `DATABASE_URL` trong `deploy/backend.env` sau lệnh `--refresh` và trước lệnh `up`.
 
 Nếu muốn đổi URL public/realm/client cho môi trường khác, cần cập nhật đồng bộ
 Compose, Frontend build args, Keycloak client và CORS; script prepare này chỉ dành
