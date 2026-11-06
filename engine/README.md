@@ -6,6 +6,33 @@ Nếu chạy **CPU bằng Docker**, mở Docker Desktop rồi chạy `.\deploy\s
 Nếu dựng **trạm GPU trên máy bàn**, xem [PC_AGENT_SETUP.md](../PC_AGENT_SETUP.md).
 Các bước cài Python dưới đây dành cho chế độ chạy trực tiếp. Dừng container Engine trước để dùng cổng 8000.
 
+## Chạy thử OmniVoice trên Windows
+
+Từ thư mục gốc dự án, dùng Python 64-bit 3.10–3.12.
+Thay `py -3.10` bằng phiên bản Python đã cài trên máy.
+
+```powershell
+# Laptop dùng CPU
+py -3.10 .\deploy\try_omnivoice.py --device cpu
+
+# Máy bàn NVIDIA dùng GPU
+py -3.11 .\deploy\try_omnivoice.py --device cuda
+
+# Tự chọn CUDA khi có driver NVIDIA, còn lại dùng CPU
+py -3.10 .\deploy\try_omnivoice.py
+```
+
+Script cài PyTorch 2.8.0 và OmniVoice 0.2.1 trong thư mục
+`%USERPROFILE%\OmniVoice-trial\venv-<python>-<cpu|cuda>`.
+Model tải về bộ nhớ đệm Hugging Face của tài khoản Windows.
+CPU dùng FP32, CUDA dùng FP16. Khi yêu cầu CUDA mà PyTorch chưa nhận GPU,
+script báo lỗi để người chạy kiểm tra driver.
+
+File mẫu là `%USERPROFILE%\OmniVoice-trial\omnivoice-vi-cpu.wav`
+hoặc `omnivoice-vi-cuda.wav`. Terminal ghi riêng thời gian nạp model,
+thời gian sinh và thời lượng âm thanh. Lần đầu bao gồm tải model qua mạng.
+Đây là chương trình thử độc lập; bước tích hợp lựa chọn OmniVoice vào web đang chờ thực hiện.
+
 ## Yêu Cầu Hệ Thống
 - Python 3.9 hoặc 3.10
 - Môi trường Windows / Linux / macOS
