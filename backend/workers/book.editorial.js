@@ -340,9 +340,8 @@ module.exports = async function editorial(job, context) {
     }
     if (!job.draft?.sections?.length) throw new Error('Chưa có bản tóm tắt để tạo âm thanh.');
     const draft = structuredClone(job.draft);
-    const provider = checkpoint.voice.provider || 'edge';
     draft.sections = draft.sections.map((section, i) => ({ ...section, title: state.plan.sections[i].title }));
-    const planned = draft.speech ? speech.plan({ introduction: draft.introduction || '', sections: draft.sections, speech: draft.speech, style: draft.style, provider }) : null;
+    const planned = draft.speech ? speech.plan({ introduction: draft.introduction || '', sections: draft.sections, speech: draft.speech, style: draft.style }) : null;
     const narrationParts = planned?.parts || content.narration(draft.introduction, draft.sections, draft.style);
     if (!checkpoint.referenceKey) {
         const voice = checkpoint.voice;
@@ -363,8 +362,7 @@ module.exports = async function editorial(job, context) {
             mode: job.voice_mode, gender: voice.gender, style: draft.style, reference_key: checkpoint.referenceKey,
             ...require('../app/services/tts_provider.service').settings(voice.provider || 'edge',voice.preset,voice.model_revision),
             reference_audio_url: url, reference_file: voice.file_path ? path.basename(voice.file_path) : undefined,
-            rate_percent: part.rate_percent, pitch_hz: part.pitch_hz, pause_ms: part.pause_ms,
-            ...(part.experimental_cues ? {experimental_cues:true} : {}) };
+            rate_percent: part.rate_percent, pitch_hz: part.pitch_hz, pause_ms: part.pause_ms };
     }
     async function makePart(part) {
         const id = partId(part);
@@ -385,7 +383,7 @@ module.exports = async function editorial(job, context) {
     }
     if (job.work_action === 'preview') {
         await save('preview', 56, 'Tạo đoạn nghe thử bằng giọng đã chọn.');
-        const samples = planned ? speech.plan({ sections: draft.sections, speech: draft.speech, style: draft.style, provider }).parts : content.narration('', draft.sections, draft.style);
+        const samples = planned ? speech.plan({ sections: draft.sections, speech: draft.speech, style: draft.style }).parts : content.narration('', draft.sections, draft.style);
         const ids=[]; let budget=30;
         for (const part of samples.slice(0,8)) {
             if (budget<=0) break;

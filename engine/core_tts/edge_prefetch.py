@@ -19,7 +19,7 @@ from core_tts.audio_files import duration
 
 def request_signature(request):
     return hashlib.sha256(json.dumps({k: v for k, v in request.model_dump().items()
-        if k not in ('reference_audio_url', 'interactive') and (k != 'experimental_cues' or v)}, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
+        if k not in ('reference_audio_url', 'interactive')}, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
 
 
 class EdgePrefetch:

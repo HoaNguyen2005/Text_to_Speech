@@ -75,23 +75,9 @@ Ngày 23/10/2026: build/cú pháp đạt, VieNeu CPU nạp model và báo health
 
 File: `backend/data/book-audio/e59737c6da3e4d88bb607cc0/2d217b3e225b26cae74af09bcccb1b1aabdf1633fe2e12d7e156448a0891dc84.wav`.
 
-## Biểu cảm thử nghiệm trong bản duyệt sách nói
+## Thẻ biểu cảm trong sách nói
 
-**Trạng thái mới nhất 25/10/2026: tạm ẩn trên giao diện theo phản hồi chất lượng nghe.** Màn hình duyệt hiện chỉ giữ tốc độ, không hiện ba nút biểu cảm. Khi mở nháp cũ có bật biểu cảm, giao diện tắt cờ trước lần lưu/nghe thử/duyệt tiếp theo; vị trí thẻ vẫn được giữ trong markup nhưng bỏ qua khi đọc. Không thay đổi file cũ. Phần dưới ghi lại thiết kế thử nghiệm để có thể bật lại sau.
-
-Chỉ nhánh VieNeu có tùy chọn **Biểu cảm thử nghiệm**, tắt mặc định. Sau khi tạo bản tóm tắt, bật tùy chọn trong phần duyệt, đặt con trỏ vào một ô nội dung rồi bấm **Cười**, **Thở dài** hoặc **Hắng giọng**. Ba nút lần lượt chèn `[cười]`, `[thở dài]`, `[hắng giọng]`; có thể tự sửa/xóa vị trí thẻ trong văn bản. Giới hạn 20 thẻ cho toàn bản đọc. Gemini không tự chèn thẻ.
-
-Bấm **Nghe thử tối đa 30 giây** để so sánh trước khi duyệt toàn bộ. Nghe thử chỉ bao phủ phần đầu; đặt thẻ trong phần đầu nếu muốn nghe ngay hiệu ứng đó. Hiệu quả phụ thuộc giọng và ngữ cảnh, không bảo đảm biểu cảm giống người diễn. Đây là token âm thanh không lời của SDK v3 Turbo, không phải tham số `style` điều khiển cảm xúc toàn bài; `style` SDK cũ đã bị bỏ qua trong phiên bản này. Các preset phong cách của ứng dụng vẫn điều chỉnh nhịp/tốc độ/khoảng nghỉ như trước.
-
-Tắt tùy chọn để giữ vị trí thẻ trong bản duyệt nhưng bỏ qua chúng khi đọc; **Gỡ hết thẻ** xóa ba loại thẻ khỏi nội dung đang chỉnh và tắt tùy chọn. Các thay đổi được lưu khi lưu/nghe thử/duyệt, đồng thời làm mới cache nghe thử. Edge-TTS + OpenVoice vẫn giữ luồng cũ và không nhận tùy chọn biểu cảm. Nếu đổi từ VieNeu sang Edge, tắt biểu cảm trước.
-
-Backend giữ hai dạng: `delivery.markup` có thẻ phục vụ biên tập, `section.text` không có thẻ phục vụ đối chiếu nội dung. Chỉ các phần VieNeu có thẻ được gửi `experimental_cues=true` qua Engine tới SDK. Các thẻ không bị thay bởi từ điển phát âm, không bị cắt đôi khi chia đoạn/nghe thử, không được tính là từ và không hiện trong phụ đề hoặc bản tải MD/TXT. Ước lượng tạm cộng 1 giây/thẻ; thời lượng file và timeline cuối lấy từ âm thanh thật. Mốc phụ đề bên trong từng đoạn vẫn là ước lượng, chưa căn từng từ theo tiếng cười/tiếng thở.
-
-Không migration; tùy chọn nằm trong JSON `speech` của bản duyệt. Tùy chọn tắt được bỏ khỏi dữ liệu kế hoạch để giữ tương thích cache của cấu hình cũ. Việc bật/tắt không sửa file âm thanh đã tạo trước đó.
-
-Kiểm tra kỹ thuật local ngày 25/10/2026: build Frontend/Backend/Engine/VieNeu đạt, các container healthy. Đã kiểm tra cổng chặn thẻ khi chưa bật, chặn cờ trên Edge và chặn token thô. Bốn mẫu giọng Hải Đăng 1,00x được tạo qua Engine trên CPU, không gọi Gemini/ghi job lịch sử/upload R2. Mẫu thường dài khoảng 4,24 giây; ba mẫu có thẻ dài khoảng 4,88 / 5,04 / 4,00 giây, cho thấy không thể coi thời lượng thẻ là hằng số hoặc mặc định thẻ luôn làm đoạn dài hơn. Đây không phải benchmark sách dài hoặc đánh giá chất lượng bằng nghe. Mẫu lưu local trong `backend/data/book-audio/27d65d5489a7b72dac5f9b91/`, có `manifest.json` ghi cấu hình/thời lượng.
-
-Nếu chỉ cập nhật mã service và image VieNeu 3.8.3 CPU hiện tại đã có đủ dependency, có thể dùng `build --build-arg VIENEU_BASE_IMAGE=text2speech-vieneu:3.8.3-cpu vieneu` với bộ file Compose hiện tại để tái sử dụng dependency. Không dùng cách này khi đổi SDK/dependency/nền hệ thống; build thông thường vẫn lấy `engine_os`. Cache pip lúc build đã chỉ rõ `/root/.cache/pip`, tránh trỏ nhầm vào HOME của user runtime.
+Giao diện duyệt đã bỏ các nút chèn thẻ. Khi nghe thử hoặc tạo sách nói, hệ thống lọc các thẻ biểu cảm còn sót trong bản nháp cũ trước khi gửi nội dung sang bộ tạo giọng.
 
 ## Nguồn
 

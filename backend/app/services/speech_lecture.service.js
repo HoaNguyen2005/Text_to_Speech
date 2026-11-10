@@ -33,7 +33,7 @@ async function render(user,body,preview=false) {
     if(typeof body.text!=='string'||!body.text.trim()||body.text.length>20000)throw problem(400,'Bài giảng cần từ 1 đến 20.000 ký tự.');
     if(!config.engineSecret)throw problem(503,'Chưa cấu hình kết nối Engine.');
     const provider=providers.validate(body.tts_provider);
-    const planned=speech.plan({provider,sections:[{text:body.text,delivery:{...(body.delivery||{}),markup:body.text}}],speech:body.speech,style:body.style_id||'normal'});
+    const planned=speech.plan({sections:[{text:body.text,delivery:{...(body.delivery||{}),markup:body.text}}],speech:body.speech,style:body.style_id||'normal'});
     if(body.speech_plan_hash!==planned.hash)throw problem(409,'Hãy xem cách đọc sau khi thay đổi nội dung hoặc cấu hình trước khi tiếp tục.');
     if(planned.estimated_seconds>=3600 || planned.parts.length>80)throw problem(400,'Bài giảng quá dài hoặc có quá nhiều đoạn. Hãy chia thành các phần nhỏ hơn.');
     // Old lecture callers are clone-only. New catalogue choices specify the
@@ -56,8 +56,7 @@ async function render(user,body,preview=false) {
         return {job_id:jobId,part_id:partId,text:current.text,mode,gender:voice.gender,style:'normal',
             ...settings, reference_key:voice.file_path||voice.voice_id,reference_file:voice.file_path?path.basename(voice.file_path):undefined,
             reference_audio_url:mode==='clone'&&storage.isStorageKey(voice.file_path)?await storage.resolveUrl(voice.file_path):undefined,
-            rate_percent:current.rate_percent,pitch_hz:current.pitch_hz||0,pause_ms:current.pause_ms,
-            ...(current.experimental_cues ? {experimental_cues:true} : {})};
+            rate_percent:current.rate_percent,pitch_hz:current.pitch_hz||0,pause_ms:current.pause_ms};
     }
     try {
         if(!preview)prefetch=await require('./edge_prefetch.service')({jobId,provider,parts:planned.parts,payload,guard});

@@ -34,7 +34,7 @@ router.get('/engine-status',async(_req,res)=>{
     res.json(await artifact.status());
 });
 router.post('/plan',(req,res)=>{
-    const planned=speech.plan({...req.body,provider:req.body?.provider||'edge'});
+    const planned=speech.plan(req.body || {});
     res.json({hash:planned.hash,sections:planned.sections,speech:planned.speech,changes:planned.changes,spoken_text:planned.spoken_text,estimated_seconds:planned.estimated_seconds});
 });
 router.post('/lecture-preview',async(req,res)=>{

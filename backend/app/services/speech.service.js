@@ -1,6 +1,9 @@
 const crypto = require('crypto');
-const expressions = require('./speech_expressions');
 const fail = message => { throw Object.assign(new Error(message), { status: 400, code: 'SPEECH_VALIDATION' }); };
+function stripCues(text) {
+    const cleaned = text.replace(/\[(?:cười|thở dài|hắng giọng|laugh(?:ter)?|sigh|throat|whisper|thì thầm|chuckle|clear throat|khóc|confirmation-en|question-(?:en|ah|oh|ei|yi)|surprise-(?:ah|oh|wa|yo)|dissatisfaction-hnn)\]|<\|emotion_[\w-]+\|>/giu, ' ');
+    return cleaned === text ? text : cleaned.replace(/[ \t]+/gu, ' ').replace(/ +([.,!?;:])/gu, '$1').trim();
+}
 const profiles = {
     natural: { rate: 0, paragraph: 420, section: 700 },
     teaching: { rate: -4, paragraph: 600, section: 850 },
@@ -14,7 +17,6 @@ function options(value = {}) {
     const profile = value.profile ?? 'auto';
     if (!validProfile(profile) || (value.normalize != null && typeof value.normalize !== 'boolean')) fail('Cấu hình đọc không hợp lệ.');
     if (value.rate_percent != null && (!Number.isInteger(value.rate_percent) || value.rate_percent < -25 || value.rate_percent > 50)) fail('Tốc độ đọc phải từ 0,75x đến 1,50x.');
-    if (value.experimental_cues != null && typeof value.experimental_cues !== 'boolean') fail('Tùy chọn biểu cảm không hợp lệ.');
     const dictionary = value.dictionary ?? [];
     if (!Array.isArray(dictionary) || dictionary.length > 50) fail('Từ điển phát âm chỉ nhận tối đa 50 mục.');
     const seen = new Set();
@@ -28,11 +30,7 @@ function options(value = {}) {
     });
     // Missing rate keeps the old preset rates and hashes for existing jobs.
     return { version: 'speech-v1', profile, normalize: value.normalize === true, dictionary: cleaned,
-        ...(value.rate_percent != null ? { rate_percent: value.rate_percent } : {}),
-        ...(value.experimental_cues === true ? { experimental_cues:true } : {}) };
-}
-function assertProvider(config, provider) {
-    if (config?.experimental_cues && !['vieneu', 'omnivoice'].includes(provider)) fail('Biểu cảm thử nghiệm chỉ dùng cho VieNeu-TTS và OmniVoice.');
+        ...(value.rate_percent != null ? { rate_percent: value.rate_percent } : {}) };
 }
 function delivery(value = {}, paragraphs = 0) {
     if (!value || typeof value !== 'object' || Array.isArray(value)) fail('Phong cách từng đoạn không hợp lệ.');
@@ -42,27 +40,23 @@ function delivery(value = {}, paragraphs = 0) {
     return { profile, paragraph_profiles };
 }
 const pausePattern = () => /\[(?:nghỉ|pause)\s+(\d+(?:[.,]\d+)?)\s*(?:s|giây)\s*\]|<break\s+time=["'](\d+(?:\.\d+)?)s["']\s*\/>/giu;
-function parse(markup, experimental = false, provider) {
+function parse(markup) {
     if (typeof markup !== 'string' || markup.length > 300000 || /[\u0000-\u0008\u000b\u000c\u000e-\u001f]/u.test(markup)) fail('Văn bản đọc không hợp lệ.');
-    markup = expressions.canonical(markup.normalize('NFC').replace(/\r\n/g, '\n'));
-    if (experimental && provider === 'omnivoice' && markup.includes('[hắng giọng]')) fail('OmniVoice chỉ hỗ trợ thẻ [cười] và [thở dài] trong trình chỉnh sửa.');
-    const rendered = experimental ? markup : markup.replace(expressions.pattern(), ' ');
+    markup = stripCues(markup.normalize('NFC').replace(/\r\n/g, '\n'));
     const atoms = []; let start = 0, totalPause = 0, markers = 0;
-    for (const match of rendered.matchAll(pausePattern())) {
+    for (const match of markup.matchAll(pausePattern())) {
         const milliseconds = Math.round(Number((match[1] || match[2]).replace(',', '.')) * 1000);
         if (!Number.isFinite(milliseconds) || milliseconds < 0 || milliseconds > 2000) fail('Mỗi khoảng nghỉ phải từ 0 đến 2 giây.');
         if (++markers > 200 || (totalPause += milliseconds) > 300000) fail('Có quá nhiều khoảng nghỉ. Hãy rút gọn chỉ dẫn đọc.');
-        const before = rendered[match.index - 1] || '', after = rendered[match.index + match[0].length] || '';
+        const before = markup[match.index - 1] || '', after = markup[match.index + match[0].length] || '';
         if (/[\p{L}\p{M}]/u.test(before) && /[\p{L}\p{M}]/u.test(after)) fail('Hãy chèn khoảng nghỉ giữa các từ hoặc sau dấu câu.');
-        atoms.push({ text: rendered.slice(start, match.index), pause_ms: milliseconds, explicit: true });
+        atoms.push({ text: markup.slice(start, match.index), pause_ms: milliseconds, explicit: true });
         start = match.index + match[0].length;
     }
-    atoms.push({ text: rendered.slice(start), pause_ms: 0, explicit: false });
+    atoms.push({ text: markup.slice(start), pause_ms: 0, explicit: false });
     const stripped = markup.replace(pausePattern(), ' ');
     if (/\[(?:nghỉ|pause)(?=\s|\])|<\/?(?:break|prosody|voice|speak)\b/iu.test(stripped)) fail('Chỉ dẫn nghỉ không hợp lệ. Dùng [nghỉ 0.5s] hoặc <break time="0.5s" />.');
-    if (provider === 'omnivoice' && /\[(?:laughter|sigh|confirmation-en|question-(?:en|ah|oh|ei|yi)|surprise-(?:ah|oh|wa|yo)|dissatisfaction-hnn)\]/iu.test(stripped)) fail('OmniVoice chỉ hỗ trợ thẻ [cười] và [thở dài] trong trình chỉnh sửa.');
-    if (/\[(?:laugh|sigh|throat|whisper|thì thầm|chuckle|clear throat|khóc)\]|<\|emotion_/iu.test(stripped)) fail('Chỉ hỗ trợ các thẻ [cười], [thở dài], [hắng giọng].');
-    const plain = expressions.strip(stripped);
+    const plain = stripped.replace(/[ \t]+/gu, ' ').replace(/ +([.,!?;:])/gu, '$1').trim();
     return { markup, plain, atoms, totalPause };
 }
 const digits = ['không','một','hai','ba','bốn','năm','sáu','bảy','tám','chín'];
@@ -131,8 +125,6 @@ function split(text, maxLen = 600) {
         if (cut < 180) cut = Math.max(cut, head.lastIndexOf(', '));
         if (cut < 180) cut = head.lastIndexOf(' ');
         cut = cut < 1 ? maxLen : cut + 1;
-        const opening = remaining.lastIndexOf('[', cut - 1), closing = remaining.indexOf(']', opening);
-        if (opening >= 0 && closing >= cut && expressions.count(remaining.slice(opening, closing + 1))) cut = opening || closing + 1;
         result.push(remaining.slice(0, cut).trim()); remaining = remaining.slice(cut).trim();
     }
     if (remaining) result.push(remaining); return result;
@@ -187,16 +179,15 @@ function contour(text, baseRate, defaultPause, context = {}) {
         pause,
     };
 }
-function plan({ introduction = '', sections, speech = {}, style = 'normal', units_per_minute = 300, provider }) {
+function plan({ introduction = '', sections, speech = {}, style = 'normal', units_per_minute = 300 }) {
     if (!Number.isFinite(units_per_minute) || units_per_minute < 80 || units_per_minute > 600) fail('Tốc độ giọng đọc đo được không hợp lệ.');
     const config = options(speech);
-    if (provider !== undefined) assertProvider(config,provider);
     if (typeof introduction !== 'string' || introduction.length>2000 || !Array.isArray(sections) || !sections.length || sections.length > 100
         || sections.some(section=>!section || typeof section.text!=='string')) fail('Các đoạn đọc không hợp lệ.');
     const parts = [], changes = [], cleaned = [];
     const add = (markup, profile, defaultPause, index, paragraphIndex = 0, totalParagraphs = 1) => {
         const baseRate = config.rate_percent ?? profile.rate;
-        const parsed = parse(markup,config.experimental_cues,provider);
+        const parsed = parse(markup);
         const shaped = contour(parsed.plain, baseRate, defaultPause, {
             sectionIndex: index,
             totalSections: sections.length,
@@ -204,7 +195,7 @@ function plan({ introduction = '', sections, speech = {}, style = 'normal', unit
             totalParagraphs,
         });
         parsed.atoms.forEach((atom, position) => {
-            const source = atom.text.trim(), spoken = config.experimental_cues ? expressions.spoken(source,part=>speak(part,config)) : speak(source, config);
+            const source = atom.text.trim(), spoken = speak(source, config);
             if (source !== spoken && changes.length < 100) changes.push({ section: index, before: source, after: spoken });
             const chunks = split(spoken);
             const last = position === parsed.atoms.length-1;
@@ -213,8 +204,7 @@ function plan({ introduction = '', sections, speech = {}, style = 'normal', unit
                 if (pause) parts.push({ text: '', rate_percent: shaped.rate, pitch_hz: 0, pause_ms: pause, speech_version: 'speech-v1' });
             } else chunks.forEach((text,i) => {
                 const chunkPitch = chunks.length > 1 && i === chunks.length - 1 ? Math.max(-10, shaped.pitch - 1) : shaped.pitch;
-                parts.push({ text, rate_percent: shaped.rate, pitch_hz: chunkPitch, pause_ms: i===chunks.length-1 ? pause : 180, speech_version: 'speech-v1',
-                    ...(config.experimental_cues && expressions.count(text) ? {experimental_cues:true} : {}) });
+                parts.push({ text, rate_percent: shaped.rate, pitch_hz: chunkPitch, pause_ms: i===chunks.length-1 ? pause : 180, speech_version: 'speech-v1' });
             });
         });
         return parsed.plain;
@@ -237,9 +227,7 @@ function plan({ introduction = '', sections, speech = {}, style = 'normal', unit
         cleaned.push({ ...section, text: plain.join('\n\n'), delivery: { ...preferences, markup } });
     });
     if (!parts.some(part => part.text) || parts.length > 300 || cleaned.reduce((sum,section)=>sum+section.text.length,0)>250000) fail('Nội dung quá dài hoặc có quá nhiều đoạn/khoảng nghỉ.');
-    const cueCount=parts.reduce((sum,part)=>sum+expressions.count(part.text),0);
-    if (cueCount>20) fail('Mỗi bản đọc chỉ nhận tối đa 20 thẻ biểu cảm thử nghiệm.');
-    const estimated_seconds = Math.round(parts.reduce((sum,part) => sum + (expressions.strip(part.text).split(/\s+/u).filter(Boolean).length * 60 / (units_per_minute*(1+part.rate_percent/100))) + part.pause_ms/1000 + expressions.count(part.text),0));
+    const estimated_seconds = Math.round(parts.reduce((sum,part) => sum + (part.text.split(/\s+/u).filter(Boolean).length * 60 / (units_per_minute*(1+part.rate_percent/100))) + part.pause_ms/1000,0));
     const hash = crypto.createHash('sha256').update(JSON.stringify(['speech-v1',parts,config])).digest('hex');
     return { hash, speech: config, sections: cleaned, parts, changes, estimated_seconds,
         spoken_text: parts.map(part=>part.text + (part.pause_ms ? ` [nghỉ ${part.pause_ms/1000}s]` : '')).join('\n') };
@@ -251,7 +239,7 @@ function subtitles(parts, timings) {
         const timing=timings[index], total=Number(timing?.duration_seconds);
         if (!Number.isFinite(total) || total<=0) throw new Error('Không đủ thời lượng để tạo phụ đề.');
         const speechDuration=Math.max(0,Math.min(total,Number(timing.speech_duration_seconds ?? Math.max(0,total-part.pause_ms/1000))));
-        const words=expressions.strip(part.text).split(/\s+/u).filter(Boolean), lines=[]; let line='';
+        const words=stripCues(part.text).split(/\s+/u).filter(Boolean), lines=[]; let line='';
         for (const word of words) { if (line && line.length+word.length+1>42) { lines.push(line); line=''; } line+=(line?' ':'')+word; }
         if (line) lines.push(line);
         const blocks=[]; for(let i=0;i<lines.length;i+=2) blocks.push(lines.slice(i,i+2).join('\n'));
@@ -261,4 +249,5 @@ function subtitles(parts, timings) {
     });
     return cues.join('\n\n')+'\n';
 }
-module.exports = { options, delivery, parse, plan, subtitles, assertProvider, clipText:expressions.clip };
+const clipText = (text, limit) => text.split(/\s+/u).filter(Boolean).slice(0,limit).join(' ');
+module.exports = { options, delivery, parse, plan, subtitles, stripCues, clipText };

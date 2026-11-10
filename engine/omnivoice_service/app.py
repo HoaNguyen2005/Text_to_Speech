@@ -1,6 +1,7 @@
 """Internal OmniVoice service with an isolated PyTorch environment."""
 import hmac
 import os
+import re
 import threading
 from contextlib import asynccontextmanager
 from functools import lru_cache
@@ -14,6 +15,7 @@ SECRET = os.environ.get('BOOK_ENGINE_SECRET', '')
 DEVICE = os.environ.get('OMNIVOICE_DEVICE', 'cpu')
 REVISION = 'c5fdb5ccb189668d56333f77ba2629f4cd7535f4'
 IDENTITY = f'omnivoice-0.2.1-{REVISION}'
+OLD_CUES = re.compile(r'\[(?:laughter|sigh|confirmation-en|question-(?:en|ah|oh|ei|yi)|surprise-(?:ah|oh|wa|yo)|dissatisfaction-hnn)\]', re.I)
 lock = threading.Lock()
 
 
@@ -34,7 +36,7 @@ app = FastAPI(title='Private OmniVoice TTS', lifespan=lifespan)
 class Synthesis(BaseModel):
     job_id: str = Field(pattern=r'^[a-f0-9]{24}$')
     part_id: str = Field(pattern=r'^[a-f0-9]{64}$')
-    # Engine accepts 1600 characters plus up to four extra per translated cue.
+    # Older engines may still expand tags before sending the text.
     text: str = Field(min_length=1, max_length=1680)
     reference_name: str = Field(pattern=r'^ref_[a-f0-9]{64}_omnivoice\.wav$')
     model_revision: str
@@ -71,6 +73,9 @@ def synthesize(request: Synthesis, x_book_engine_secret: str | None = Header(def
         raise HTTPException(403, 'Khóa nội bộ OmniVoice không hợp lệ.')
     if request.model_revision != IDENTITY:
         raise HTTPException(409, 'Phiên bản OmniVoice không khớp.')
+    text = OLD_CUES.sub(' ', request.text).strip()
+    if not text:
+        raise HTTPException(400, 'Nội dung đọc trống.')
     directory = (ROOT / request.job_id).resolve()
     reference = directory / request.reference_name
     if (directory.parent != ROOT or reference.resolve() != reference
@@ -88,7 +93,7 @@ def synthesize(request: Synthesis, x_book_engine_secret: str | None = Header(def
         try:
             model = load_model()
             prompt = voice_prompt(reference, reference.stat().st_mtime_ns)
-            audio = model.generate(text=request.text, language='vi', voice_clone_prompt=prompt,
+            audio = model.generate(text=text, language='vi', voice_clone_prompt=prompt,
                                    speed=1 + request.rate_percent / 100)[0]
             if not audio.size or not np.isfinite(audio).all() or not np.any(audio):
                 raise ValueError('Invalid generated audio')

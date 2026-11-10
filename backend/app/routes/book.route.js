@@ -62,6 +62,8 @@ async function present(job, includeScript = true) {
             if(preview) {
                 value.draft.preview_request={status:preview.status,error:preview.error||''};
                 value.draft.preview=preview.status==='ready'?preview:null;
+            } else if (value.draft.speech?.experimental_cues === true) {
+                value.draft.preview = null;
             }
             if(value.draft.preview?.audio_url)value.draft.preview={...value.draft.preview,audio_url:await storage.resolveUrl(value.draft.preview.audio_url)};
         }
@@ -93,7 +95,6 @@ router.post('/', async (req, res) => {
     if (existing) return res.json(await present(existing));
     const selected_voice = await bookVoices.resolve(voice_mode, voice_id, req.user, req.body.tts_provider);
     const initialSpeech = req.body.speech ? speech.options(req.body.speech) : undefined;
-    speech.assertProvider(initialSpeech,selected_voice.provider || 'edge');
     const metadata = normalizeMetadata(req.body.book_metadata, title);
     if (!config.engineSecret) return res.status(503).json({ error: 'Chạy npm run books:init ở backend trước khi tạo sách nói.' });
     const source = text.trim().replace(/\r\n/g, '\n');
@@ -154,7 +155,7 @@ router.patch('/:id/draft', async (req, res) => {
     if (current.status !== 'review' || current.workflow_version !== 'review-v1' || !current.draft) return res.status(409).json({ error: 'Bản tóm tắt chưa sẵn sàng để chỉnh sửa.' });
     if (!Number.isInteger(req.body?.revision) || req.body.revision !== current.draft_revision) return res.status(409).json({ error: 'Bản tóm tắt đã đổi ở phiên khác. Hãy tải lại trước khi sửa.' });
     const preferences = req.body.speech ? { speech: req.body.speech, deliveries: req.body.deliveries } : undefined;
-    const draft = content.editedDraft(current.draft, req.body.sections, preferences, current.selected_voice?.provider || 'edge');
+    const draft = content.editedDraft(current.draft, req.body.sections, preferences);
     if (draft === current.draft) return res.json(await present(current));
     if (draft.reading_rate) draft.duration_budget = duration.budget(current.source, draft.introduction || '', current.target_minutes,
         draft.reading_rate.units_per_minute, draft.speech?.rate_percent ?? 0, draft.sections.length);
@@ -169,9 +170,8 @@ for (const action of ['revise', 'preview', 'audio']) router.post(`/:id/${action}
     const revision = req.body?.revision;
     if (current.workflow_version !== 'review-v1' || current.status !== 'review' || !current.draft?.sections?.length) return res.status(409).json({ error: 'Bản tóm tắt chưa sẵn sàng. Hãy tải lại yêu cầu.' });
     if (!Number.isInteger(revision) || revision !== current.draft_revision) return res.status(409).json({ error: 'Bản tóm tắt đã đổi ở phiên khác. Hãy tải lại trước khi tiếp tục.' });
-    speech.assertProvider(current.draft.speech,current.selected_voice?.provider || 'edge');
     if (['preview','audio'].includes(action) && current.draft.speech) {
-        const plan = speech.plan({ introduction: current.draft.introduction || '', sections: current.draft.sections, speech: current.draft.speech, style: current.draft.style, provider: current.selected_voice?.provider || 'edge' });
+        const plan = speech.plan({ introduction: current.draft.introduction || '', sections: current.draft.sections, speech: current.draft.speech, style: current.draft.style });
         if (req.body.speech_plan_hash !== plan.hash) return res.status(409).json({ error: 'Nội dung hoặc tốc độ vừa thay đổi. Hãy thử lại.' });
     }
     if(action==='preview') {

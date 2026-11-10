@@ -14,8 +14,7 @@ def synthesize(request, sample, destination, secret):
     if request.model_revision != MODEL_REVISION:
         raise ValueError('Phiên bản VieNeu không khớp yêu cầu.')
     payload = {'job_id': request.job_id, 'part_id': request.part_id, 'text': request.text,
-               'preset': request.preset, 'model_revision': MODEL_REVISION,
-               'experimental_cues': request.experimental_cues}
+               'preset': request.preset, 'model_revision': MODEL_REVISION}
     clip = None
     generated = Path(destination).parent / f'{request.part_id}.vieneu.wav'
     try:

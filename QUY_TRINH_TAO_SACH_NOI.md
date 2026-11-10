@@ -622,21 +622,9 @@ sử không được hủy theo chức năng này.
 | Edge-TTS và chuyển âm sắc | `engine/core_tts/base_tts.py`, `engine/tts_pipeline.py` |
 | Gọi VieNeu và service model riêng | `engine/core_tts/vieneu_client.py`, `engine/vieneu_service/app.py` |
 
-### Bổ sung 25/10/2026: thẻ biểu cảm VieNeu khi duyệt
+### Bản nháp cũ có thẻ biểu cảm
 
-**Cập nhật tiếp:** biểu cảm đã tạm ẩn theo phản hồi nghe. Giao diện duyệt chỉ giữ slider tốc độ; thiết kế thẻ bên dưới được giữ trong mã để có thể dùng lại sau.
-
-Sau khi có bản duyệt dùng VieNeu, người dùng có thể bật **Biểu cảm thử nghiệm**,
-đặt con trỏ trong nội dung rồi chèn `[cười]`, `[thở dài]`, `[hắng giọng]`.
-Mặc định tắt, tối đa 20 thẻ. Gemini không tự chèn. Lưu/nghe thử/duyệt sẽ lưu
-cả cấu hình và vị trí thẻ theo revision; cache nghe thử đổi theo cấu hình mới.
-Nên nghe thử trước khi duyệt, với thẻ nằm trong phần đầu để lọt vào đoạn 30 giây.
-
-Thẻ chỉ gửi tới VieNeu khi đã bật, không áp cho Edge + OpenVoice. Tắt tùy chọn
-giữ thẻ trong ô soạn nhưng bỏ qua khi đọc; **Gỡ hết thẻ** xóa khỏi nội dung đang
-chỉnh. Đối chiếu nguồn, số từ, MD/TXT và phụ đề dùng nội dung không có ba thẻ.
-Thời lượng biểu cảm và độ tự nhiên phụ thuộc model; ước lượng cộng tạm 1 giây/thẻ,
-file cuối được đo lại. Xem [VIENEU.md](VIENEU.md) để biết giới hạn.
+Khi mở bản nháp cũ, trình duyệt ẩn các thẻ biểu cảm. Lượt nghe thử và tạo âm thanh mới dùng phần lời đã lọc thẻ.
 
 ### Giao diện hai bước (cập nhật 25/10/2026)
 

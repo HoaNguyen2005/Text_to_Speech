@@ -21,6 +21,7 @@ from urllib.request import urlopen, Request
 from urllib.parse import urlparse, unquote
 from tts_pipeline import LectureTTSPipeline
 from book_audio import register_book_routes, ENGINE_LOCK, SECRET
+from core_tts.experimental_cues import strip_cues
 from runtime_paths import SAMPLES, GENERATED
 from runtime_paths import BOOK_ARTIFACT_ROOT
 import shutil
@@ -130,7 +131,7 @@ def generate_audio(request: GenerateRequest):
     try:
         with ENGINE_LOCK:
             pipeline.generate_lecture(
-                lecture_text=request.text,
+                lecture_text=strip_cues(request.text),
                 reference_audio_path=reference_audio,
                 style_id=request.style_id,
                 output_path=output_path,

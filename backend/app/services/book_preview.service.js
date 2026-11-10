@@ -28,7 +28,8 @@ function signature(job) {
         try {const stat=require('fs').statSync(path.resolve(__dirname,'../..',reference));stamp=`${stat.size}:${stat.mtimeMs}`;}
         catch {stamp='missing';}
     }
-    return content.hash(JSON.stringify(['direct-preview-1',config.narrationVersion,job.voice_mode,job.selected_voice,
+    const version = job.draft?.speech?.experimental_cues === true ? 'direct-preview-2' : 'direct-preview-1';
+    return content.hash(JSON.stringify([version,config.narrationVersion,job.voice_mode,job.selected_voice,
         stamp,job.draft?.style,job.draft?.speech,job.draft?.sections]));
 }
 async function cacheExists(row) {
@@ -134,7 +135,7 @@ async function render(row,job,user) {
         heartbeat=setInterval(renew,10000);
         await guard();
         const draft=job.draft,voice=job.selected_voice;
-        const parts=draft.speech?speech.plan({provider:voice.provider||'edge',sections:draft.sections,speech:draft.speech,style:draft.style}).parts:content.narration('',draft.sections,draft.style);
+        const parts=draft.speech?speech.plan({sections:draft.sections,speech:draft.speech,style:draft.style}).parts:content.narration('',draft.sections,draft.style);
         let remaining=30;const ids=[];
         for(const part of parts.slice(0,8)) {
             if(remaining<=0)break;
@@ -147,8 +148,7 @@ async function render(row,job,user) {
                 reference_key:row.signature,...providers.settings(voice.provider||'edge',voice.preset,voice.model_revision),
                 reference_file:voice.file_path?path.basename(voice.file_path):undefined,
                 reference_audio_url:job.voice_mode==='clone'&&storage.isStorageKey(voice.file_path)?await storage.resolveUrl(voice.file_path):undefined,
-                rate_percent:sample.rate_percent,pitch_hz:sample.pitch_hz,pause_ms:sample.pause_ms,interactive:true,
-                ...(sample.experimental_cues ? {experimental_cues:true} : {})});
+                rate_percent:sample.rate_percent,pitch_hz:sample.pitch_hz,pause_ms:sample.pause_ms,interactive:true});
             localFile(row._id,audio.output_path);
             if(!Number.isFinite(audio.duration_seconds)||audio.duration_seconds<=0)throw problem(503,'Đoạn nghe thử thiếu thời lượng.');
             ids.push(id);remaining-=audio.duration_seconds;

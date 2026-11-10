@@ -1,21 +1,15 @@
 <script setup>
-import { computed, ref, watch, nextTick } from 'vue';
+import { computed, ref, watch } from 'vue';
 import api from '@/services/api';
 import UiIcon from './UiIcon.vue';
 import SpeechTools from './SpeechTools.vue';
 import SummaryDownload from './SummaryDownload.vue';
 import { notify, useFeedback, confirmAction } from '@/composables/useNotifications';
 import { translate } from '@/composables/useLocale';
-import { expressionCues, countCues, stripCues } from '@/services/expressions';
+import { stripCues } from '@/services/expressions';
 const props = defineProps({ job: { type: Object, required: true }, busy: Boolean, speechTarget: { type: String, default: '' }, simpleControls: Boolean });
 const emit = defineEmits(['updated', 'reload', 'duration-issue']);
 const texts = ref([]);
-const sectionInputs = [], activeSection = ref(0);
-const isOmniVoice = computed(() => props.job.selected_voice?.provider === 'omnivoice');
-const showCues = computed(() => isOmniVoice.value || (!props.simpleControls && props.job.selected_voice?.provider === 'vieneu'));
-const availableCues = computed(() => isOmniVoice.value ? expressionCues.filter(cue => cue.tag !== '[hắng giọng]') : expressionCues);
-const cuesEnabled = computed(() => showCues.value && speechOptions.value.experimental_cues === true);
-const cueCount = computed(() => texts.value.reduce((sum,text)=>sum+countCues(text),0));
 const speechOptions=ref({version:'speech-v1',profile:'auto',normalize:false,dictionary:[],rate_percent:0});
 const deliveries=ref([]),speechTools=ref(null);
 const instruction = ref('');
@@ -25,14 +19,17 @@ const selfApprove = ref(false);
 const error = useFeedback('error', { action: { label: 'Tải lại bản mới', run: () => emit('reload') } });
 const feedback = useFeedback('success');
 watch(() => [props.job._id, props.job.draft_revision], () => {
-  texts.value = props.job.draft.sections.map(section => section.delivery?.markup ?? section.text);
+  texts.value = props.job.draft.sections.map(section => stripCues(section.delivery?.markup ?? section.text));
   speechOptions.value=structuredClone(props.job.draft.speech ? {...JSON.parse(JSON.stringify(props.job.draft.speech)),rate_percent:props.job.draft.speech.rate_percent??0} : {version:'speech-v1',profile:'auto',normalize:false,dictionary:[],rate_percent:0});
-  if (!showCues.value) delete speechOptions.value.experimental_cues;
+  delete speechOptions.value.experimental_cues;
   deliveries.value=props.job.draft.sections.map(section=>({profile:section.delivery?.profile||'auto',paragraph_profiles:[...(section.delivery?.paragraph_profiles||[])]}));
   error.value = ''; feedback.value = '';
   selfApprove.value=false;
 }, { immediate: true });
-const textDirty=computed(()=>texts.value.some((text,i)=>text!==(props.job.draft.sections[i]?.delivery?.markup??props.job.draft.sections[i]?.text)));
+const textDirty = computed(() => texts.value.some((text, i) => {
+  const section = props.job.draft.sections[i];
+  return stripCues(text) !== stripCues(section?.delivery?.markup ?? section?.text ?? '');
+}));
 const canSelfApprove=computed(()=>props.job.draft.user_edited || textDirty.value);
 const previewPending=computed(()=>props.job.draft.preview_request?.status==='processing');
 watch(()=>props.job.draft.preview_request?.status,(status,previous)=>{
@@ -48,22 +45,7 @@ const units = text => stripCues(text).split(/\s+/u).filter(Boolean).length;
 const estimatedSeconds = computed(() => speechTools.value?.estimatedSeconds ?? Math.round((units(props.job.draft.introduction || '') + texts.value.reduce((sum, text) => sum + units(text), 0))
   * 60 / (props.job.draft.reading_rate ? props.job.draft.reading_rate.units_per_minute * (1 + (speechOptions.value.rate_percent ?? 0) / 100) : props.job.draft.units_per_minute || 300) + texts.value.reduce((sum, text) => sum + text.split(/\n\s*\n/u).filter(Boolean).length, 0) * .45));
 const durationMismatch = computed(() => Math.abs(estimatedSeconds.value - props.job.target_minutes * 60) > props.job.target_minutes * 60 * .15);
-const valid = computed(() => texts.value.every(text => stripCues(text).trim() && text.length <= 16000) && texts.value.reduce((sum, text) => sum + text.length, 0) <= 280000 && (!cuesEnabled.value || cueCount.value <= 20));
-function toggleCues(enabled) {
-  const { experimental_cues, ...rest } = speechOptions.value;
-  speechOptions.value = enabled ? {...rest,experimental_cues:true} : rest;
-}
-function removeCues() { texts.value=texts.value.map(stripCues);toggleCues(false); }
-async function insertCue(tag) {
-  if (locked.value || !cuesEnabled.value || cueCount.value>=20) return;
-  const index=Math.min(activeSection.value,texts.value.length-1), input=sectionInputs[index];
-  const text=texts.value[index], position=input?.selectionEnd ?? text.length;
-  const before=text.slice(0,position), after=text.slice(position);
-  const inserted=(before&&!/\s$/u.test(before)?' ':'')+tag+(after&&!/^[\s.,!?;:]/u.test(after)?' ':'');
-  if (text.length+inserted.length>16000) { notify('Mục này đã đạt giới hạn ký tự.',{kind:'error'});return; }
-  texts.value[index]=before+inserted+after;
-  await nextTick();input?.focus();input?.setSelectionRange(position+inserted.length,position+inserted.length);
-}
+const valid = computed(() => texts.value.every(text => stripCues(text).trim() && text.length <= 16000) && texts.value.reduce((sum, text) => sum + text.length, 0) <= 280000);
 const time = value => `${Math.floor(value / 60)}:${String(value % 60).padStart(2, '0')}`;
 async function persist() {
   if (!dirty.value && props.job.draft.speech) return props.job;
@@ -136,15 +118,9 @@ defineExpose({ dirty, ratePercent, working });
       <summary>{{ $t('Những điểm cần xem lại') }}</summary><ul><li v-for="(note, i) in job.draft.verification_notes" :key="i">{{ note }}</li></ul>
     </details>
     <details class="draft-intro"><summary>{{ $t('Lời giới thiệu được thêm vào âm thanh') }}</summary><p>{{ job.draft.introduction }}</p></details>
-    <div v-if="showCues" class="draft-expressions">
-      <label class="expression-toggle"><input type="checkbox" :checked="cuesEnabled" :disabled="locked" @change="toggleCues($event.target.checked)" /><strong>{{ $t('Biểu cảm thử nghiệm') }}</strong><span class="pill">{{ cueCount }}/20</span></label>
-      <p>{{ $t('Chọn vị trí trong ô nội dung rồi bấm thẻ. Hiệu quả tùy giọng; hãy nghe thử trước.') }}</p>
-      <div class="expression-buttons"><button v-for="cue in availableCues" :key="cue.tag" type="button" class="btn small" :disabled="locked || !cuesEnabled || cueCount>=20" :aria-label="$t('Chèn thẻ {0}',[$t(cue.label)])" @mousedown.prevent @click="insertCue(cue.tag)">{{ $t(cue.label) }}</button><small>{{ $t('Mục {0}',[Math.min(activeSection,texts.length-1)+1]) }}</small><button v-if="cueCount" type="button" class="text-button" :disabled="locked" @click="removeCues">{{ $t('Gỡ hết thẻ') }}</button></div>
-      <small>{{ $t('Tắt tùy chọn để đọc bình thường. Các thẻ được giữ lại nhưng không phát âm; thẻ không xuất hiện trong phụ đề.') }}</small>
-    </div>
     <div v-for="(section, i) in job.draft.sections" :key="`${job._id}-${i}`" class="field draft-section">
       <label :for="`draft-section-${i}`">{{ i + 1 }}. {{ section.title }}</label>
-      <textarea :id="`draft-section-${i}`" :ref="element=>sectionInputs[i]=element" v-model="texts[i]" class="input draft-text" :disabled="locked" maxlength="16000" :aria-label="$t('Nội dung mục {0}', [i + 1])" @focus="activeSection=i" />
+      <textarea :id="`draft-section-${i}`" v-model="texts[i]" class="input draft-text" :disabled="locked" maxlength="16000" :aria-label="$t('Nội dung mục {0}', [i + 1])" />
       <small>{{ $t('Phần nguồn tham chiếu: {0}', [(section.source_ids || []).map(id => id + 1).join(', ')]) }}</small>
     </div>
     <Teleport :to="speechTarget || 'body'" :disabled="!speechTarget" defer>
@@ -190,13 +166,6 @@ defineExpose({ dirty, ratePercent, working });
 .draft-intro { margin: 16px 0; color: var(--muted); line-height: 1.8; }
 .draft-preview { margin-top: 20px; }
 .draft-footnote { margin-top: 20px; }
-.draft-expressions { padding:16px;border:1px solid var(--accent-line);border-radius:12px;background:var(--accent-soft);margin:20px 0; }
-.expression-toggle,.expression-buttons { display:flex;align-items:center;gap:9px;flex-wrap:wrap; }
-.expression-toggle input { accent-color:var(--accent); }
-.draft-expressions p,.draft-expressions>small { font-size:12px;color:var(--text-body);line-height:1.7; }
-.expression-buttons { margin:10px 0; }
-.expression-buttons small { color:var(--muted); }
-.expression-buttons .text-button { font-size:11px;margin-left:auto; }
 .draft-duration-warning { display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;background:var(--warning-bg);color:var(--warning); }
 .draft-self-approve { display:flex; align-items:flex-start; gap:10px; margin-top:20px; line-height:1.6; }
 .draft-self-approve input { margin-top:6px; accent-color:var(--accent); }

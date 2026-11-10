@@ -19,7 +19,7 @@ from core_tts.base_tts import EdgeTTSForbiddenError, EdgeTTSCancelled
 from core_tts.edge_prefetch import EdgePrefetch, request_signature
 from core_tts.audio_files import concatenate, duration, normalize, normalize_reference, append_silence, preview_clip
 from core_tts.model_lock import ModelLock
-from core_tts.experimental_cues import validate as validate_cues
+from core_tts.experimental_cues import strip_cues
 from runtime_paths import BACKEND_ROOT, BOOK_ARTIFACT_ROOT, SAMPLES
 
 ENGINE_LOCK = ModelLock()
@@ -48,7 +48,6 @@ class PartRequest(BaseModel):
     preset: Optional[str] = Field(default=None, max_length=80)
     model_revision: Optional[str] = None
     interactive: bool = False
-    experimental_cues: bool = False
 
 
 class PrefetchSession(BaseModel):
@@ -206,6 +205,7 @@ def register_book_routes(app, get_pipeline):
     def prepare_base(request):
         # Exclude the transport/session field from restart-safe part signatures.
         part = PartRequest(**request.model_dump(exclude={'session_id'}))
+        part.text = strip_cues(part.text)
         try:
             with prefetch.activity(part.job_id, request.session_id) as cancel, prefetch.part_lock(part.job_id, part.part_id, cancel):
                 directory = job_dir(part.job_id)
@@ -239,12 +239,7 @@ def register_book_routes(app, get_pipeline):
     @app.post('/book/part')
     def make_part(request: PartRequest, x_book_engine_secret: Optional[str] = Header(default=None)):
         authorize(x_book_engine_secret)
-        if request.experimental_cues and request.provider not in ('vieneu', 'omnivoice'):
-            raise HTTPException(400, 'Biểu cảm thử nghiệm chỉ dùng cho VieNeu-TTS và OmniVoice.')
-        try:
-            request.text = validate_cues(request.text, request.experimental_cues, request.provider)
-        except ValueError as error:
-            raise HTTPException(400, str(error)) from None
+        request.text = strip_cues(request.text)
         with prefetch.activity(request.job_id) as cancel, prefetch.part_lock(request.job_id, request.part_id, cancel):
             directory = job_dir(request.job_id)
             output = directory / f'{request.part_id}.wav'

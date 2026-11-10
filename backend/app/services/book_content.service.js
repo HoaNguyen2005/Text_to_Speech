@@ -14,10 +14,10 @@ function checkedText(text, limit = 14000) {
     if (language.missingDiacritics(normalized)) throw badRequest('Nội dung còn đoạn thiếu dấu tiếng Việt. Hãy viết đầy đủ dấu trước khi lưu.');
     return normalized;
 }
-function editedDraft(previous, texts, preferences, provider) {
+function editedDraft(previous, texts, preferences) {
     if (!preferences && previous.speech) preferences = { speech: previous.speech, deliveries: previous.sections.map(section=>section.delivery||{}) };
     if (!Array.isArray(texts) || texts.length !== previous.sections.length) throw badRequest('Số mục không khớp bản tóm tắt. Hãy tải lại yêu cầu.');
-    const planned = preferences ? speech.plan({ introduction: previous.introduction || '', style: previous.style, provider,
+    const planned = preferences ? speech.plan({ introduction: previous.introduction || '', style: previous.style,
         speech: preferences.speech, sections: previous.sections.map((section,i)=>({ ...section, text: texts[i], delivery: { ...(preferences.deliveries?.[i] || {}), markup: texts[i] } })) }) : null;
     const sections = previous.sections.map((section, i) => ({ ...section, ...(planned?.sections[i] || {}), text: checkedText(planned ? planned.sections[i].text : texts[i]) }));
     if (sections.reduce((sum, section) => sum + section.text.length, 0) > 250000) throw badRequest('Bản tóm tắt vượt 250.000 ký tự.');
@@ -78,7 +78,7 @@ function narration(intro, sections, style) {
         return result;
     };
     const add = (text, rate, pitch, pause) => {
-        const chunks = split(text);
+        const chunks = split(speech.stripCues(text));
         chunks.forEach((chunk, i) => {
             const chunkPitch = chunks.length > 1 && i === chunks.length - 1 ? Math.max(-10, pitch - 1) : pitch;
             parts.push({ text: chunk, rate_percent: rate, pitch_hz: chunkPitch, pause_ms: i === chunks.length - 1 ? pause : 180 });

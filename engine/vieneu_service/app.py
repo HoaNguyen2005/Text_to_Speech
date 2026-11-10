@@ -48,7 +48,6 @@ class Synthesis(BaseModel):
     preset: str | None = Field(default=None, max_length=80)
     reference_path: str | None = None
     model_revision: str
-    experimental_cues: bool = False
 
 
 @app.get('/health/ready')
@@ -64,9 +63,10 @@ def synthesize(request: Synthesis, x_book_engine_secret: str | None = Header(def
         raise HTTPException(403, 'Khóa nội bộ VieNeu không hợp lệ.')
     if request.model_revision != IDENTITY:
         raise HTTPException(409, 'Phiên bản VieNeu không khớp yêu cầu. Hãy kiểm tra cấu hình.')
-    cues = re.findall(r'\[(?:cười|thở dài|hắng giọng)\]', request.text, re.I)
-    if (cues and not request.experimental_cues) or len(cues)>20 or re.search(r'<\|emotion_|\[(?:laugh|sigh|throat|whisper|thì thầm|chuckle|clear throat|khóc)\]',request.text,re.I):
-        raise HTTPException(400, 'Thẻ biểu cảm không hợp lệ hoặc chưa bật tùy chọn thử nghiệm.')
+    text = re.sub(r'<\|emotion_[\w-]+\|>|\[(?:cười|thở dài|hắng giọng|laugh(?:ter)?|sigh|throat|whisper|thì thầm|chuckle|clear throat|khóc)\]',
+                  ' ', request.text, flags=re.I).strip()
+    if not text:
+        raise HTTPException(400, 'Nội dung đọc trống.')
     directory = (ROOT / request.job_id).resolve()
     if directory.parent != ROOT:
         raise HTTPException(400, 'Mã công việc không hợp lệ.')
@@ -86,8 +86,7 @@ def synthesize(request: Synthesis, x_book_engine_secret: str | None = Header(def
         temporary = directory / f'{request.part_id}.vieneu.tmp.wav'
         started = time.perf_counter()
         try:
-            # Inline cues are supplied only by the opt-in editor; do not invent cues.
-            audio = model.infer(text=request.text, apply_watermark=False, max_chars=256, batch_size=4, **kwargs)
+            audio = model.infer(text=text, apply_watermark=False, max_chars=256, batch_size=4, **kwargs)
             if audio is None or len(audio) == 0:
                 raise ValueError('Empty synthesis')
             model.save(audio, str(temporary))

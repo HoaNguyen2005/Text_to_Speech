@@ -910,6 +910,10 @@ Mốc Phase 2–3/giao diện ngày 13/10 là `9f5791c`; mốc sách nói dài +
 - Engine kiểm tra dịch vụ OmniVoice trước khi báo hỗ trợ cho backend. Script có thể xem trạng thái, đọc log và dừng riêng OmniVoice.
 - Đã kiểm tra trên Windows bằng CPU. Engine nhận ra OmniVoice khi dịch vụ bật, báo mất OmniVoice khi dịch vụ dừng và dịch vụ trả HTTP 403 khi gọi tạo âm thanh thiếu khóa. Cần kiểm tra tạo âm thanh trên RTX 4060 sau khi đồng bộ mã.
 
+### 10/11/2026 — Gỡ thẻ biểu cảm khỏi luồng tạo âm thanh
+
+- Bỏ nút chèn thẻ khỏi bản duyệt và lọc các thẻ còn trong bản nháp cũ khi nghe thử hoặc tạo audio. Bản nghe thử có biểu cảm đã lưu sẽ được tạo mới khi người dùng bấm nghe thử.
+
 ## 5. Việc Tiếp Theo / TODO
 
 **Phase 2 local:**
