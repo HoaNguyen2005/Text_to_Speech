@@ -27,6 +27,7 @@ const ratePercent = ref(0);
 const durationInput = ref(null), sourceInput = ref(null), sourceDurationIssue = ref(null);
 const validDuration = computed(() => Number.isInteger(targetMinutes.value) && targetMinutes.value >= 1 && targetMinutes.value <= 59);
 const ttsProvider = ref('edge');
+const providerNames = { edge: 'Edge + OpenVoice', vieneu: 'VieNeu-TTS', omnivoice: 'OmniVoice' };
 const selectedVoiceId = ref('');
 const voiceChoices = ref({ standard: [], clone: [] });
 const loadingVoices = ref(false);
@@ -411,7 +412,7 @@ onBeforeUnmount(() => { disposed = true; ++selectionVersion; clearTimeout(timer)
         </div>
         <div v-if="sourceDurationIssue" class="book-source-duration" role="alert"><small>{{ sourceDurationIssue.max_minutes ? $t('Nguồn hiện tại gợi ý tối đa khoảng {0} phút.',[sourceDurationIssue.max_minutes]) : $t('Hãy bổ sung nội dung nguồn để tạo bản tóm tắt từ 1 phút.') }}</small><small>{{ $t('Sau khi điều chỉnh, bấm Tạo bản tóm tắt để gửi yêu cầu mới.') }}</small><button v-if="sourceDurationIssue.max_minutes" type="button" class="btn small" :disabled="busy" @click="useSuggestedDuration">{{ $t('Chọn {0} phút',[sourceDurationIssue.max_minutes]) }}</button><button v-else type="button" class="btn small" :disabled="busy" @click="focusSource">{{ $t('Bổ sung nội dung') }}</button></div>
         <div class="book-voice-settings">
-          <div class="field"><label for="book-tts-provider">{{ $t('Bộ tạo giọng') }}</label><select id="book-tts-provider" v-model="ttsProvider" class="input" :disabled="busy || loadingVoices"><option value="vieneu">VieNeu-TTS</option><option value="edge">Edge-TTS + OpenVoice</option></select></div>
+          <div class="field"><label for="book-tts-provider">{{ $t('Bộ tạo giọng') }}</label><select id="book-tts-provider" v-model="ttsProvider" class="input" :disabled="busy || loadingVoices"><option value="vieneu">VieNeu-TTS</option><option value="edge">Edge-TTS + OpenVoice</option><option value="omnivoice">OmniVoice</option></select></div>
           <div class="field book-voice-choice">
             <label>{{ $t('Chọn giọng đọc') }} <span aria-hidden="true">*</span></label>
             <VoicePicker v-model="selectedVoiceId" :voices="availableVoices" :provider="ttsProvider" :loading="loadingVoices" :disabled="busy||!!voiceError" @refresh="fetchVoiceChoices" />
@@ -430,7 +431,7 @@ onBeforeUnmount(() => { disposed = true; ++selectionVersion; clearTimeout(timer)
         <div class="panel-heading"><h2 id="book-review-settings-title"><UiIcon name="headphones" />{{ $t('Duyệt & âm thanh') }}</h2></div>
         <div class="book-locked-config">
           <strong>{{ selected?.title || bookTitle }}</strong>
-          <span>{{ selected?.target_minutes || targetMinutes }} {{ $t('phút') }} · {{ (selected?.selected_voice?.provider || ttsProvider) === 'vieneu' ? 'VieNeu-TTS' : 'Edge + OpenVoice' }}</span>
+          <span>{{ selected?.target_minutes || targetMinutes }} {{ $t('phút') }} · {{ providerNames[selected?.selected_voice?.provider || ttsProvider] || providerNames.edge }}</span>
           <span>{{ selected?.selected_voice?.name || chosenVoice?.name }}</span>
         </div>
         <div id="book-speech-settings" />

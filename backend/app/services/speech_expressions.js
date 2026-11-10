@@ -1,4 +1,4 @@
-// Only these three SDK-supported cues are exposed by the experimental UI.
+// The editor stores Vietnamese cues. Each engine handles its supported subset.
 const pattern = () => /\[(cười|thở dài|hắng giọng)\]/giu;
 const strip = text => text.replace(pattern(), ' ').replace(/[ \t]+/gu, ' ').replace(/ +([.,!?;:])/gu, '$1').trim();
 const count = text => [...text.matchAll(pattern())].length;
@@ -17,7 +17,7 @@ function spoken(text, transform) {
 }
 function clip(text, limit) {
     if (!count(text)) return text.split(/\s+/u).filter(Boolean).slice(0,limit).join(' ');
-    const tokens = text.match(/\[(?:cười|thở dài|hắng giọng)\]|\S+/giu) || [];
+    const tokens = text.replace(pattern(), ' $& ').match(/\[(?:cười|thở dài|hắng giọng)\]|\S+/giu) || [];
     const kept=[];let words=0;
     for (const token of tokens) {
         const cue=/^\[(?:cười|thở dài|hắng giọng)\]$/iu.test(token);

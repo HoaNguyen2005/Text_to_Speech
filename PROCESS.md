@@ -4,7 +4,7 @@
 > Mỗi lần làm việc mới trên dự án, cập nhật thêm mục [4. Nhật ký làm việc](#4-nhật-ký-làm-việc)
 > và [5. Việc tiếp theo](#5-việc-tiếp-theo--todo).
 >
-> **Cập nhật lần cuối:** 29/10/2026
+> **Cập nhật lần cuối:** 10/11/2026
 
 ---
 
@@ -881,6 +881,34 @@ Mốc Phase 2–3/giao diện ngày 13/10 là `9f5791c`; mốc sách nói dài +
 - Giữ chế độ CUDA chạy trực tiếp và worker nền từ GitHub. Hướng dẫn GPU bổ sung điều kiện chạy trực tiếp trên Windows và cách xem log worker.
 - Dùng chung nhánh lấy vai trò từ PostgreSQL khi worker thiếu cấu hình quản trị Keycloak hoặc Keycloak tạm thời không khả dụng. Vẫn kiểm tra tài khoản vô hiệu hóa khi Keycloak phản hồi.
 - Lệnh chuẩn bị và cả hai chế độ tunnel chỉ hiển thị URL, khóa được đọc từ cấu hình riêng để đăng ký Engine.
+
+### 07/11/2026 — Cấu hình thử OmniVoice cho laptop CPU và máy bàn CUDA
+
+- `deploy/try_omnivoice.py` nhận `--device auto|cpu|cuda`; mặc định tự chọn CUDA khi driver NVIDIA hoạt động, còn lại CPU.
+- Môi trường riêng theo phiên bản Python và thiết bị. CPU cài PyTorch FP32, CUDA cài bản cu128 và dùng FP16. OmniVoice cố định 0.2.1.
+- Chế độ CUDA báo lỗi khi PyTorch không nhận GPU. File WAV được kiểm tra hữu hạn, mức tín hiệu và số frame trước khi công bố kết quả.
+- Hướng dẫn chạy và nơi lưu WAV có trong `engine/README.md`. Đã kiểm tra các nhánh chọn thiết bị và sinh WAV CPU thành công trên laptop: âm thanh khoảng 5 giây, sinh 34,8 giây; nạp lần đầu kèm tải model 77,5 giây. `pip check` không có phụ thuộc hỏng.
+- Script độc lập vẫn dùng để đo tốc độ theo thiết bị.
+
+### 07/11/2026 — Tích hợp OmniVoice vào Docker và TTS Engine
+
+- Stack laptop thêm service OmniVoice CPU. Stack GPU Node thêm image CUDA 12.8 và cấp GPU qua Compose. Cả hai dùng volume cache model riêng.
+- Engine gọi OmniVoice qua cổng nội bộ 8002, xác thực bằng khóa Engine và dùng chung thư mục audio. OmniVoice nạp model theo yêu cầu đầu tiên, dùng Whisper Base để chép lời mẫu và lưu hồ sơ giọng trong bộ nhớ.
+- Thêm OmniVoice vào Bài giảng và Sách nói, dùng giọng hệ thống hoặc mẫu được cấp quyền. Tốc độ đi qua tham số của model, khoảng nghỉ và ghép file dùng luồng Engine hiện có.
+- Đã build các image CPU, kiểm tra từ `/book/part` đến WAV 24 kHz và ghép MP3, khoảng nghỉ, thử lại từ cache và từ chối yêu cầu thiếu khóa. Web local đã phục vụ bản mới. Cấu hình CUDA đã qua kiểm tra Compose, chờ chạy trên RTX 4060.
+- Giới hạn OmniVoice CPU ở 4 luồng. Với cache model trên đĩa, lượt giọng chuẩn tạo 2,81 giây audio trong 93,9 giây sau khi khởi động container. Lượt clone kế tiếp ở tốc độ +15% tạo 2,49 giây audio trong 88,7 giây.
+
+### 10/11/2026 — Thử thẻ biểu cảm OmniVoice trong Sách nói
+
+- Chọn OmniVoice khi tạo yêu cầu. Trong bản duyệt, bật **Biểu cảm thử nghiệm**, đặt con trỏ vào văn bản và chèn **Cười** hoặc **Thở dài**. Tối đa 20 thẻ mỗi bản đọc.
+- Backend giữ thẻ trong bản chỉnh sửa và bỏ thẻ khỏi nội dung dùng để đối chiếu nguồn, tải bản tóm tắt và tạo phụ đề. Engine chuyển thẻ sang cú pháp OmniVoice khi nghe thử hoặc tạo âm thanh.
+- Docker local đã chạy bản mới. Kiểm tra với hai thẻ trên CPU tạo được WAV 3,22 giây, ghép MP3 và xuất nghe thử trong khoảng 118 giây cho cả lượt.
+
+### 10/11/2026 — OmniVoice CUDA chạy trực tiếp trên Windows
+
+- Script trạm GPU tái sử dụng môi trường OmniVoice CUDA đã cài khi chạy thử và bổ sung gói để chạy dịch vụ HTTP. Engine kết nối với OmniVoice qua cổng nội bộ 8002, còn Tunnel tiếp tục trỏ tới Engine ở cổng 8000.
+- Engine kiểm tra dịch vụ OmniVoice trước khi báo hỗ trợ cho backend. Script có thể xem trạng thái, đọc log và dừng riêng OmniVoice.
+- Đã kiểm tra trên Windows bằng CPU. Engine nhận ra OmniVoice khi dịch vụ bật, báo mất OmniVoice khi dịch vụ dừng và dịch vụ trả HTTP 403 khi gọi tạo âm thanh thiếu khóa. Cần kiểm tra tạo âm thanh trên RTX 4060 sau khi đồng bộ mã.
 
 ## 5. Việc Tiếp Theo / TODO
 

@@ -190,7 +190,7 @@ const handleFileUpload = (event) => {
       <section class="panel">
         <div class="panel-heading"><h2><UiIcon name="mic" />{{ $t("Thiết lập giọng đọc") }}</h2></div>
         <div class="settings-fields">
-          <div class="field"><label for="lecture-tts-provider">{{ $t('Bộ tạo giọng') }}</label><select id="lecture-tts-provider" v-model="ttsProvider" class="input" :disabled="speechBusy"><option value="vieneu">VieNeu-TTS</option><option value="edge">Edge-TTS + OpenVoice</option></select></div>
+          <div class="field"><label for="lecture-tts-provider">{{ $t('Bộ tạo giọng') }}</label><select id="lecture-tts-provider" v-model="ttsProvider" class="input" :disabled="speechBusy"><option value="vieneu">VieNeu-TTS</option><option value="edge">Edge-TTS + OpenVoice</option><option value="omnivoice">OmniVoice</option></select></div>
           <div class="field"><label>{{ $t("Giọng đọc") }}</label><VoicePicker ref="voicePicker" v-model="teacherId" :voices="teachers" :provider="ttsProvider" :loading="loadingVoices" :disabled="speechBusy" @refresh="fetchVoices" /></div>
         </div>
         <div class="settings-actions"><button type="button" class="btn full" :disabled="speechBusy || loadingVoices || !text.trim() || !chosenTeacher" @click="previewLecture"><UiIcon name="headphones" />{{ $t('Nghe thử tối đa 30 giây') }}</button><button type="button" class="btn primary full" @click="generateLecture" :disabled="speechBusy || loadingVoices || !text.trim() || !chosenTeacher"><span v-if="loading" class="spinner" aria-hidden="true"></span><UiIcon v-else name="wave" />{{ loading ? $t("Đang tạo âm thanh…") : $t("Tạo âm thanh") }}</button><p class="settings-hint">{{ $t("Kết quả được lưu trong lịch sử của bạn.") }}</p></div>

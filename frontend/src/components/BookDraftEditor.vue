@@ -11,8 +11,10 @@ const props = defineProps({ job: { type: Object, required: true }, busy: Boolean
 const emit = defineEmits(['updated', 'reload', 'duration-issue']);
 const texts = ref([]);
 const sectionInputs = [], activeSection = ref(0);
-const isVieNeu = computed(() => props.job.selected_voice?.provider === 'vieneu');
-const cuesEnabled = computed(() => isVieNeu.value && speechOptions.value.experimental_cues === true);
+const isOmniVoice = computed(() => props.job.selected_voice?.provider === 'omnivoice');
+const showCues = computed(() => isOmniVoice.value || (!props.simpleControls && props.job.selected_voice?.provider === 'vieneu'));
+const availableCues = computed(() => isOmniVoice.value ? expressionCues.filter(cue => cue.tag !== '[hắng giọng]') : expressionCues);
+const cuesEnabled = computed(() => showCues.value && speechOptions.value.experimental_cues === true);
 const cueCount = computed(() => texts.value.reduce((sum,text)=>sum+countCues(text),0));
 const speechOptions=ref({version:'speech-v1',profile:'auto',normalize:false,dictionary:[],rate_percent:0});
 const deliveries=ref([]),speechTools=ref(null);
@@ -25,9 +27,7 @@ const feedback = useFeedback('success');
 watch(() => [props.job._id, props.job.draft_revision], () => {
   texts.value = props.job.draft.sections.map(section => section.delivery?.markup ?? section.text);
   speechOptions.value=structuredClone(props.job.draft.speech ? {...JSON.parse(JSON.stringify(props.job.draft.speech)),rate_percent:props.job.draft.speech.rate_percent??0} : {version:'speech-v1',profile:'auto',normalize:false,dictionary:[],rate_percent:0});
-  // Expressions are paused in the simplified book workflow. Retain old markup
-  // positions, but save the disabled setting before preview or full synthesis.
-  if (props.simpleControls) delete speechOptions.value.experimental_cues;
+  if (!showCues.value) delete speechOptions.value.experimental_cues;
   deliveries.value=props.job.draft.sections.map(section=>({profile:section.delivery?.profile||'auto',paragraph_profiles:[...(section.delivery?.paragraph_profiles||[])]}));
   error.value = ''; feedback.value = '';
   selfApprove.value=false;
@@ -136,10 +136,10 @@ defineExpose({ dirty, ratePercent, working });
       <summary>{{ $t('Những điểm cần xem lại') }}</summary><ul><li v-for="(note, i) in job.draft.verification_notes" :key="i">{{ note }}</li></ul>
     </details>
     <details class="draft-intro"><summary>{{ $t('Lời giới thiệu được thêm vào âm thanh') }}</summary><p>{{ job.draft.introduction }}</p></details>
-    <div v-if="isVieNeu && !simpleControls" class="draft-expressions">
+    <div v-if="showCues" class="draft-expressions">
       <label class="expression-toggle"><input type="checkbox" :checked="cuesEnabled" :disabled="locked" @change="toggleCues($event.target.checked)" /><strong>{{ $t('Biểu cảm thử nghiệm') }}</strong><span class="pill">{{ cueCount }}/20</span></label>
       <p>{{ $t('Chọn vị trí trong ô nội dung rồi bấm thẻ. Hiệu quả tùy giọng; hãy nghe thử trước.') }}</p>
-      <div class="expression-buttons"><button v-for="cue in expressionCues" :key="cue.tag" type="button" class="btn small" :disabled="locked || !cuesEnabled || cueCount>=20" :aria-label="$t('Chèn thẻ {0}',[$t(cue.label)])" @mousedown.prevent @click="insertCue(cue.tag)">{{ $t(cue.label) }}</button><small>{{ $t('Mục {0}',[Math.min(activeSection,texts.length-1)+1]) }}</small><button v-if="cueCount" type="button" class="text-button" :disabled="locked" @click="removeCues">{{ $t('Gỡ hết thẻ') }}</button></div>
+      <div class="expression-buttons"><button v-for="cue in availableCues" :key="cue.tag" type="button" class="btn small" :disabled="locked || !cuesEnabled || cueCount>=20" :aria-label="$t('Chèn thẻ {0}',[$t(cue.label)])" @mousedown.prevent @click="insertCue(cue.tag)">{{ $t(cue.label) }}</button><small>{{ $t('Mục {0}',[Math.min(activeSection,texts.length-1)+1]) }}</small><button v-if="cueCount" type="button" class="text-button" :disabled="locked" @click="removeCues">{{ $t('Gỡ hết thẻ') }}</button></div>
       <small>{{ $t('Tắt tùy chọn để đọc bình thường. Các thẻ được giữ lại nhưng không phát âm; thẻ không xuất hiện trong phụ đề.') }}</small>
     </div>
     <div v-for="(section, i) in job.draft.sections" :key="`${job._id}-${i}`" class="field draft-section">

@@ -41,7 +41,7 @@ async function engine(endpoint, payload, guard = async () => {}) {
                     method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Book-Engine-Secret': config.engineSecret },
                     body: JSON.stringify(payload), signal: AbortSignal.timeout(config.engineTimeout),
                 }),
-                { jobId: payload?.job_id }
+                { jobId: payload?.job_id, provider: payload?.provider }
             );
             const result = await response.json().catch(() => ({}));
             if (!response.ok) {

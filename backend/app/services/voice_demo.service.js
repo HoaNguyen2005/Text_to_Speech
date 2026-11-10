@@ -13,7 +13,7 @@ async function engine(endpoint,payload) {
             body:JSON.stringify(payload),
             signal:AbortSignal.timeout(config.engineTimeout),
         }),
-        { jobId: payload?.job_id }
+        { jobId: payload?.job_id, provider: payload?.provider }
     );
     const result=await response.json().catch(()=>({}));
     if(!response.ok)throw problem(503,'Không tạo được giọng nghe mẫu. Hãy thử lại.');

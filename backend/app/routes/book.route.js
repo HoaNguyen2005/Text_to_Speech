@@ -153,8 +153,8 @@ router.patch('/:id/draft', async (req, res) => {
     const current = req.bookJob;
     if (current.status !== 'review' || current.workflow_version !== 'review-v1' || !current.draft) return res.status(409).json({ error: 'Bản tóm tắt chưa sẵn sàng để chỉnh sửa.' });
     if (!Number.isInteger(req.body?.revision) || req.body.revision !== current.draft_revision) return res.status(409).json({ error: 'Bản tóm tắt đã đổi ở phiên khác. Hãy tải lại trước khi sửa.' });
-    speech.assertProvider(req.body.speech || current.draft.speech,current.selected_voice?.provider || 'edge');
-    const draft = content.editedDraft(current.draft, req.body.sections, req.body.speech ? { speech: req.body.speech, deliveries: req.body.deliveries } : undefined);
+    const preferences = req.body.speech ? { speech: req.body.speech, deliveries: req.body.deliveries } : undefined;
+    const draft = content.editedDraft(current.draft, req.body.sections, preferences, current.selected_voice?.provider || 'edge');
     if (draft === current.draft) return res.json(await present(current));
     if (draft.reading_rate) draft.duration_budget = duration.budget(current.source, draft.introduction || '', current.target_minutes,
         draft.reading_rate.units_per_minute, draft.speech?.rate_percent ?? 0, draft.sections.length);
@@ -171,7 +171,7 @@ for (const action of ['revise', 'preview', 'audio']) router.post(`/:id/${action}
     if (!Number.isInteger(revision) || revision !== current.draft_revision) return res.status(409).json({ error: 'Bản tóm tắt đã đổi ở phiên khác. Hãy tải lại trước khi tiếp tục.' });
     speech.assertProvider(current.draft.speech,current.selected_voice?.provider || 'edge');
     if (['preview','audio'].includes(action) && current.draft.speech) {
-        const plan = speech.plan({ introduction: current.draft.introduction || '', sections: current.draft.sections, speech: current.draft.speech, style: current.draft.style });
+        const plan = speech.plan({ introduction: current.draft.introduction || '', sections: current.draft.sections, speech: current.draft.speech, style: current.draft.style, provider: current.selected_voice?.provider || 'edge' });
         if (req.body.speech_plan_hash !== plan.hash) return res.status(409).json({ error: 'Nội dung hoặc tốc độ vừa thay đổi. Hãy thử lại.' });
     }
     if(action==='preview') {

@@ -44,7 +44,7 @@ class PartRequest(BaseModel):
     rate_percent: Optional[int] = Field(default=None, ge=-25, le=50)
     pitch_hz: Optional[int] = Field(default=None, ge=-10, le=10)
     pause_ms: int = Field(default=0, ge=0, le=2000)
-    provider: Literal['edge', 'vieneu'] = 'edge'
+    provider: Literal['edge', 'vieneu', 'omnivoice'] = 'edge'
     preset: Optional[str] = Field(default=None, max_length=80)
     model_revision: Optional[str] = None
     interactive: bool = False
@@ -239,10 +239,10 @@ def register_book_routes(app, get_pipeline):
     @app.post('/book/part')
     def make_part(request: PartRequest, x_book_engine_secret: Optional[str] = Header(default=None)):
         authorize(x_book_engine_secret)
-        if request.experimental_cues and request.provider != 'vieneu':
-            raise HTTPException(400, 'Biểu cảm thử nghiệm chỉ dùng cho VieNeu.')
+        if request.experimental_cues and request.provider not in ('vieneu', 'omnivoice'):
+            raise HTTPException(400, 'Biểu cảm thử nghiệm chỉ dùng cho VieNeu-TTS và OmniVoice.')
         try:
-            request.text = validate_cues(request.text, request.experimental_cues)
+            request.text = validate_cues(request.text, request.experimental_cues, request.provider)
         except ValueError as error:
             raise HTTPException(400, str(error)) from None
         with prefetch.activity(request.job_id) as cancel, prefetch.part_lock(request.job_id, request.part_id, cancel):
@@ -281,6 +281,17 @@ def register_book_routes(app, get_pipeline):
                         from core_tts.vieneu_client import synthesize
                         sample = reference(request, directory) if request.mode == 'clone' else None
                         synthesize(request, sample, temporary, SECRET)
+                    elif request.provider == 'omnivoice':
+                        from core_tts.omnivoice_client import synthesize
+                        if request.mode == 'standard':
+                            filename = f'{request.gender}.wav'
+                            voice_request = request.model_copy(update={
+                                'reference_file': filename, 'reference_audio_url': None,
+                                'reference_key': f'omnivoice-standard-{filename}',
+                            })
+                        else:
+                            voice_request = request
+                        synthesize(request, reference(voice_request, directory), temporary, SECRET)
                     elif request.mode == 'clone':
                         pipeline = get_pipeline()
                         if pipeline is None:
@@ -319,7 +330,10 @@ def register_book_routes(app, get_pipeline):
             except Exception as error:
                 # Do not include presigned URLs or arbitrary internal exception data in the response.
                 print(f'[BOOK PART ERROR] {type(error).__name__}')
-                message = 'Không tạo được đoạn âm thanh bằng VieNeu. Kiểm tra dịch vụ VieNeu, file giọng mẫu và FFmpeg.' if request.provider == 'vieneu' else 'Không tạo được đoạn âm thanh. Kiểm tra Edge-TTS/OpenVoice/FFmpeg và thử lại.'
+                message = {
+                    'vieneu': 'Không tạo được đoạn âm thanh bằng VieNeu. Kiểm tra dịch vụ VieNeu, file giọng mẫu và FFmpeg.',
+                    'omnivoice': 'Không tạo được đoạn âm thanh bằng OmniVoice. Kiểm tra dịch vụ OmniVoice, file giọng mẫu và FFmpeg.',
+                }.get(request.provider, 'Không tạo được đoạn âm thanh. Kiểm tra Edge-TTS/OpenVoice/FFmpeg và thử lại.')
                 raise HTTPException(503, message)
             finally:
                 temporary.unlink(missing_ok=True)

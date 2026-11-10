@@ -50,6 +50,7 @@ def generate(device, output):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--device", choices=("auto", "cpu", "cuda"), default="auto")
+    parser.add_argument("--install-only", action="store_true", help="Prepare the internal web service without generating a sample.")
     parser.add_argument("--generate-only", action="store_true", help=argparse.SUPPRESS)
     args = parser.parse_args()
     if os.name != "nt" or sys.maxsize <= 2**32 or not (3, 10) <= sys.version_info[:2] <= (3, 12):
@@ -79,12 +80,15 @@ def main():
     build = "cu128" if device == "cuda" else "cpu"
     torch = f"torch==2.8.0+{build}"
     torchaudio = f"torchaudio==2.8.0+{build}"
-    run("-m", "pip", "install", "--upgrade", "pip")
+    if not args.install_only:
+        run("-m", "pip", "install", "--upgrade", "pip")
     run("-m", "pip", "install", torch, torchaudio,
         "--index-url", f"https://download.pytorch.org/whl/{build}")
-    run("-m", "pip", "install", "omnivoice==0.2.1", torch, torchaudio)
+    service_packages = ["fastapi", "uvicorn"] if args.install_only else []
+    run("-m", "pip", "install", "omnivoice==0.2.1", torch, torchaudio, *service_packages)
     run("-m", "pip", "check")
-    run(Path(__file__).resolve(), "--device", device, "--generate-only")
+    if not args.install_only:
+        run(Path(__file__).resolve(), "--device", device, "--generate-only")
 
 
 if __name__ == "__main__":

@@ -340,9 +340,9 @@ module.exports = async function editorial(job, context) {
     }
     if (!job.draft?.sections?.length) throw new Error('Chưa có bản tóm tắt để tạo âm thanh.');
     const draft = structuredClone(job.draft);
-    speech.assertProvider(draft.speech,checkpoint.voice.provider || 'edge');
+    const provider = checkpoint.voice.provider || 'edge';
     draft.sections = draft.sections.map((section, i) => ({ ...section, title: state.plan.sections[i].title }));
-    const planned = draft.speech ? speech.plan({ introduction: draft.introduction || '', sections: draft.sections, speech: draft.speech, style: draft.style }) : null;
+    const planned = draft.speech ? speech.plan({ introduction: draft.introduction || '', sections: draft.sections, speech: draft.speech, style: draft.style, provider }) : null;
     const narrationParts = planned?.parts || content.narration(draft.introduction, draft.sections, draft.style);
     if (!checkpoint.referenceKey) {
         const voice = checkpoint.voice;
@@ -354,7 +354,7 @@ module.exports = async function editorial(job, context) {
         await save('audio', 55);
     }
     const partId = part => content.hash(JSON.stringify([config.editorialVersion, config.narrationVersion, checkpoint.referenceKey, job.voice_mode, draft.style, part,
-        ...(checkpoint.voice.provider === 'vieneu' ? [checkpoint.voice.provider, checkpoint.voice.model_revision, checkpoint.voice.preset] : [])]));
+        ...(checkpoint.voice.model_revision ? [checkpoint.voice.provider, checkpoint.voice.model_revision, checkpoint.voice.preset] : [])]));
     async function partPayload(part) {
         const id = partId(part);
         const voice = checkpoint.voice;
@@ -385,7 +385,7 @@ module.exports = async function editorial(job, context) {
     }
     if (job.work_action === 'preview') {
         await save('preview', 56, 'Tạo đoạn nghe thử bằng giọng đã chọn.');
-        const samples = planned ? speech.plan({ sections: draft.sections, speech: draft.speech, style: draft.style }).parts : content.narration('', draft.sections, draft.style);
+        const samples = planned ? speech.plan({ sections: draft.sections, speech: draft.speech, style: draft.style, provider }).parts : content.narration('', draft.sections, draft.style);
         const ids=[]; let budget=30;
         for (const part of samples.slice(0,8)) {
             if (budget<=0) break;

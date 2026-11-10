@@ -19,7 +19,7 @@ async function engine(endpoint,payload) {
             body:JSON.stringify(payload),
             signal:AbortSignal.timeout(config.engineTimeout),
         }),
-        { jobId: payload?.job_id }
+        { jobId: payload?.job_id, provider: payload?.provider }
     );
     const result=await response.json().catch(()=>({}));
     if (!response.ok) throw problem(503,typeof result.detail==='string'?result.detail:result.detail?.message||'Engine chưa sẵn sàng.');

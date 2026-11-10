@@ -52,7 +52,17 @@ def readiness():
         raise HTTPException(status_code=503, detail='Engine/model hoặc thư mục dùng chung chưa sẵn sàng.')
     device = getattr(getattr(pipeline, 'converter', None), 'device', 'cuda:0' if torch.cuda.is_available() else 'cpu')
     gpu_name = torch.cuda.get_device_name(0) if torch.cuda.is_available() else None
-    return {'status': 'ok', 'standard': True, 'clone': True, 'device': str(device), 'gpu_name': gpu_name}
+    omni_ready = False
+    omni_url = os.environ.get('OMNIVOICE_URL', '').rstrip('/')
+    if omni_url:
+        try:
+            with urlopen(f'{omni_url}/health/ready', timeout=1) as response:
+                omni_health = json.load(response)
+            omni_ready = isinstance(omni_health, dict) and omni_health.get('status') == 'ok'
+        except (OSError, ValueError):
+            pass
+    return {'status': 'ok', 'standard': True, 'clone': True, 'device': str(device), 'gpu_name': gpu_name,
+            'omnivoice': omni_ready}
 
 class GenerateRequest(BaseModel):
     text: str

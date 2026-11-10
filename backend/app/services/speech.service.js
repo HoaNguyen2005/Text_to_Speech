@@ -32,7 +32,7 @@ function options(value = {}) {
         ...(value.experimental_cues === true ? { experimental_cues:true } : {}) };
 }
 function assertProvider(config, provider) {
-    if (config?.experimental_cues && provider !== 'vieneu') fail('Biểu cảm thử nghiệm chỉ dùng cho VieNeu.');
+    if (config?.experimental_cues && !['vieneu', 'omnivoice'].includes(provider)) fail('Biểu cảm thử nghiệm chỉ dùng cho VieNeu-TTS và OmniVoice.');
 }
 function delivery(value = {}, paragraphs = 0) {
     if (!value || typeof value !== 'object' || Array.isArray(value)) fail('Phong cách từng đoạn không hợp lệ.');
@@ -42,9 +42,10 @@ function delivery(value = {}, paragraphs = 0) {
     return { profile, paragraph_profiles };
 }
 const pausePattern = () => /\[(?:nghỉ|pause)\s+(\d+(?:[.,]\d+)?)\s*(?:s|giây)\s*\]|<break\s+time=["'](\d+(?:\.\d+)?)s["']\s*\/>/giu;
-function parse(markup, experimental = false) {
+function parse(markup, experimental = false, provider) {
     if (typeof markup !== 'string' || markup.length > 300000 || /[\u0000-\u0008\u000b\u000c\u000e-\u001f]/u.test(markup)) fail('Văn bản đọc không hợp lệ.');
     markup = expressions.canonical(markup.normalize('NFC').replace(/\r\n/g, '\n'));
+    if (experimental && provider === 'omnivoice' && markup.includes('[hắng giọng]')) fail('OmniVoice chỉ hỗ trợ thẻ [cười] và [thở dài] trong trình chỉnh sửa.');
     const rendered = experimental ? markup : markup.replace(expressions.pattern(), ' ');
     const atoms = []; let start = 0, totalPause = 0, markers = 0;
     for (const match of rendered.matchAll(pausePattern())) {
@@ -59,6 +60,7 @@ function parse(markup, experimental = false) {
     atoms.push({ text: rendered.slice(start), pause_ms: 0, explicit: false });
     const stripped = markup.replace(pausePattern(), ' ');
     if (/\[(?:nghỉ|pause)(?=\s|\])|<\/?(?:break|prosody|voice|speak)\b/iu.test(stripped)) fail('Chỉ dẫn nghỉ không hợp lệ. Dùng [nghỉ 0.5s] hoặc <break time="0.5s" />.');
+    if (provider === 'omnivoice' && /\[(?:laughter|sigh|confirmation-en|question-(?:en|ah|oh|ei|yi)|surprise-(?:ah|oh|wa|yo)|dissatisfaction-hnn)\]/iu.test(stripped)) fail('OmniVoice chỉ hỗ trợ thẻ [cười] và [thở dài] trong trình chỉnh sửa.');
     if (/\[(?:laugh|sigh|throat|whisper|thì thầm|chuckle|clear throat|khóc)\]|<\|emotion_/iu.test(stripped)) fail('Chỉ hỗ trợ các thẻ [cười], [thở dài], [hắng giọng].');
     const plain = expressions.strip(stripped);
     return { markup, plain, atoms, totalPause };
@@ -194,7 +196,7 @@ function plan({ introduction = '', sections, speech = {}, style = 'normal', unit
     const parts = [], changes = [], cleaned = [];
     const add = (markup, profile, defaultPause, index, paragraphIndex = 0, totalParagraphs = 1) => {
         const baseRate = config.rate_percent ?? profile.rate;
-        const parsed = parse(markup,config.experimental_cues);
+        const parsed = parse(markup,config.experimental_cues,provider);
         const shaped = contour(parsed.plain, baseRate, defaultPause, {
             sectionIndex: index,
             totalSections: sections.length,

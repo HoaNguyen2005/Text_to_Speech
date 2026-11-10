@@ -1,7 +1,7 @@
 param(
     [ValidateSet('prepare', 'up', 'build', 'register', 'status', 'logs', 'stop')]
     [string]$Action = 'up',
-    [ValidateSet('frontend', 'backend', 'worker', 'engine', 'vieneu', 'postgres', 'keycloak', 'mailpit', 'tunnel', 'engine-tunnel')]
+    [ValidateSet('frontend', 'backend', 'worker', 'engine', 'vieneu', 'omnivoice', 'postgres', 'keycloak', 'mailpit', 'tunnel', 'engine-tunnel')]
     [string]$Service,
     [string]$BackendUrl = 'https://text2speech-backend.onrender.com'
 )
