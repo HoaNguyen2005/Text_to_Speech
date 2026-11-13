@@ -83,7 +83,7 @@ async function register(config, username, password) {
     const genderName = [...registration.content.matchAll(/<(?:select|input)\b[^>]*>/gi)]
         .map((entry) => attribute(entry[0], 'name')).find((name) => name?.endsWith('gender'));
     const fields = { ...registration.fields, username, email: `${username}@example.test`,
-        firstName: 'Người dùng mới', lastName: '', password, 'password-confirm': password };
+        firstName: 'Người dùng mới', password, 'password-confirm': password };
     if (genderName) fields[genderName] = 'female';
     const result = await instance.page(registration.action, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams(fields) });
     if (!result.callback?.searchParams.get('code')) throw new Error('Keycloak registration did not complete.');

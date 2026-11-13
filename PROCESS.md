@@ -996,6 +996,20 @@ Mốc Phase 2–3/giao diện ngày 13/10 là `9f5791c`; mốc sách nói dài +
 - Giảm lực uốn Floating Lines từ −1,2 xuống −0,8, parallax từ 0,18 xuống 0,11 và mouse damping từ 0,16 xuống 0,1. Nền vẫn phản hồi chuột nhưng bám chậm và dịch chuyển ít hơn.
 - Kiểm tra Particles và build frontend; chưa đánh giá lại cảm giác chuyển động trên trình duyệt, chưa push/build Docker/deploy online.
 
+### 13/11/2026 — Áp dụng bản cập nhật vào Docker Compose local
+
+- Compose đã trỏ đúng source, không cần sửa YAML. Build lại image `frontend` và `backend`, rồi recreate riêng `frontend`, `backend`, `worker` bằng `up -d --no-deps --wait`; worker dùng chung image backend. Giữ nguyên Engine/model TTS, Keycloak, PostgreSQL và các volume.
+- Trước cập nhật: database đã có migration 011, không có job queued/processing; không chạy thêm migration. Sau cập nhật: cả ba container healthy và image ID khớp image vừa build.
+- Kiểm chứng HTTP 200 cho frontend, API health và Keycloak discovery. HTML/9 entry asset cùng bundle Particles/Floating Lines được Docker phục vụ khớp bản build hiện tại. Mở `http://localhost:5173`, tải lại trang để dùng giao diện mới. Chưa kiểm thử tạo audio hoặc đăng nhập thật; chưa deploy web online.
+
+### 13/11/2026 — Sửa cập nhật hồ sơ liên tiếp và bỏ Last name
+
+- Tái hiện bằng tài khoản Keycloak tạm: PUT chỉ gửi tên/giới tính làm mất email, nên lần cập nhật kế tiếp bị middleware từ chối với `PROFILE_REQUIRED`. Sửa `profile.service.js` gửi lại representation hiện tại, chỉ thay tên/giới tính; xác minh email, username, trạng thái bật và emailVerified vẫn giữ nguyên trước khi lưu PostgreSQL. Giữ kiểm tra mapping, quyền và phiên bản hồ sơ.
+- Sao lưu cấu hình User Profile và tài khoản cần sửa vào `keycloak/backups/profile-before-repair-1794560663211.json` (Git bỏ qua). Khôi phục email trống của một tài khoản local sau khi `_id`, `keycloakId`, `mongoUserId` và username/email PostgreSQL khớp; không tự cấp trạng thái email đã xác minh.
+- Bỏ định nghĩa `lastName` khỏi User Profile realm local, giữ trường Họ tên (`firstName`) và các thiết lập khác. Cập nhật script cấu hình và fixture đăng ký để không dùng trường Last name; không xóa dữ liệu tên cũ hoặc sửa schema database ứng dụng.
+- `check_profile.js` đạt: lưu giới tính liên tiếp, giữ email/thông tin xác thực, chặn phiên bản cũ/input ngoài danh sách, không lưu PostgreSQL khi đối chiếu thất bại, bỏ Last name và giữ yêu cầu email. Kiểm thử tích hợp với Keycloak thật và bảng `users` PostgreSQL tạm: ba lần lưu liên tiếp cùng đổi tên, version tăng đúng và form đăng ký không còn Last name. Tài khoản tạm đã xóa, bảng tạm tự dọn.
+- Build lại Backend/worker Docker và cả hai healthy. Thay đổi áp dụng cho web local; chưa push hoặc cập nhật Backend/realm Keycloak trên cloud, chưa thử bằng phiên đăng nhập thật của người dùng trên trình duyệt.
+
 ## 5. Việc Tiếp Theo / TODO
 
 - [x] 12/11: tách bảng yêu cầu sách nói, giữ view tương thích, đối chiếu dữ liệu và kiểm thử tranh khóa; cập nhật sơ đồ database.

@@ -3,7 +3,7 @@ const { loadLocalConfig, createAdminClient } = require('./lib/keycloak-local');
 async function configure(config = loadLocalConfig()) {
     const admin = createAdminClient(config);
     const { body: profile } = await admin.request('/users/profile');
-    const attributes = profile.attributes || [];
+    const attributes = (profile.attributes || []).filter((entry) => entry.name !== 'lastName');
     const managed = ['mongoUserId', 'legacyStatus', 'migrationResetEmailSent'];
     for (const name of [...managed, 'gender', 'fullName']) {
         const attribute = {
@@ -16,8 +16,6 @@ async function configure(config = loadLocalConfig()) {
         else attributes[index] = attribute;
     }
     // The application requires a full name, not a separate last name.
-    const lastName = attributes.find((entry) => entry.name === 'lastName');
-    if (lastName) delete lastName.required;
     const firstName = attributes.find((entry) => entry.name === 'firstName');
     if (firstName) firstName.displayName = 'Họ tên';
     await admin.request('/users/profile', {

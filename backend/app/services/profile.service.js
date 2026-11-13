@@ -15,11 +15,13 @@ async function update(user,input) {
         const service=keycloakService(),endpoint=`/users/${encodeURIComponent(current.keycloakId)}`;
         const identity=await service.request(endpoint);
         if(!identity.enabled || identity.attributes?.mongoUserId?.[0]!==String(current._id))throw problem(403,'Liên kết tài khoản không hợp lệ.','IDENTITY_CONFLICT');
+        if(typeof identity.email!=='string' || !identity.email.trim())throw problem(409,'Tài khoản cần có email hợp lệ. Hãy liên hệ quản trị viên để khôi phục.','PROFILE_REQUIRED');
         const fullName=input.fullName.trim();
-        // Never mutate credentials, email, roles, status or membership here.
-        await service.request(endpoint,{method:'PUT',body:{firstName:fullName,lastName:'',attributes:{...identity.attributes,gender:[input.gender]}}});
+        // Keycloak PUT clears omitted profile fields, so preserve the current representation.
+        await service.request(endpoint,{method:'PUT',body:{...identity,firstName:fullName,attributes:{...identity.attributes,gender:[input.gender]}}});
         const verified=await service.request(endpoint);
-        if(verified.firstName!==fullName || verified.attributes?.gender?.[0]!==input.gender)throw problem(503,'Chưa đồng bộ được hồ sơ. Hãy thử lại.','PROFILE_SYNC_FAILED');
+        if(verified.firstName!==fullName || verified.attributes?.gender?.[0]!==input.gender || verified.email!==identity.email
+            || verified.username!==identity.username || verified.enabled!==identity.enabled || verified.emailVerified!==identity.emailVerified)throw problem(503,'Chưa đồng bộ được hồ sơ. Hãy thử lại.','PROFILE_SYNC_FAILED');
         const saved=await User.findOneAndUpdate({_id:current._id,profile_version:current.profile_version||0},{$set:{fullName,gender:input.gender},$inc:{profile_version:1,authSyncVersion:1}});
         if(!saved)throw problem(409,'Hồ sơ đã được thay đổi. Hãy tải lại trước khi lưu.','PROFILE_CONFLICT');
         return {...saved.toObject(),role:user.role};

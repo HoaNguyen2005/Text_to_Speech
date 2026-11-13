@@ -29,6 +29,8 @@ docker build -t text2speech-keycloak:26.8.0 ./keycloak
 
 ## Trạng thái
 
+Hồ sơ dùng một trường **Họ tên** (`firstName`); `lastName` đã bỏ khỏi cấu hình User Profile và biểu mẫu local. `configure_keycloak_local.js` giữ quy tắc này khi cấu hình lại realm. Khi đưa mã lên môi trường khác, cần cập nhật User Profile của realm đó; build lại image không tự đổi cấu hình realm đã tồn tại. API lưu hồ sơ phải gửi lại thông tin tài khoản hiện có, vì Keycloak PUT có thể xóa email nếu bỏ qua trường này.
+
 Stack local đã chạy; realm `tts-local` có roles `user`/`admin`, client SPA `tts-frontend` (Authorization Code + PKCE S256) và client API `tts-backend` (bearer-only). Access token được cấu hình audience `tts-backend` và claim `mongoUserId`.
 
 Ngày 10/10/2026 đã sao chép và nhập **3 tài khoản thật, gồm 1 admin**. Cả 3 đang active. Thư đặt mật khẩu được giữ trong Mailpit trên máy, không gửi ra email bên ngoài.
