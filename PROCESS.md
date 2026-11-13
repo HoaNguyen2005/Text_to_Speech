@@ -4,7 +4,7 @@
 > Mỗi lần làm việc mới trên dự án, cập nhật thêm mục [4. Nhật ký làm việc](#4-nhật-ký-làm-việc)
 > và [5. Việc tiếp theo](#5-việc-tiếp-theo--todo).
 >
-> **Cập nhật lần cuối:** 10/11/2026
+> **Cập nhật lần cuối:** 12/11/2026
 
 ---
 
@@ -882,6 +882,15 @@ Mốc Phase 2–3/giao diện ngày 13/10 là `9f5791c`; mốc sách nói dài +
 - Dùng chung nhánh lấy vai trò từ PostgreSQL khi worker thiếu cấu hình quản trị Keycloak hoặc Keycloak tạm thời không khả dụng. Vẫn kiểm tra tài khoản vô hiệu hóa khi Keycloak phản hồi.
 - Lệnh chuẩn bị và cả hai chế độ tunnel chỉ hiển thị URL, khóa được đọc từ cấu hình riêng để đăng ký Engine.
 
+### 05/11/2026 — Khôi phục nghe mẫu giọng model trên web online
+
+- Web online phát được giọng tải lên từ R2, nhưng giọng model cần Engine tạo mẫu nên lỗi khi Backend Render còn giữ URL Quick Tunnel đã hết hiệu lực.
+- Xác nhận Engine và VieNeu CPU trong Docker laptop đang khỏe. Đăng ký lại Engine CPU với Backend Render và kiểm tra kết nối thành công.
+- Container Engine đang chạy bản cũ, chưa có mã tự đăng ký Tunnel. Build lại riêng Engine từ mã hiện có và áp dụng cấu hình `engine` cùng `engine-tunnel` trong `deploy/compose.app.yaml`.
+- Xác nhận log tự đăng ký node CPU thành công với cả Backend Render và Backend Docker. Engine tự dò URL Tunnel và đăng ký lại khi địa chỉ thay đổi.
+- Kiểm chứng qua dịch vụ `voice_demo.service.sample`, bỏ qua cache trong tiến trình kiểm tra: sinh MP3 mới, tải từ Engine qua HTTPS và lưu thành công cho Edge-TTS (khoảng 2,2 giây) và VieNeu Hải Đăng (khoảng 6 giây). Không dùng Gemini trong lượt nghe mẫu này.
+- Chưa kiểm tra phát âm thanh bằng phiên đăng nhập của người dùng trên web online. Việc sinh mẫu mới vẫn cần Docker, Engine, VieNeu tương ứng và Tunnel trên laptop hoạt động.
+
 ### 07/11/2026 — Cấu hình thử OmniVoice cho laptop CPU và máy bàn CUDA
 
 - `deploy/try_omnivoice.py` nhận `--device auto|cpu|cuda`; mặc định tự chọn CUDA khi driver NVIDIA hoạt động, còn lại CPU.
@@ -914,7 +923,85 @@ Mốc Phase 2–3/giao diện ngày 13/10 là `9f5791c`; mốc sách nói dài +
 
 - Bỏ nút chèn thẻ khỏi bản duyệt và lọc các thẻ còn trong bản nháp cũ khi nghe thử hoặc tạo audio. Bản nghe thử có biểu cảm đã lưu sẽ được tạo mới khi người dùng bấm nghe thử.
 
+### 11/11/2026 — Giảm egress Supabase và dọn schema
+
+- Xác định worker tải lặp các job đã kết thúc: PostgreSQL giữ microsecond nhưng JavaScript Date chỉ giữ millisecond, khiến kiểm tra `updatedAt` thất bại. Có 36 job chờ dọn dù đã completed/cancelled.
+- Đổi truy vấn dọn sang 4 trường nhỏ, giữ timestamp dạng text và giới hạn một lượt/phút. Danh sách recent lấy metadata gọn tại SQL; `updateOne` trả số dòng tránh SELECT/RETURNING toàn bộ nội dung. Poll giao diện: đang chạy 5 giây, rảnh 30 giây, tab ẩn 60 giây.
+- Sao lưu dữ liệu ứng dụng vào file JSON riêng trong `keycloak/backups/` trước thay đổi. Áp dụng migration `010-reduce-egress` lên Supabase ứng dụng: xóa bảng `legacy_documents` rỗng và 6 cột `legacy_data` rỗng; giữ metadata Engine trong `worker_leases` và các bảng đánh dấu migration. Bật RLS cho `book_previews`, chuẩn hóa `book_jobs.updatedAt` về millisecond để tương thích worker cũ.
+- Sửa kiểm tra checksum migration để chấp nhận LF/CRLF; nội dung SQL khác vẫn bị từ chối. Không sửa checksum đã lưu hay nội dung migration cũ. Ngừng công cụ import MongoDB trên schema mới; tài liệu cũ giữ làm lịch sử.
+- Đối chiếu sau migration: vẫn đủ **3 tài khoản, 5 giọng, 38 yêu cầu, 14 kết quả**. Truy vấn lấy 10 ứng viên dọn chỉ trả khoảng **1,3 KB JSONB**. Đây là số đo truy vấn, chưa phải egress cả hệ thống sau triển khai.
+- Kiểm thử regression PostgreSQL bằng bảng tạm/rollback: timestamp microsecond, chặn revision cũ, quyền owner, danh sách gọn, cập nhật có điều kiện, hoàn tất dọn; kiểm thử checksum LF/CRLF; chạy lại migration thành công. Frontend build thành công (còn cảnh báo kích thước bundle có sẵn).
+- Chưa push/deploy Backend, Frontend hoặc Worker trên máy bàn; Docker laptop đang tắt. Cần cập nhật các tiến trình đó để áp dụng toàn bộ tối ưu. 36 job chờ dọn vẫn cần Worker/Engine hoạt động; không xóa thủ công nguồn của job đang chờ duyệt/lỗi hoặc file kết quả trên R2. Egress đã tích lũy không được hoàn lại.
+- Chi tiết bảng và truy vấn kiểm tra gọn: [POSTGRES_MIGRATION.md](POSTGRES_MIGRATION.md).
+
+### 12/11/2026 — Tách dữ liệu sách nói thành bốn bảng vật lý
+
+- Áp dụng migration `011-split-book-job-storage` trực tiếp lên Supabase ứng dụng sau backup và kiểm thử schema riêng. `book_job_requests` 12 cột, `book_job_sources` 3 cột, `book_job_drafts` 5 cột, `book_job_runtime` 15 cột; mỗi bảng có đủ 38 bản ghi. Các bảng phụ dùng `job_id` PK/FK quan hệ 1–1; FK lịch sử/nghe thử tự chuyển theo bảng chính được đổi tên.
+- Giữ `book_jobs` dưới dạng view 32 cột cho API/Worker đang chạy. Trigger INSTEAD OF ghi đúng các bảng trong cùng transaction, chỉ ghi nhóm thay đổi; view không lưu bản sao dữ liệu. Constraint trigger bảo vệ đủ bảng phụ và nguồn hợp lệ khi commit. RLS bật, view security_invoker, không cấp quyền Data API cho anon/authenticated và không dùng SECURITY DEFINER.
+- Backup JSON dữ liệu ứng dụng và metadata: `keycloak/backups/before-job-split-1794453135402.json` (7.528.401 byte), đã đọc lại đối chiếu. Bản thân migration còn so sánh toàn bộ dữ liệu trước/sau trong transaction. Không thay tài khoản Keycloak hoặc audio R2.
+- Kiểm thử `check_book_split.js` đạt: bảo toàn dữ liệu, model/API cũ CRUD qua view, nhận việc, phiên bản duyệt, cleanup, owner, unique/FK/cascade, ràng buộc liên bảng và hai client cạnh tranh khóa/trạng thái. Regression `check_egress.js` và build frontend đạt. `db:status` xác nhận 3 user, 5 giọng, 38 yêu cầu, 14 kết quả; worker chưa online lúc kiểm tra.
+- Tạo `DATABASE.dbml` và `DATABASE.mmd` từ catalog của 13 bảng vật lý sau migration; không đưa view thành bảng lưu trữ trong sơ đồ. Cập nhật `POSTGRES_MIGRATION.md` và công cụ status. Chưa push/build lại Docker hay chạy audio thật qua Gemini/Engine; mã cũ vẫn tương thích qua view.
+- Backend Render `/api/health` trả 200 sau migration; Backend local khởi động trên cổng tạm, health 200 và truy cập book-jobs không token trả 401. Chạy lại migration an toàn. Các role anon/authenticated không có SELECT trên view, anon không có EXECUTE trên function ghi. Advisor chỉ còn thông tin RLS không có policy theo kiến trúc Backend riêng.
+
+### 12/11/2026 — Chuyển động nhẹ cho giao diện studio
+
+- Thêm nền Aurora và các đường sóng chuyển động bằng CSS vào trang chào và `StudioBanner` dùng chung; tái sử dụng màu light/dark và icon hiện có. Hình sách/tai nghe nổi nhẹ, các cột sóng có độ trễ riêng. Không cài thêm thư viện WebGL, không tải ảnh/video nền hay gọi dịch vụ bên ngoài để chạy hiệu ứng.
+- Popup `VoicePicker` có hiệu ứng mở, thẻ giọng xuất hiện lần lượt và nút nghe mẫu pulse khi `audio.play()` thành công; giữ trạng thái chờ tải riêng. Giữ nguyên chọn giọng, phân hạng, tìm kiếm, nghe mẫu và quyền sửa/ẩn.
+- `useSceneMotion` tạm dừng nền/sóng khi scene ngoài viewport hoặc tab bị ẩn, đồng thời ngắt observer/listener khi unmount. CSS hỗ trợ `prefers-reduced-motion`; giảm chi tiết nền trên mobile và để vùng nhập/duyệt nội dung ổn định.
+- Kiểm tra bằng `node frontend/scripts/check_scene_motion.mjs`: offscreen/hidden pause, visible resume, dọn tài nguyên và fallback thiếu IntersectionObserver đều đạt. `npm run build` đạt (417 module; vẫn có cảnh báo bundle PDF lớn đã tồn tại).
+- Đã xem trên trình duyệt: trang chào sáng/tối, banner làm việc, popup giọng desktop/mobile 390 px và trạng thái phát mẫu. Dùng trang kiểm tra tạm với component thật và audio im lặng giả lập; đã xóa fixture sau kiểm tra. Ảnh lưu tại `backend/data/ui-review/welcome-motion-dark.png`, bị Git bỏ qua. Chưa đo FPS/pin trên thiết bị thật, chưa thử audio qua Engine thật trong lượt này.
+- Chưa push GitHub, build lại Docker hoặc phát hành lên web online; các thay đổi hiện ở workspace.
+
+### 12/11/2026 — Floating Lines từ Vue Bits
+
+- Tích hợp shader WebGL của [Vue Bits Floating Lines](https://vue-bits.dev/backgrounds/floating-lines) vào trang chào và `StudioBanner`, kết hợp nền Aurora hiện có. Màu đổi theo light/dark; đường sóng uốn nhẹ theo chuột trên desktop. Giữ SVG dự phòng khi WebGL không khả dụng hoặc người dùng bật giảm chuyển động.
+- Thêm `three@0.178.0`, tải component bất đồng bộ; gói Floating Lines khoảng 121,4 kB gzip sau build. Giữ thông tin tác giả và giấy phép MIT + Commons Clause trong `frontend/src/components/vue-bits/LICENSE.md`.
+- Giới hạn render tối đa 30 fps, DPR tối đa 1,25 trên desktop/1 trên mobile và giảm số đường trên màn hình nhỏ. Dùng lại `useSceneMotion` để dừng khi tab ẩn hoặc scene ngoài màn hình; dọn vòng lặp, listener, observer và tài nguyên WebGL khi rời trang. Nền không chặn thao tác nhập liệu.
+- `check_floating_lines_loop.mjs` và `check_scene_motion.mjs` đạt: giới hạn khung hình, không tạo vòng lặp trùng, pause/resume không nhảy thời gian, dọn tài nguyên và fallback. `npm run build` đạt (423 module); cảnh báo bundle PDF lớn vẫn còn.
+- Đã xem component thật trên trình duyệt ở light/dark, banner desktop/mobile 390 px, WebGL không khả dụng và giảm chuyển động. Ảnh tại `backend/data/ui-review/welcome-floating-lines-dark.png` (Git bỏ qua); fixture kiểm tra tạm đã dọn. Chưa đo FPS/pin trên phần cứng thật, chưa push, build lại Docker hay phát hành online.
+
+### 12/11/2026 — Sidebar nổi và thu gọn
+
+- Đổi thanh điều hướng `AppShell` thành sidebar nổi cách mép 12 px, rộng 248 px; nút thu gọn chuyển sang 72 px và nhớ lựa chọn trên trình duyệt. Logo nhỏ gọn, bỏ dòng phụ, mục đang chọn dùng nền tím nhẹ và vạch bên trái; khi thu nhỏ có tooltip/tên truy cập cho icon.
+- Dùng chung `ShellSidebar` cho desktop và drawer mobile, giữ đúng menu user/admin. Rút tên menu thành Tạo bài giảng, Sách nói AI, Lịch sử, Giọng của bạn, Hồ sơ; bổ sung bản dịch tiếng Anh. Chuyển avatar/tên tài khoản xuống cuối thanh; menu tài khoản chứa Hồ sơ và Đăng xuất, phát lại sự kiện logout hiện có.
+- Mobile dùng dialog native để giữ focus trong menu, hỗ trợ Escape, click nền ngoài, đóng khi điều hướng hoặc chuyển sang desktop; khóa cuộn nền khi mở. Menu tài khoản dùng popover native, đóng khi click ngoài/Escape/resize. Dọn CSS sidebar cũ khỏi `workspace.css`, không thêm thư viện UI.
+- `node frontend/scripts/check_sidebar.mjs` đạt: menu user/admin, active route, tên truy cập khi thu nhỏ, popover và escape tên người dùng. `npm run build` đạt (425 module); cảnh báo chunk PDF lớn vẫn còn.
+- Đã kiểm tra component thật với dữ liệu giả trên trình duyệt: light/dark, VI/EN, rộng 1280 px/mobile 390 px, thu gọn và tải lại, menu tài khoản, sự kiện đăng xuất, drawer Escape/điều hướng/resize và không tràn ngang. Không có lỗi/cảnh báo console trong lượt kiểm tra. Ảnh tại `backend/data/ui-review/sidebar-floating-dark.png` và `sidebar-floating-light.png`; đã dọn fixture tạm. Chưa thử đăng xuất Keycloak thật hoặc trình duyệt cũ, chưa push/build Docker/deploy online.
+
+- Điều chỉnh tiếp: thay icon khung của nút thu gọn bằng chevron hướng trái khi mở/hướng phải khi thu nhỏ, tái sử dụng icon có sẵn; mobile giữ nút đóng X.
+- Bổ sung chuyển động thu gọn/mở rộng 0,32 giây với easing chung cho chiều rộng sidebar, lề vùng nội dung, vị trí nút và icon. Giữ chữ/logo/thông tin tài khoản trong DOM để mờ/trượt dần, ẩn khỏi accessibility tree khi thu nhỏ và giữ tên truy cập trên liên kết; tránh đổi flex-direction làm icon nhảy hàng. Chỉ bật animation sau thao tác thu gọn đầu tiên, không chạy dư khi tải trạng thái đã lưu; tắt transition khi hệ thống bật giảm chuyển động.
+- Kiểm tra trình duyệt bằng component thật và fixture đo rAF: có kích thước trung gian khi thu/mở, kết thúc đúng 72/248 px, khoảng cách sidebar–workspace đồng bộ khoảng 12 px, đảo chiều được, reload trạng thái thu nhỏ có duration 0s và mobile 390 px không tràn ngang. Console không có lỗi/cảnh báo; fixture đã dọn. `check_sidebar.mjs` và build đạt. Ảnh tại `backend/data/ui-review/sidebar-smooth-motion.png`; chưa benchmark FPS trên máy yếu hoặc phát hành online.
+- Sửa đường Floating Lines chớp tắt khi sidebar đổi chiều rộng: `renderer.setSize()` xóa drawing buffer nhưng vòng lặp 30 fps chưa vẽ lại ngay. Đưa render vào cùng callback resize, sau khi cập nhật resolution; lần resize đầu tiên chạy sau khi cleanup đã sẵn sàng. Giữ nguyên canvas và thời gian animation, không bật preserveDrawingBuffer hoặc tăng tốc độ vòng lặp nền.
+- Đối chiếu trên WebGL thật bằng fixture theo dõi canvas resize/draw: trước sửa 14/14 callback resize còn buffer chưa được vẽ lại; sau sửa mở rộng 0/26, thu gọn 0/29, đảo chiều 0/33, chỉ một canvas xuyên suốt. Console không lỗi/cảnh báo; đã dọn fixture và lưu ảnh `backend/data/ui-review/banner-resize-fixed.png`. Kiểm thử vòng lặp/sidebar và build đạt; chưa phát hành Docker/online.
+
+### 12/11/2026 — Particles trên banner, Floating Lines ở nền chính
+
+- Đổi `StudioBanner` sang [Vue Bits Particles](https://vue-bits.dev/backgrounds/particles), chuyển shader gốc sang Three.js đang có trong dự án; không cài thêm OGL. Giữ thông tin tác giả/giấy phép trong component và `vue-bits/LICENSE.md`. Hạt trắng/tím/cyan chuyển động nhẹ phía sau chữ, 180 hạt desktop/90 hạt mobile.
+- `AppShell` dùng Floating Lines làm nền cố định toàn viewport cho các trang user/admin; vùng nội dung, sidebar và biểu mẫu vẫn ở phía trên. Nền chính không đổi kích thước theo sidebar, có tương tác chuột qua khung ứng dụng, màu/độ mờ theo light/dark. Trang chào tiếp tục dùng Floating Lines.
+- Hai hiệu ứng dùng chung vòng lặp giới hạn 30 fps và pause khi tab ẩn; banner dừng thêm khi ra ngoài viewport. Particles giới hạn DPR 1,25 desktop/1 mobile, vẽ lại ngay sau resize, giải phóng geometry/material/renderer và observer khi rời trang. Giảm chuyển động hoặc thiếu WebGL dùng chấm tĩnh cho banner và SVG cho nền chính; nền không nhận click/focus.
+- `check_particles.mjs` đạt: buffer/count, giới hạn DPR, redraw khi paused, pause/resume, cleanup khi đổi cấu hình/unmount và WebGL không khả dụng. Các check vòng lặp, scene motion, sidebar và `npm run build` đạt (427 module); cảnh báo PDF lớn giữ nguyên.
+- Đã xem component thật với dữ liệu giả ở light/dark, mobile 390 px, trang chào, user/admin; thử nhập liệu ở fallback. Giả lập media giảm chuyển động và thiếu WebGL đều có 0 canvas và nền dự phòng. Thu/mở sidebar giữ 2 canvas, 20 lần resize được vẽ lại ngay, không có buffer trống. Ảnh tại `backend/data/ui-review/particles-background-dark.png` và `particles-background-light.png`; đã dọn fixture. Chưa đo FPS/pin trên phần cứng thật, chưa push/build Docker/deploy online.
+
+### 13/11/2026 — Tương tác chuột, menu và popup đồng bộ
+
+- Particles trên banner di chuyển và nghiêng theo chuột, có nội suy để trở về vị trí cân bằng khi chuột rời banner. Floating Lines tăng lực uốn và thêm parallax; bỏ qua thao tác chạm, không bật tương tác trên màn hình nhỏ. Tiếp tục dùng vòng lặp 30 fps, pause và nền dự phòng/giảm chuyển động hiện có.
+- Menu `select` có danh sách bo góc, màu theo light/dark, dấu chọn, mũi tên xoay và cuộn khi nhiều lựa chọn. Dùng tính năng native `appearance: base-select`, giữ nguyên `v-model`, giá trị và thao tác bàn phím; trình duyệt chưa hỗ trợ vẫn dùng menu hệ thống. Các phần mở rộng `details/summary` dùng chung kiểu viền và chevron.
+- Popup dialog mở nảy nhẹ trong 380 ms, đóng thu lại trong 200 ms; menu tài khoản và thông báo nhỏ cũng có hiệu ứng vào/ra. Giữ nội dung popup thông báo trong lúc đóng để không xuất hiện hộp trống; nội dung đang đóng không nhận thao tác. Tắt hiệu ứng mới khi hệ điều hành bật giảm chuyển động.
+- Kiểm chứng: test Particles có phản hồi chuột/trở về/cleanup; kiểm tra trên trình duyệt thật với WebGL, chọn bằng bàn phím, Escape/khôi phục focus, popup chào mừng/xác nhận/chọn giọng/thêm giọng, menu tài khoản, danh sách dài, light/dark và viewport 390 px không tràn ngang. Trang kiểm tra dùng component thật và dữ liệu giả, đã dọn sau kiểm tra; không gọi tạo giọng hoặc ghi dữ liệu thật.
+- Ảnh kiểm tra local: `backend/data/ui-review/dropdown-popup-dark.png`, `dropdown-popup-light.png`, `popup-bounce-dark.png`. Build và các script kiểm tra giao diện đã chạy; cảnh báo chunk PDF lớn có từ trước. Chưa đo FPS trên máy yếu hoặc kiểm tra đầy đủ các trình duyệt; chưa push GitHub, build lại Docker hay deploy web online.
+
+### 13/11/2026 — Giảm độ nhạy tương tác chuột
+
+- Giảm khoảng dịch chuyển và góc nghiêng theo chuột của Particles khoảng 35%; hạ tốc độ bám chuột từ 10 xuống 6 để chuyển động dịu hơn. Chuyển động tự chạy của hạt giữ nguyên.
+- Giảm lực uốn Floating Lines từ −1,2 xuống −0,8, parallax từ 0,18 xuống 0,11 và mouse damping từ 0,16 xuống 0,1. Nền vẫn phản hồi chuột nhưng bám chậm và dịch chuyển ít hơn.
+- Kiểm tra Particles và build frontend; chưa đánh giá lại cảm giác chuyển động trên trình duyệt, chưa push/build Docker/deploy online.
+
 ## 5. Việc Tiếp Theo / TODO
+
+- [x] 12/11: tách bảng yêu cầu sách nói, giữ view tương thích, đối chiếu dữ liệu và kiểm thử tranh khóa; cập nhật sơ đồ database.
+
+- [x] 11/11: áp dụng migration 010 giảm egress/dọn legacy lên Supabase ứng dụng, sao lưu và đối chiếu số lượng.
+- [ ] Phát hành bản tối ưu egress cho Backend/Frontend và Worker PC; theo dõi usage từng project sau 24 giờ, kiểm tra số job chờ dọn giảm khi Engine chạy.
 
 **Phase 2 local:**
 - [x] Khởi động Docker Desktop, chạy stack healthy và đối chiếu realm/client/roles/PKCE cùng email reset trong Mailpit.

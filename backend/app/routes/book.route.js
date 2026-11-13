@@ -71,10 +71,7 @@ async function present(job, includeScript = true) {
     return value;
 }
 router.get('/', async (req, res) => {
-    const recent = await Job.find({ user_id: req.user._id, delete_requested: false }).select('+checkpoint').sort({ createdAt: -1 }).limit(30);
-    const active = await Job.find({ user_id: req.user._id, delete_requested: false, status: { $in: ['queued', 'processing', 'review'] } }).select('+checkpoint').sort({ createdAt: -1 });
-    const ids = new Set(active.map((job) => String(job._id)));
-    const jobs = [...active, ...recent.filter((job) => !ids.has(String(job._id)))];
+    const jobs = await require('../db/book_queries').listJobs(req.user._id);
     const worker = await WorkerLease.exists({ _id: 'book-audio', until: { $gt: new Date() } });
     res.json({ jobs: await Promise.all(jobs.map((job) => present(job, false))), worker_online: Boolean(worker) });
 });

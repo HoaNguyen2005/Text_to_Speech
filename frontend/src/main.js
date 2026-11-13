@@ -3,6 +3,8 @@ import App from './App.vue';
 import { initializeAuth } from './services/auth';
 import './assets/theme.css';
 import './assets/workspace.css';
+import './assets/studio-motion.css';
+import './assets/interface-motion.css';
 import { initializeTheme } from './composables/useTheme';
 import { initializeLocale, getLocaleTag, translate } from './composables/useLocale';
 

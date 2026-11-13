@@ -234,7 +234,9 @@ async function poll() {
     connectionMessage.value = error.response?.data?.error || 'Mất kết nối. Tiến độ đã lưu; yêu cầu vẫn xử lý khi worker hoạt động.';
     if ([401, 403].includes(error.response?.status)) return;
   } finally { polling = false; }
-  if (!disposed) timer = setTimeout(poll, 5000);
+  const working = jobs.value.some(job => ['queued', 'processing'].includes(job.status))
+    || selected.value?.draft?.preview_request?.status === 'processing';
+  if (!disposed) timer = setTimeout(poll, document.hidden ? 60000 : working ? 5000 : 30000);
 }
 async function processBook() {
   if (disposed || busy.value || workspace.value) return;

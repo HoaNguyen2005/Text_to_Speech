@@ -1,6 +1,135 @@
 # Chuyển dữ liệu ứng dụng từ MongoDB sang PostgreSQL
 
-Tài liệu này dành cho đợt chuyển từ MongoDB sang PostgreSQL local hoặc Supabase PostgreSQL.
+## Hiện trạng — 12/11/2026: tách dữ liệu yêu cầu sách nói
+
+Migration `011-split-book-job-storage` đã áp dụng lên Supabase ứng dụng. Không thay đổi
+database Keycloak hoặc file audio trên R2. Hiện có **13 bảng vật lý và một view tương thích**.
+
+| Bảng vật lý mới | Số cột | Nội dung |
+|---|---:|---|
+| `book_job_requests` | 12 | ID, người dùng, tên yêu cầu, thông tin sách, thời lượng, giọng, trạng thái, thời điểm |
+| `book_job_sources` | 3 | `job_id`, văn bản nguồn, hash nguồn |
+| `book_job_drafts` | 5 | `job_id`, bản nháp, phiên bản nháp/duyệt, yêu cầu AI sửa |
+| `book_job_runtime` | 15 | `job_id`, hành động, tiến độ, checkpoint, kết quả, lỗi/retry, khóa worker và cờ hủy/dọn |
+
+Ba bảng phụ dùng `job_id` vừa làm PK vừa làm FK tới `book_job_requests._id`, quan hệ 1–1.
+`generated_lectures.book_job_id` và `book_previews.job_id` tham chiếu bảng chính mới.
+Giữ `result` trong runtime để mã cũ vẫn nhận đúng kết quả; chưa loại bỏ phần dữ liệu giao
+nhau với lịch sử khi chưa chuyển toàn bộ API sang cơ chế đọc kết quả duy nhất.
+
+`book_jobs` hiện là **view**, ghép bốn bảng thành giao diện 32 cột cũ; không lưu thêm một
+bản sao dữ liệu. Trigger INSTEAD OF chuyển thao tác INSERT/UPDATE/DELETE vào đúng các bảng
+trong cùng transaction. Backend/Worker cũ tiếp tục dùng model hiện tại, kể cả khóa dòng và
+`SKIP LOCKED`. Trigger chỉ cập nhật nhóm có dữ liệu thay đổi để tránh ghi lại nguồn/nháp
+lớn trong mỗi heartbeat. Các constraint trigger kiểm tra đủ bảng phụ và điều kiện nguồn
+khi commit, cả khi sửa trực tiếp bằng SQL/Table Editor.
+
+Khi quản lý dữ liệu, mở bốn bảng vật lý. Khi tạo một yêu cầu thủ công bằng SQL, dùng view
+`book_jobs` để tạo đủ các phần trong một thao tác, hoặc INSERT cả bốn bảng trong cùng
+transaction. Không xóa riêng bản ghi bảng phụ khi yêu cầu chính vẫn tồn tại.
+View dùng `security_invoker`; các bảng mới bật RLS và chặn truy cập trực tiếp bằng
+`anon`/`authenticated`. Hai function trigger chạy bằng quyền người gọi, không nâng quyền.
+
+Sơ đồ cho báo cáo (được sinh từ catalog sau migration, không đưa view tương thích vào
+như bảng lưu trữ): [DATABASE.dbml](DATABASE.dbml) và [DATABASE.mmd](DATABASE.mmd).
+Các file này mô tả cột, PK/FK/unique; không phải bản sao toàn bộ default/CHECK/trigger.
+Sinh lại bằng `node backend/scripts/export_database_diagrams.js` tại repo root.
+
+Sao lưu trước thay đổi: `keycloak/backups/before-job-split-1794453135402.json`, đã đọc lại
+đối chiếu. Đây là snapshot JSON của dữ liệu ứng dụng kèm metadata cột/ràng buộc, không phải
+pg_dump đầy đủ. Migration khóa ghi trong lúc chuyển và so sánh toàn bộ hàng qua view với
+bản trước thay đổi ngay trong transaction; nếu không khớp thì rollback.
+
+Kiểm tra bằng `node backend/scripts/check_book_split.js`: dựng schema cũ trong schema
+kiểm thử riêng, chạy migration, kiểm tra CRUD qua view, duyệt, xóa/cascade, owner, constraint
+và hai client tranh khóa. Schema kiểm thử tự xóa sau khi chạy. Regression egress vẫn đạt.
+Sau migration giữ đủ 38 yêu cầu trong mỗi bảng mới, 14 kết quả, 3 tài khoản và 5 giọng.
+
+Mã tương thích đã có hiệu lực ở database nên không cần deploy đồng thời mọi máy để tiếp
+tục dùng cấu trúc mới. Chưa push các thay đổi trong workspace; khi pull bản có migration
+011 trên máy khác, chạy `npm run db:migrate` trước khi khởi động (chạy lại là an toàn).
+Docker phải build lại image để nhận file migration/tài liệu mới. Chưa kiểm thử tạo audio
+thật qua Gemini/Engine trên máy bàn trong lượt này.
+
+## Lịch sử tối ưu — 11/11/2026
+
+Ứng dụng đang dùng Supabase PostgreSQL. Migration `010-reduce-egress` đã được áp dụng
+trên project ứng dụng; database Keycloak riêng không thay đổi.
+Các hướng dẫn nhập MongoDB bên dưới chỉ ghi lại lịch sử, không dùng cho schema hiện tại.
+Muốn chuyển máy chủ sau này, dùng backup/restore PostgreSQL.
+
+### Những gì đã dọn
+
+- Xóa bảng `legacy_documents` sau khi kiểm tra bảng rỗng.
+- Xóa cột `legacy_data` rỗng ở `users`, `voices`, `book_jobs`, `generated_lectures`,
+  `book_caches`, `reading_profiles`. Migration từ chối chạy nếu các cột này chứa dữ liệu.
+- Giữ `worker_leases.legacy_data`: đang chứa cấu hình Engine GPU/CPU, chưa phải dữ liệu thừa.
+- Giữ `schema_migrations` để theo dõi schema và `data_migrations` để tương thích kiểm tra khởi động hiện tại.
+- Bật RLS cho `book_previews`. Các bảng ứng dụng chỉ được truy cập qua Backend kiểm tra
+  quyền Keycloak; chưa cho trình duyệt truy cập trực tiếp Supabase Data API.
+
+### Các bảng còn lại dùng để làm gì?
+
+| Bảng | Nội dung và lý do cần giữ |
+|---|---|
+| `users` | Hồ sơ, quyền, liên kết Keycloak và trạng thái đồng bộ tài khoản |
+| `voices` | Tên giọng, chủ sở hữu, phạm vi, phân hạng và đường dẫn mẫu âm thanh |
+| `book_jobs` | Yêu cầu sách nói, bản duyệt, tiến độ, checkpoint và trạng thái thử lại |
+| `generated_lectures` | Kết quả cuối cùng, bản tóm tắt, thời lượng, đường dẫn audio/phụ đề |
+| `book_caches` | Kết quả phân tích nguồn có hạn dùng, giúp giảm gọi Gemini |
+| `reading_profiles` | Tốc độ đọc đã đo để tính thời lượng sát hơn |
+| `book_previews` | Cache nghe thử và khóa chống tạo trùng cùng một bản nghe thử |
+| `worker_leases` | Khóa xử lý, khóa gửi yêu cầu và đăng ký Engine |
+| `schema_migrations` | Phiên bản và checksum của migration đã áp dụng |
+| `data_migrations` | Dấu mốc nhập dữ liệu cũ mà kiểm tra khởi động vẫn sử dụng |
+
+`book_jobs` vẫn có nhiều cột vì cần giữ luồng duyệt, khôi phục sau lỗi và chống hai worker
+nhận cùng việc. Không gộp các cột cần lọc/lập chỉ mục vào một JSON chỉ để bảng nhìn ngắn hơn.
+Khi kiểm tra tiến độ, dùng truy vấn gọn trong SQL Editor thay vì tải toàn bộ nội dung:
+
+```sql
+SELECT _id, title, status, target_minutes,
+       progress->>'phase' AS phase,
+       progress->>'percent' AS percent,
+       error, "updatedAt"
+FROM public.book_jobs
+WHERE delete_requested = false
+ORDER BY "updatedAt" DESC
+LIMIT 50;
+```
+
+### Giảm dữ liệu truyền ra ngoài (egress)
+
+Worker cũ đọc cả checkpoint/bản nháp của những job cần dọn mỗi khoảng 3 giây.
+So sánh timestamp PostgreSQL có microsecond với JavaScript Date chỉ có millisecond
+khiến 36 job đã kết thúc liên tục bị bỏ qua, rồi lại bị tải về ở lượt sau.
+
+- Truy vấn dọn mới chỉ lấy ID, trạng thái, cờ xóa và timestamp nguyên vẹn; chạy tối đa mỗi phút.
+- `book_jobs.updatedAt` dùng millisecond để worker phiên bản cũ cũng so sánh đúng.
+- `updateOne` chỉ cần số dòng sẽ không tải toàn bộ dòng trước và sau cập nhật; giữ điều kiện lọc và khóa dòng.
+- Danh sách yêu cầu không lấy toàn bộ `source`, `checkpoint`, `draft` và `result.summary`.
+  Khi mở yêu cầu riêng vẫn có đầy đủ bản duyệt/kết quả.
+- Trang sách nói cập nhật mỗi 5 giây khi đang xử lý, 30 giây khi rảnh, 60 giây khi tab bị ẩn.
+
+Thay đổi schema đã áp dụng, nhưng cần phát hành mã mới cho Backend, Worker trên PC và
+Frontend để dùng đầy đủ các tối ưu. Sau khi cập nhật mã, chạy `npm run db:migrate`
+trước khi khởi động lại Backend/Worker. Với Docker phải build lại image; restart image
+cũ không cập nhật mã. Không ghi đè các file `.env` riêng của từng máy.
+
+Kiểm tra bằng `node backend/scripts/check_migration_digest.js`,
+`node backend/scripts/check_egress.js` và `npm run build` tại repo root.
+Test egress dùng bảng tạm trong transaction rồi rollback, không tạo dữ liệu kiểm thử lâu dài.
+
+Bản sao dữ liệu trước thay đổi nằm trong thư mục `keycloak/backups/` bị Git bỏ qua,
+tên `before-egress-1794409698789.json` (dữ liệu ứng dụng; không phải pg_dump đầy đủ).
+Giảm truy vấn chỉ giảm egress phát sinh tiếp theo, không xóa mức 16 GB đã được ghi nhận.
+
+Supabase Advisor còn thông tin [RLS enabled, no policy](https://supabase.com/docs/guides/database/database-linter?lint=0008_rls_enabled_no_policy):
+đây là chủ đích chặn truy cập Data API trực tiếp trong kiến trúc Backend + Keycloak hiện tại.
+
+## Lịch sử chuyển MongoDB — không chạy lại trên schema hiện tại
+
+Phần dưới ghi lại đợt chuyển từ MongoDB sang PostgreSQL local/Supabase trước migration 010.
 
 ## Kết quả trên máy hiện tại — 17/10/2026
 

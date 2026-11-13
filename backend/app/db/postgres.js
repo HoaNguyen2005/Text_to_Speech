@@ -1,6 +1,6 @@
 const path = require('path');
 const fs = require('fs');
-const crypto = require('crypto');
+const migrationDigest = require('./migration_digest');
 const { AsyncLocalStorage } = require('async_hooks');
 require('../config/env');
 const context = new AsyncLocalStorage();
@@ -16,6 +16,8 @@ const MIGRATIONS = [
     { version: '007-speech-subtitles', file: 'migrations/007-speech-subtitles.sql' },
     { version: '008-book-preview-cache', file: 'migrations/008-book-preview-cache.sql' },
     { version: '009-profiles-voice-library', file: 'migrations/009-profiles-voice-library.sql' },
+    { version: '010-reduce-egress', file: 'migrations/20261111150624_prune_unused_legacy_schema.sql' },
+    { version: '011-split-book-job-storage', file: 'migrations/20261112030932_split_book_job_storage.sql' },
 ];
 const SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;
 function createPool(connectionString, direct) {
@@ -77,10 +79,10 @@ async function migrateSchema() {
         await query('CREATE TABLE IF NOT EXISTS schema_migrations (version text PRIMARY KEY, digest text NOT NULL, applied_at timestamptz NOT NULL DEFAULT now())');
         for (const { version, file } of MIGRATIONS) {
             const source = fs.readFileSync(path.join(__dirname, file), 'utf8');
-            const digest = crypto.createHash('sha256').update(source).digest('hex');
+            const digest = migrationDigest.digest(source);
             const previous = (await query('SELECT digest FROM schema_migrations WHERE version=$1', [version])).rows[0];
             if (previous) {
-                if (previous.digest !== digest) throw new Error('Schema đã áp dụng có nội dung khác. Cần migration mới, không sửa schema cũ.');
+                if (!migrationDigest.matches(source, previous.digest)) throw new Error(`Migration ${version} đã áp dụng có nội dung khác. Cần migration mới, không sửa schema cũ.`);
                 continue;
             }
             await query(source);

@@ -1,0 +1,28 @@
+import assert from 'node:assert/strict';
+import { floatingLinesLoop } from '../src/components/vue-bits/floatingLinesLoop.js';
+
+let id = 0;
+const pending = new Map(), deltas = [];
+globalThis.requestAnimationFrame = callback => { pending.set(++id, callback); return id; };
+globalThis.cancelAnimationFrame = handle => pending.delete(handle);
+const advance = now => { const calls = [...pending.values()]; pending.clear(); calls.forEach(callback=>callback(now)); };
+const loop = floatingLinesLoop(delta=>deltas.push(delta));
+loop.start(); loop.start();
+assert.equal(pending.size, 1);
+advance(0); advance(16); advance(34);
+assert.deepEqual(deltas, [0, .034]);
+loop.stop();
+assert.equal(pending.size, 0);
+advance(5000);
+assert.equal(deltas.length, 2);
+loop.start(); advance(10000);
+assert.equal(deltas.at(-1), 0);
+advance(15000);
+assert.equal(deltas.at(-1), .1);
+loop.stop();
+assert.equal(pending.size, 0);
+let stopping;
+stopping = floatingLinesLoop(()=>stopping.stop());
+stopping.start(); advance(16000);
+assert.equal(pending.size, 0);
+console.log('PASS: 30 fps cap, duplicate start, pause/cancel, resume without time jump, bounded delta, stop during render');

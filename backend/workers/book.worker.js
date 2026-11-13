@@ -437,14 +437,17 @@ async function claimGlobalLease() {
             { $set: { owner: workerId, until: new Date(Date.now() + config.leaseMs) } }, { upsert: true, returnDocument: 'after' }));
     } catch (error) { if (error.code === 11000) return false; throw error; }
 }
+let lastCleanup = 0;
 async function cleanupTerminal() {
+    if (Date.now() - lastCleanup < 60000) return;
+    lastCleanup = Date.now();
     // Failed jobs retain artifacts for retry. Completed/cancelled temporary files are disposable.
-    const jobs = await Job.find({ artifacts_cleaned: { $ne: true }, status: { $in: ['completed', 'cancelled'] } }).select('+checkpoint').limit(10);
+    const jobs = await require('../app/db/book_queries').cleanupCandidates();
     for (const job of jobs) {
         if (leaseLost || stopping) return;
         try {
             // Never delete while a retried job is processing.
-            if (!await Job.exists({ _id: job._id, status: job.status, updatedAt: job.updatedAt })) continue;
+            if (!await require('../app/db/book_queries').cleanupUnchanged(job)) continue;
             if (job.delete_requested && await History.exists({ book_job_id: job._id })) continue;
             if(job.delete_requested && !await require('../app/services/book_preview.service').prune(String(job._id)))continue;
             await engine('cleanup', { job_id: String(job._id) }); await artifact.cleanupLocal(String(job._id));

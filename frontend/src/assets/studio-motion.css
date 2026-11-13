@@ -1,0 +1,47 @@
+.studio-atmosphere { position: absolute; inset: 0; overflow: hidden; border-radius: inherit; pointer-events: none; z-index: 0; }
+.aurora-band { position: absolute; width: 75%; height: 120%; border-radius: 50%; opacity: .24; animation: aurora-drift 22s ease-in-out infinite alternate; }
+.aurora-violet { top: -60%; left: -15%; background: radial-gradient(ellipse, var(--accent) 0%, transparent 68%); }
+.aurora-cyan { right: -20%; bottom: -75%; background: radial-gradient(ellipse, #5ad8dc 0%, transparent 68%); animation-delay: -11s; animation-direction: alternate-reverse; }
+.atmosphere-lines { position: absolute; inset: 0; width: 110%; height: 100%; stroke: var(--hero-accent); stroke-width: 1; opacity: .15; animation: studio-lines 18s ease-in-out infinite alternate; }
+.floating-lines-layer { opacity: .4; }
+.particles-layer { opacity: .85; }
+.particles-fallback { position: absolute; inset: 0; opacity: .45; background-image: radial-gradient(circle at 12% 24%, #ffffff 0 1px, transparent 2px), radial-gradient(circle at 66% 58%, #b7e9ff 0 1.5px, transparent 3px), radial-gradient(circle at 38% 80%, #d1c0ff 0 1px, transparent 2px); background-size: 140px 100px, 210px 160px, 180px 130px; }
+.shell-backdrop .floating-lines-layer { opacity: .14; }
+:root[data-theme='dark'] .shell-backdrop .floating-lines-layer { opacity: .24; }
+.shell-backdrop .aurora-band { opacity: .08; }
+.shell-backdrop .atmosphere-lines { stroke: var(--accent); opacity: .08; }
+.welcome-page > .studio-atmosphere .floating-lines-layer { opacity: .2; }
+:root[data-theme='dark'] .welcome-page > .studio-atmosphere .floating-lines-layer { opacity: .32; }
+.welcome-page { position: relative; isolation: isolate; overflow: clip; }
+.welcome-page > .welcome-header, .welcome-page > .welcome-main, .welcome-page > .welcome-footer { position: relative; z-index: 1; }
+.welcome-page > .studio-atmosphere .aurora-band { height: 75%; opacity: .13; }
+.welcome-page > .studio-atmosphere .aurora-violet { top: -20%; left: -25%; }
+.welcome-page > .studio-atmosphere .aurora-cyan { bottom: -25%; right: -35%; }
+.welcome-page > .studio-atmosphere .atmosphere-lines { top: 15%; height: 65%; stroke: var(--accent); opacity: .07; }
+.sound-illustration { position: relative; }
+.studio-float { position: absolute; display: grid; place-items: center; width: 46px; height: 46px; border: 1px solid var(--hero-line); border-radius: 15px; background: var(--hero-bg); color: var(--hero-accent); box-shadow: 0 8px 20px #11102b26; pointer-events: none; animation: studio-float 7s ease-in-out infinite alternate; }
+.studio-float .ui-icon { width: 24px; height: 24px; }
+.studio-float-book { left: -24px; bottom: 26px; transform: rotate(-10deg); }
+.studio-float-headphones { right: 20px; top: -24px; animation-delay: -3.5s; }
+.sound-wave > span, .banner-wave > span { transform-origin: center; animation: studio-wave 4.8s ease-in-out infinite alternate; animation-delay: var(--wave-delay, 0s); }
+.studio-banner { position: relative; isolation: isolate; overflow: hidden; }
+.banner-art { position: relative; z-index: 1; background: color-mix(in srgb, var(--hero-bg) 82%, transparent); }
+.banner-art .studio-float { width: 34px; height: 34px; border-radius: 11px; }
+.banner-art .studio-float .ui-icon { width: 18px; height: 18px; }
+.banner-art .studio-float-book { left: -16px; bottom: 16px; }
+.banner-art .studio-float-headphones { right: 12px; top: -16px; }
+.motion-paused .aurora-band, .motion-paused .atmosphere-lines, .motion-paused .studio-float,
+.motion-paused .sound-wave > span, .motion-paused .banner-wave > span { animation-play-state: paused; }
+@keyframes aurora-drift { to { transform: translate(16%, 12%) rotate(16deg) scale(1.12); } }
+@keyframes studio-lines { to { transform: translate(-7%, 5%); } }
+@keyframes studio-float { to { translate: 0 -10px; rotate: 6deg; } }
+@keyframes studio-wave { 0%, 15% { transform: scaleY(.55); } 60% { transform: scaleY(.95); } 100% { transform: scaleY(.72); } }
+@media (max-width: 600px) {
+  .welcome-page > .studio-atmosphere .aurora-cyan, .welcome-page > .studio-atmosphere .atmosphere-lines { display: none; }
+  .studio-float-book { left: -12px; width: 32px; height: 32px; }
+  .studio-float-headphones { width: 36px; height: 36px; top: -18px; }
+  .studio-float .ui-icon { width: 19px; height: 19px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .aurora-band, .atmosphere-lines, .studio-float, .sound-wave > span, .banner-wave > span { animation: none !important; }
+}

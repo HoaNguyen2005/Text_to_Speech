@@ -1,14 +1,21 @@
 <script setup>
+import { ref } from 'vue';
+import UiIcon from './UiIcon.vue';
+import StudioAtmosphere from './StudioAtmosphere.vue';
+import { useSceneMotion } from '@/composables/useSceneMotion';
 import ThemeToggle from '@/components/ThemeToggle.vue';
 import LocaleSelector from '@/components/LocaleSelector.vue';
 defineProps(['authLoading', 'authError', 'identitySession']);
 defineEmits(['login', 'register', 'logout', 'retry']);
+const scene = ref(null);
+const motionPaused = useSceneMotion(scene);
 const waveform = [14, 24, 18, 36, 52, 32, 68, 84, 54, 40, 70, 96, 78, 48, 62, 90,
   100, 74, 44, 64, 84, 56, 38, 70, 92, 66, 48, 80, 60, 36, 50, 72, 42, 28, 46, 30, 18, 24];
 </script>
 
 <template>
-  <div class="welcome-page">
+  <div ref="scene" class="welcome-page" :class="{ 'motion-paused': motionPaused }">
+    <StudioAtmosphere :paused="motionPaused" />
     <header class="welcome-header">
       <div class="welcome-brand" aria-label="Text2Speech">
         <span class="brand-symbol" aria-hidden="true">
@@ -29,6 +36,8 @@ const waveform = [14, 24, 18, 36, 52, 32, 68, 84, 54, 40, 70, 96, 78, 48, 62, 90
           <p class="story-description">{{ $t("Biến văn bản thành bài giảng và sách nói với giọng đọc tiếng Việt. Sáng tạo, lắng nghe và lưu lại trong một không gian.") }}</p>
         </div>
         <div class="sound-illustration" aria-hidden="true">
+          <span class="studio-float studio-float-book"><UiIcon name="book" /></span>
+          <span class="studio-float studio-float-headphones"><UiIcon name="headphones" /></span>
           <div class="sound-heading">
             <span class="sound-label">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
@@ -37,7 +46,7 @@ const waveform = [14, 24, 18, 36, 52, 32, 68, 84, 54, 40, 70, 96, 78, 48, 62, 90
             <span class="sound-badge">{{ $t("Giọng đọc tiếng Việt") }}</span>
           </div>
           <div class="sound-wave">
-            <span v-for="(bar, index) in waveform" :key="index" :style="{ height: bar + '%' }"></span>
+            <span v-for="(bar, index) in waveform" :key="index" :style="{ height: bar + '%', '--wave-delay': index * -.17 + 's' }"></span>
           </div>
           <div class="sound-caption"><span>{{ $t("Ý tưởng của bạn") }}</span><span class="sound-line"></span><span>{{ $t("Trải nghiệm nghe mới") }}</span></div>
         </div>

@@ -4,12 +4,15 @@ import UiIcon from './UiIcon.vue';
 import { activeDialog, notifications, dismissNotification, settleDialog, notify } from '@/composables/useNotifications';
 
 const dialogElement = ref(null);
+const displayedDialog = ref(null);
 const actionBusy = ref(new Set());
 const visibleNotifications = computed(() => notifications.value.slice(0, 5));
 const titleFor = kind => ({ success: 'Thành công', error: 'Có lỗi xảy ra', warning: 'Cần lưu ý', info: 'Thông báo' }[kind] || 'Thông báo');
 const iconFor = kind => ({ success: 'check', error: 'close', warning: 'shield', info: 'spark' }[kind] || 'spark');
 let previousOverflow;
 watch(activeDialog, async value => {
+  // Keep the last content painted while the native dialog runs its exit transition.
+  if (value) displayedDialog.value = value;
   await nextTick();
   if (value && activeDialog.value?.id === value.id) {
     previousOverflow ??= document.body.style.overflow;
@@ -55,14 +58,14 @@ onBeforeUnmount(() => {
     </section>
 
     <dialog ref="dialogElement" class="notification-dialog" aria-labelledby="popup-title" aria-describedby="popup-message" @cancel.prevent="settleDialog(false)" @click="event => { if (event.target === dialogElement) settleDialog(false); }">
-      <div v-if="activeDialog" class="popup-content" :class="activeDialog.kind">
+      <div v-if="displayedDialog" class="popup-content" :class="displayedDialog.kind" :inert="!activeDialog">
         <header class="popup-brand"><span><UiIcon name="wave" />Text2Speech<span class="popup-dot">.</span></span><button class="notification-close" type="button" :aria-label="$t('Đóng thông báo')" @click="settleDialog(false)"><UiIcon name="close" /></button></header>
-        <span class="popup-symbol"><UiIcon :name="iconFor(activeDialog.kind)" /></span>
-        <h2 id="popup-title">{{ $t(activeDialog.title) }}</h2>
-        <p id="popup-message">{{ $t(activeDialog.message) }}</p>
+        <span class="popup-symbol"><UiIcon :name="iconFor(displayedDialog.kind)" /></span>
+        <h2 id="popup-title">{{ $t(displayedDialog.title) }}</h2>
+        <p id="popup-message">{{ $t(displayedDialog.message) }}</p>
         <footer class="popup-actions">
-          <button v-if="activeDialog.confirmation" type="button" class="btn" data-initial-focus @click="settleDialog(false)">{{ $t(activeDialog.cancelLabel) }}</button>
-          <button type="button" class="btn" :class="activeDialog.danger ? 'popup-danger' : 'primary'" :data-initial-focus="activeDialog.confirmation ? undefined : ''" @click="settleDialog(true)">{{ $t(activeDialog.confirmLabel) }}<UiIcon v-if="!activeDialog.confirmation" name="arrow" /></button>
+          <button v-if="displayedDialog.confirmation" type="button" class="btn" data-initial-focus @click="settleDialog(false)">{{ $t(displayedDialog.cancelLabel) }}</button>
+          <button type="button" class="btn" :class="displayedDialog.danger ? 'popup-danger' : 'primary'" :data-initial-focus="displayedDialog.confirmation ? undefined : ''" @click="settleDialog(true)">{{ $t(displayedDialog.confirmLabel) }}<UiIcon v-if="!displayedDialog.confirmation" name="arrow" /></button>
         </footer>
       </div>
     </dialog>
@@ -105,8 +108,6 @@ onBeforeUnmount(() => {
 .popup-actions .btn { min-height: 42px; }
 .popup-actions .popup-danger { background: var(--danger); color: var(--surface); border-color: var(--danger); }
 .popup-actions .popup-danger:hover { filter: brightness(.92); }
-.notification-enter-active, .notification-leave-active { transition: opacity .18s, transform .18s; }
-.notification-enter-from, .notification-leave-to { opacity: 0; transform: translateX(20px); }
 @media (max-width: 600px) { .notification-stack { top: 12px; right: 12px; width: calc(100vw - 24px); max-height: calc(100dvh - 24px); } .popup-content { padding: 22px; } .popup-actions .btn { flex: 1; } }
 @media (prefers-reduced-motion: reduce) { .notification-enter-active, .notification-leave-active { transition: none; } .notification-dialog::backdrop { backdrop-filter: none; } }
 </style>

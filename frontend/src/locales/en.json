@@ -721,5 +721,11 @@
   "Tạo tóm tắt mới": "Create a new summary",
   "Chỉnh nội dung, nghe thử rồi duyệt tạo âm thanh.": "Edit the text, preview it, then approve the audio.",
   "Đang xử lý. Bạn có thể chỉnh tốc độ khi bản tóm tắt sẵn sàng.": "Processing. You can adjust the speed once the summary is ready.",
-  "Yêu cầu hiện tại vẫn được lưu trong danh sách gần đây.": "Your current request stays in the recent list."
+  "Yêu cầu hiện tại vẫn được lưu trong danh sách gần đây.": "Your current request stays in the recent list.",
+  "Hồ sơ": "Profile",
+  "Mở menu": "Open navigation",
+  "Đóng menu": "Close navigation",
+  "Thu gọn menu": "Collapse sidebar",
+  "Mở rộng menu": "Expand sidebar",
+  "Menu tài khoản": "Account menu"
 }

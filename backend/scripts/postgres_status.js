@@ -7,7 +7,7 @@ async function main() {
         current_user AS role, rolsuper AS superuser, rolcreatedb AS can_create_database
         FROM pg_roles WHERE rolname = current_user`)).rows[0];
     const counts = {};
-    for (const table of [...Object.keys(tables), 'legacy_documents']) {
+    for (const table of [...Object.keys(tables),'book_job_requests','book_job_sources','book_job_drafts','book_job_runtime']) {
         // Identifiers come from fixed application metadata, never user input.
         counts[table] = Number((await db.query(`SELECT count(*) AS count FROM "${table}"`)).rows[0].count);
     }

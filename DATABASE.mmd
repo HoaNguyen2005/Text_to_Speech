@@ -1,0 +1,164 @@
+erDiagram
+    direction LR
+
+    book_caches {
+        text _id PK
+        text user_id FK
+        text source_hash
+        text version
+        jsonb notes
+        text overview
+        timestamptz expires_at
+    }
+
+    book_job_drafts {
+        text job_id PK, FK
+        jsonb draft
+        integer draft_revision
+        integer approved_revision
+        jsonb edit_request
+    }
+
+    book_job_requests {
+        text _id PK
+        text user_id FK
+        text request_id
+        text title
+        jsonb book_metadata
+        boolean ai_assisted
+        integer target_minutes
+        text voice_mode
+        text status
+        timestamptz createdAt
+        timestamptz(3) updatedAt
+        jsonb selected_voice
+    }
+
+    book_job_runtime {
+        text job_id PK, FK
+        boolean cancel_requested
+        jsonb progress
+        jsonb checkpoint
+        jsonb result
+        text error
+        text lease_owner
+        timestamptz lease_until
+        integer runs
+        boolean artifacts_cleaned
+        text workflow_version
+        text work_action
+        timestamptz next_attempt_at
+        jsonb retry_state
+        boolean delete_requested
+    }
+
+    book_job_sources {
+        text job_id PK, FK
+        text source
+        text source_hash
+    }
+
+    book_previews {
+        text _id PK
+        text user_id FK
+        text job_id FK
+        text signature
+        text status
+        text owner
+        timestamptz lease_until
+        timestamptz expires_at
+        jsonb result
+        text error
+    }
+
+    data_migrations {
+        text id PK
+        text source_digest
+        text backup_file
+        jsonb counts
+        timestamptz completed_at
+    }
+
+    generated_lectures {
+        text _id PK
+        text book_job_id UK, FK
+        text user_id FK
+        text title
+        jsonb book_metadata
+        boolean ai_assisted
+        integer target_minutes
+        float8 duration_seconds
+        text voice_mode
+        text text
+        text teacher_id
+        text style_id
+        text audio_url
+        timestamptz createdAt
+        timestamptz updatedAt
+        jsonb speech_config
+        text subtitle_url
+        text subtitle_timing
+    }
+
+    reading_profiles {
+        text _id PK
+        float8 units_per_minute
+        float8 seconds
+        timestamptz expires_at
+    }
+
+    schema_migrations {
+        text version PK
+        text digest
+        timestamptz applied_at
+    }
+
+    users {
+        text _id PK
+        text email UK
+        text fullName
+        text gender
+        text status
+        text role
+        boolean authProvisioning
+        boolean authSyncPending
+        text authSyncError
+        integer authSyncVersion
+        timestamptz authSyncStartedAt
+        text keycloakId UK
+        text account_class
+        integer profile_version
+    }
+
+    voices {
+        text _id PK
+        text voice_id UK
+        text name
+        text gender
+        text file_path
+        boolean is_active
+        text user_id FK
+        boolean is_global
+        timestamptz createdAt
+        timestamptz updatedAt
+        text class
+        text description
+    }
+
+    worker_leases {
+        text _id PK
+        text owner
+        timestamptz until
+        jsonb legacy_data
+    }
+
+    users ||--o{ voices : "user_id"
+    users ||--o{ book_job_requests : "user_id"
+    book_job_requests |o--o| generated_lectures : "book_job_id"
+    users |o--o{ generated_lectures : "user_id"
+    users ||--o{ book_caches : "user_id"
+    users ||--o{ book_previews : "user_id"
+    book_job_requests ||--o{ book_previews : "job_id"
+    book_job_requests ||--|| book_job_sources : "job_id"
+    book_job_requests ||--|| book_job_drafts : "job_id"
+    book_job_requests ||--|| book_job_runtime : "job_id"

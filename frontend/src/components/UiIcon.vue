@@ -2,6 +2,8 @@
 import { computed } from 'vue';
 const props = defineProps({ name: { type: String, default: 'wave' } });
 const paths = {
+  menu: 'M4 6h16M4 12h16M4 18h16',
+  more: 'M11 5h2M11 12h2M11 19h2',
   download:'M12 3v12M7 10l5 5 5-5M4 17v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3',
   user:'M20 21v-2a7 7 0 0 0-14 0v2M12 3a4 4 0 1 0 0 8 4 4 0 0 0 0-8Z',
   play:'M8 4v16l13-8L8 4Z',

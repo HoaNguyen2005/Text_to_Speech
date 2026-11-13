@@ -1,0 +1,173 @@
+Project Text2Speech {
+  database_type: 'PostgreSQL'
+}
+
+Table book_caches {
+  "_id" text [pk, not null]
+  "user_id" text [not null]
+  "source_hash" text [not null]
+  "version" text [not null]
+  "notes" jsonb [not null]
+  "overview" text
+  "expires_at" timestamptz [not null]
+
+  indexes {
+    ("user_id", "source_hash", "version") [unique]
+  }
+}
+
+Table book_job_drafts {
+  "job_id" text [pk, not null]
+  "draft" jsonb
+  "draft_revision" integer [not null]
+  "approved_revision" integer
+  "edit_request" jsonb
+}
+
+Table book_job_requests {
+  "_id" text [pk, not null]
+  "user_id" text [not null]
+  "request_id" text [not null]
+  "title" text [not null]
+  "book_metadata" jsonb
+  "ai_assisted" boolean [not null]
+  "target_minutes" integer [not null]
+  "voice_mode" text [not null]
+  "status" text [not null]
+  "createdAt" timestamptz [not null]
+  "updatedAt" timestamptz(3) [not null]
+  "selected_voice" jsonb
+
+  indexes {
+    ("user_id", "request_id") [unique]
+  }
+}
+
+Table book_job_runtime {
+  "job_id" text [pk, not null]
+  "cancel_requested" boolean [not null]
+  "progress" jsonb [not null]
+  "checkpoint" jsonb
+  "result" jsonb
+  "error" text [not null]
+  "lease_owner" text
+  "lease_until" timestamptz
+  "runs" integer [not null]
+  "artifacts_cleaned" boolean [not null]
+  "workflow_version" text
+  "work_action" text [not null]
+  "next_attempt_at" timestamptz
+  "retry_state" jsonb
+  "delete_requested" boolean [not null]
+}
+
+Table book_job_sources {
+  "job_id" text [pk, not null]
+  "source" text
+  "source_hash" text [not null]
+}
+
+Table book_previews {
+  "_id" text [pk, not null]
+  "user_id" text [not null]
+  "job_id" text [not null]
+  "signature" text [not null]
+  "status" text [not null]
+  "owner" text [not null]
+  "lease_until" timestamptz [not null]
+  "expires_at" timestamptz [not null]
+  "result" jsonb
+  "error" text [not null]
+}
+
+Table data_migrations {
+  "id" text [pk, not null]
+  "source_digest" text [not null]
+  "backup_file" text [not null]
+  "counts" jsonb [not null]
+  "completed_at" timestamptz [not null]
+}
+
+Table generated_lectures {
+  "_id" text [pk, not null]
+  "book_job_id" text [unique]
+  "user_id" text
+  "title" text
+  "book_metadata" jsonb
+  "ai_assisted" boolean
+  "target_minutes" integer
+  "duration_seconds" float8
+  "voice_mode" text
+  "text" text [not null]
+  "teacher_id" text [not null]
+  "style_id" text [not null]
+  "audio_url" text [not null]
+  "createdAt" timestamptz [not null]
+  "updatedAt" timestamptz [not null]
+  "speech_config" jsonb
+  "subtitle_url" text
+  "subtitle_timing" text
+}
+
+Table reading_profiles {
+  "_id" text [pk, not null]
+  "units_per_minute" float8
+  "seconds" float8
+  "expires_at" timestamptz
+}
+
+Table schema_migrations {
+  "version" text [pk, not null]
+  "digest" text [not null]
+  "applied_at" timestamptz [not null]
+}
+
+Table users {
+  "_id" text [pk, not null]
+  "email" text [not null, unique]
+  "fullName" text [not null]
+  "gender" text [not null]
+  "status" text [not null]
+  "role" text [not null]
+  "authProvisioning" boolean [not null]
+  "authSyncPending" boolean [not null]
+  "authSyncError" text [not null]
+  "authSyncVersion" integer [not null]
+  "authSyncStartedAt" timestamptz
+  "keycloakId" text [unique]
+  "account_class" text [not null]
+  "profile_version" integer [not null]
+}
+
+Table voices {
+  "_id" text [pk, not null]
+  "voice_id" text [not null, unique]
+  "name" text [not null]
+  "gender" text [not null]
+  "file_path" text [not null]
+  "is_active" boolean [not null]
+  "user_id" text [not null]
+  "is_global" boolean [not null]
+  "createdAt" timestamptz
+  "updatedAt" timestamptz
+  "class" text [not null]
+  "description" text [not null]
+}
+
+Table worker_leases {
+  "_id" text [pk, not null]
+  "owner" text
+  "until" timestamptz
+  "legacy_data" jsonb [not null]
+}
+
+Ref: voices."user_id" > users."_id" [delete: restrict]
+Ref: book_job_requests."user_id" > users."_id" [delete: restrict]
+Ref: book_job_requests."_id" - generated_lectures."book_job_id" [delete: restrict]
+Ref: generated_lectures."user_id" > users."_id" [delete: restrict]
+Ref: book_caches."user_id" > users."_id" [delete: restrict]
+Ref: book_previews."user_id" > users."_id" [delete: cascade]
+Ref: book_previews."job_id" > book_job_requests."_id" [delete: cascade]
+Ref: book_job_requests."_id" - book_job_sources."job_id" [delete: cascade]
+Ref: book_job_requests."_id" - book_job_drafts."job_id" [delete: cascade]
+Ref: book_job_requests."_id" - book_job_runtime."job_id" [delete: cascade]

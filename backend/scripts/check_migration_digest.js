@@ -1,0 +1,11 @@
+const assert = require('node:assert/strict');
+const { digest, matches } = require('../app/db/migration_digest');
+const lf = 'CREATE TABLE test (id int);\n-- comment\n';
+const crlf = lf.replace(/\n/g, '\r\n');
+assert.ok(matches(lf, digest(crlf)));
+assert.ok(matches(crlf, digest(lf)));
+assert.ok(matches(lf, digest(lf)));
+assert.ok(!matches(lf.replace('int', 'text'), digest(crlf)));
+assert.ok(!matches(lf + 'DROP TABLE test;', digest(lf)));
+assert.ok(!matches(lf.trim(), digest(lf)));
+console.log('PASS: Windows/Linux migration digests; SQL edits still rejected');

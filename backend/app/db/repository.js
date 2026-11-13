@@ -108,6 +108,16 @@ function repository(table) {
         return [...expressions].map(([key, value]) => `${quote(key)}=${value}`).join(',');
     }
     async function updateOne(filter, update, options = {}) {
+        if (options.countOnly && !options.upsert) {
+            const params = [];
+            const assignments = changes(update, params);
+            if (!assignments) return { matchedCount: await Model.exists(filter) ? 1 : 0, modifiedCount: 0 };
+            const predicate = where(filter, params);
+            const sorting = order(options.sort);
+            const result = await db.query(`UPDATE ${quote(table)} SET ${assignments} WHERE _id IN
+                (SELECT _id FROM ${quote(table)} WHERE ${predicate}${sorting ? ' ORDER BY ' + sorting : ''} LIMIT 1 FOR UPDATE) RETURNING _id`, params);
+            return { matchedCount: result.rowCount, modifiedCount: result.rowCount };
+        }
         return db.transaction(async () => {
             if (options.upsert) {
                 const identity = Object.fromEntries(Object.entries(filter).filter(([key, value]) => columns.has(key) && (value === null || typeof value !== 'object' || value instanceof Date)));
@@ -175,7 +185,7 @@ function repository(table) {
         static findOne(filter = {}) { return new Query(filter, true); }
         static findById(id) { return Model.findOne({ _id: id }); }
         static findOneAndUpdate(filter, update, options = {}) { return new Query(filter, true, () => updateOne(filter, update, options)); }
-        static updateOne(filter, update, options = {}) { return updateOne(filter, update, options).then(({ row, ...result }) => result); }
+        static updateOne(filter, update, options = {}) { return updateOne(filter, update, { ...options, countOnly: true }).then(({ row, ...result }) => result); }
         static async exists(filter) { return Boolean(await Model.findOne(filter).select('_id').lean()); }
         static async countDocuments(filter = {}) { const values = []; return Number((await db.query(`SELECT count(*)::int AS count FROM ${quote(table)} WHERE ${where(filter, values)}`, values)).rows[0].count); }
         static async create(data) { return hydrate(await insert(data)); }

@@ -3,6 +3,30 @@
 Để bật web đã cấu hình, dùng [hướng dẫn chạy dự án](../README.md#chạy-trên-máy-hiện-tại).
 Tài liệu này ghi lại cách dựng Keycloak và chuyển tài khoản lần đầu. Nếu cần sửa giao diện xác thực, xem [THEME.md](THEME.md).
 
+## Triển khai Keycloak lên Render
+
+Build image production từ thư mục gốc của repo:
+
+```powershell
+docker build -t text2speech-keycloak:26.8.0 ./keycloak
+```
+
+1. Chạy `./keycloak/backup.ps1` để sao lưu PostgreSQL của Keycloak. Phục hồi bản sao vào một PostgreSQL tạm trước, chuyển các bảng Keycloak sang schema `keycloak`, rồi sao lưu riêng schema này để nhập vào project Supabase dành cho Keycloak. Giữ schema `keycloak` ngoài danh sách schema của Data API. Kiểm tra ba ID tài khoản vẫn khớp hồ sơ trong database ứng dụng.
+2. Tạo Web Service Docker riêng trên Render. Để trống **Root Directory**, nhập `./keycloak/Dockerfile` vào **Dockerfile Path** và đặt **Docker Build Context Directory** là `.`. Image chạy `start --optimized` trên cổng `10000`. Dùng `/realms/tts-local/.well-known/openid-configuration` làm đường dẫn health check sau khi phục hồi realm.
+3. Đặt các biến sau trong Environment của Web Service. Lấy hostname từ **Connect → Session pooler** và tải chứng chỉ CA từ **Database Settings → SSL Configuration** của project Supabase dành cho Keycloak. Thêm chứng chỉ vào Render dưới dạng Secret File có tên `supabase-prod-ca-2021.crt`.
+
+| Biến | Giá trị |
+| --- | --- |
+| `KC_HOSTNAME` | URL HTTPS của dịch vụ Keycloak trên Render |
+| `KC_DB_URL` | `jdbc:postgresql://<pooler-host>:5432/postgres?sslmode=verify-full&sslrootcert=/etc/secrets/supabase-prod-ca-2021.crt` |
+| `KC_DB_USERNAME` | Tài khoản database dành riêng cho Keycloak theo dạng `keycloak_app.<project-ref>` |
+| `KC_DB_PASSWORD` | Mật khẩu của tài khoản database Keycloak, nhập riêng trên Render |
+| `KC_DB_SCHEMA` | `keycloak` |
+| `KC_DB_POOL_MAX_SIZE` | `5` cho môi trường triển khai ban đầu |
+
+4. Mở endpoint discovery và kiểm tra `issuer` là `<URL HTTPS>/realms/tts-local`. Kiểm tra đăng nhập và tài khoản quản trị với realm đã phục hồi. Nếu dùng xác minh email hoặc đặt lại mật khẩu online, cấu hình SMTP có thể truy cập từ Render.
+5. Đặt `KEYCLOAK_URL` và `KEYCLOAK_INTERNAL_URL` trên Backend Render theo URL HTTPS đã xác minh. Đặt `VITE_KEYCLOAK_URL` trên Cloudflare Pages rồi build lại frontend. Thử đăng nhập, mở lịch sử của tài khoản cũ và kiểm tra quyền admin trước khi dừng Keycloak local.
+
 ## Trạng thái
 
 Stack local đã chạy; realm `tts-local` có roles `user`/`admin`, client SPA `tts-frontend` (Authorization Code + PKCE S256) và client API `tts-backend` (bearer-only). Access token được cấu hình audience `tts-backend` và claim `mongoUserId`.
