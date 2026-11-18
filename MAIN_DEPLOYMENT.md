@@ -2,8 +2,13 @@
 
 | Nhánh | Bộ tạo giọng | Cloudflare Pages |
 | --- | --- | --- |
-| `main` | Edge-TTS + OpenVoice V2, VieNeu-TTS v3 Turbo | Project riêng `text2speech-main`, production branch `main` |
-| `codex/omnivoice-windows` | Bản thử nghiệm có thêm OmniVoice | Giữ project hiện tại và production branch hiện tại |
+| `main` | Edge-TTS + OpenVoice V2, VieNeu-TTS v3 Turbo | [text2speech-main.pages.dev](https://text2speech-main.pages.dev), project `text2speech-main` |
+| `codex/omnivoice-windows` | Bản thử nghiệm có thêm OmniVoice | [text2speech-at0.pages.dev](https://text2speech-at0.pages.dev), project `text2speech` |
+
+Project main đã liên kết GitHub, production branch `main`, tự build khi push
+nhánh main và tắt preview cho các nhánh khác. Project cũ giữ nguyên cấu hình.
+Hiện hai frontend trỏ tới cùng API `https://text2speech-backend.onrender.com`;
+việc tạo Pages mới không thay đổi nhánh đang chạy của backend Render.
 
 Giao diện của `main` dùng cùng sidebar, Particles, Floating Lines, dropdown và
 hiệu ứng thông báo với nhánh thử nghiệm. Main không có service, lựa chọn API hay
