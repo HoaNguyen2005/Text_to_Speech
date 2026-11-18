@@ -1,7 +1,7 @@
 param(
     [ValidateSet('all', 'prepare', 'build', 'up', 'tunnel', 'register', 'status', 'logs', 'stop')]
     [string]$Action = 'status',
-    [ValidateSet('engine', 'vieneu', 'omnivoice', 'tunnel', 'worker')]
+    [ValidateSet('engine', 'vieneu', 'tunnel', 'worker')]
     [string]$Service,
     [string]$Secret = '',
     [string]$BackendUrl = 'https://text2speech-backend.onrender.com'
@@ -207,14 +207,7 @@ function Stop-NativeService {
     if (Test-Path -LiteralPath $pidFile) {
         $savedPid = (Get-Content -LiteralPath $pidFile -ErrorAction SilentlyContinue | Select-Object -First 1)
         if ($savedPid -match '^\d+$') {
-            if ($Name -eq 'omnivoice') {
-                $process = Get-CimInstance Win32_Process -Filter "ProcessId=$savedPid" -ErrorAction SilentlyContinue
-                if ($process.CommandLine -match [regex]::Escape((Join-Path $runtimeDir 'run-omnivoice.cmd'))) {
-                    taskkill.exe /PID $savedPid /T /F | Out-Null
-                }
-            } else {
-                Stop-Process -Id ([int]$savedPid) -Force -ErrorAction SilentlyContinue
-            }
+            Stop-Process -Id ([int]$savedPid) -Force -ErrorAction SilentlyContinue
         }
         Remove-Item -LiteralPath $pidFile -Force -ErrorAction SilentlyContinue
     }
@@ -261,19 +254,10 @@ function Get-NativeTunnelUrl {
     return $null
 }
 
-function Get-OmniVoicePython {
-    $trialDir = Join-Path $env:USERPROFILE 'OmniVoice-trial'
-    foreach ($version in @('3.11', '3.10', '3.12')) {
-        $trialPython = Join-Path $trialDir "venv-$version-cuda/Scripts/python.exe"
-        if (Test-Path -LiteralPath $trialPython -PathType Leaf) { return $trialPython }
-    }
-}
-
 function Invoke-NativeGpuNode {
     $resolvedSecret = Get-EngineSecret
     $engineDir = Join-Path $taskRoot 'engine'
     $vieneuDir = Join-Path $engineDir 'vieneu_service'
-    $omniDir = Join-Path $engineDir 'omnivoice_service'
     $backendDir = Join-Path $taskRoot 'backend'
     $enginePy = Join-Path $engineDir 'venv/Scripts/python.exe'
     $vieneuPy = Join-Path $vieneuDir '.venv/Scripts/python.exe'
@@ -302,11 +286,7 @@ function Invoke-NativeGpuNode {
             if (-not (Test-Path -LiteralPath $cloudflaredExe)) {
                 Invoke-WebRequest -Uri 'https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe' -OutFile $cloudflaredExe -UseBasicParsing
             }
-            $omniBootstrap = Get-OmniVoicePython
-            if (-not $omniBootstrap) { $omniBootstrap = $enginePy }
-            & $omniBootstrap (Join-Path $PSScriptRoot 'try_omnivoice.py') --device cuda --install-only
-            if ($LASTEXITCODE -ne 0) { throw 'Khong the chuan bi moi truong OmniVoice CUDA.' }
-            Write-Host "[GPU NODE - NATIVE CUDA] Moi truong Engine, VieNeu, OmniVoice, Worker va Cloudflared da san sang." -ForegroundColor Green
+            Write-Host "[GPU NODE - NATIVE CUDA] Moi truong Engine, VieNeu, Worker va Cloudflared da san sang." -ForegroundColor Green
             exit 0
         }
         { $_ -in @('all', 'up') } {
@@ -332,21 +312,6 @@ function Invoke-NativeGpuNode {
                 TUNNEL_METRICS_URL       = 'http://127.0.0.1:2000/metrics'
                 TUNNEL_LOG_FILE          = (Join-Path $runtimeDir 'tunnel.err.log')
                 REMOTE_BACKEND_URLS      = $BackendUrl
-            }
-
-            $omniPy = Get-OmniVoicePython
-            if ($omniPy) {
-                $commonEnv.OMNIVOICE_URL = 'http://127.0.0.1:8002'
-                if (-not (Get-ListenerPid -Port 8002)) {
-                    Write-Host '[GPU NODE] Dang khoi chay OmniVoice CUDA (cong 8002)...' -ForegroundColor Cyan
-                    $omniEnv = $commonEnv.Clone()
-                    $omniEnv.OMNIVOICE_DEVICE = 'cuda'
-                    $omniEnv.PATH = "$(Split-Path -Parent $enginePy);%PATH%"
-                    Start-DetachedService -Name 'omnivoice' -WorkingDir $omniDir -EnvVars $omniEnv `
-                        -CommandLine "`"$omniPy`" -X utf8 -u -m uvicorn app:app --host 127.0.0.1 --port 8002"
-                }
-            } else {
-                Write-Warning 'Chua co moi truong OmniVoice CUDA. Chay .\deploy\gpu-node.ps1 -Action all de cai dat.'
             }
 
             if (-not (Get-ListenerPid -Port 8001)) {
@@ -384,9 +349,6 @@ function Invoke-NativeGpuNode {
             } else {
                 $eh = Invoke-RestMethod -Uri 'http://127.0.0.1:8000/health/ready' -TimeoutSec 5
                 Write-Host "[GPU HEALTH] $($eh | ConvertTo-Json -Compress)" -ForegroundColor Green
-            }
-            if ($omniPy -and $eh.omnivoice -ne $true) {
-                Write-Warning 'Engine chua nhan OmniVoice. Xem status/logs. Neu Engine dang chay ban cu, dung tram GPU roi chay lai.'
             }
 
             $dbUrl = Get-ConfiguredDatabaseUrl
@@ -445,12 +407,10 @@ function Invoke-NativeGpuNode {
         'status' {
             $ePid = Get-ListenerPid -Port 8000
             $vPid = Get-ListenerPid -Port 8001
-            $oPid = Get-ListenerPid -Port 8002
             $tPid = Get-ListenerPid -Port 2000
             $wPid = Get-WorkerPid
             $eHealth = 'stopped'
             $vHealth = 'stopped'
-            $oHealth = 'stopped'
             if ($ePid) {
                 try {
                     $r = Invoke-RestMethod -Uri 'http://127.0.0.1:8000/health/ready' -TimeoutSec 3
@@ -463,23 +423,16 @@ function Invoke-NativeGpuNode {
                     $vHealth = "healthy ($($r.device))"
                 } catch { $vHealth = 'starting/loading-model' }
             }
-            if ($oPid) {
-                try {
-                    $r = Invoke-RestMethod -Uri 'http://127.0.0.1:8002/health/ready' -TimeoutSec 3
-                    $oHealth = if ($r.status -eq 'ok' -and $r.device -eq 'cuda') { 'healthy (cuda)' } else { 'unhealthy' }
-                } catch { $oHealth = 'starting/unhealthy' }
-            }
             $tUrl = if ($tPid) { Get-NativeTunnelUrl } else { $null }
             $wStatus = if ($wPid) { 'running (local-ssd + gpu)' } elseif (Get-ConfiguredDatabaseUrl) { 'stopped' } else { 'missing DATABASE_URL' }
             [PSCustomObject]@{ Service = 'engine'; Mode = 'native-cuda'; Port = 8000; PID = $ePid; Status = $eHealth }
             [PSCustomObject]@{ Service = 'vieneu'; Mode = 'native-cuda'; Port = 8001; PID = $vPid; Status = $vHealth }
-            [PSCustomObject]@{ Service = 'omnivoice'; Mode = 'native-cuda'; Port = 8002; PID = $oPid; Status = $oHealth }
             [PSCustomObject]@{ Service = 'worker'; Mode = 'native-node'; Port = '-';  PID = $wPid; Status = $wStatus }
             [PSCustomObject]@{ Service = 'tunnel'; Mode = 'cloudflared'; Port = 2000; PID = $tPid; Status = $(if ($tUrl) { "online ($tUrl)" } elseif ($tPid) { 'running' } else { 'stopped' }) }
             exit 0
         }
         'logs' {
-            $targets = if ($Service) { @($Service) } else { @('engine', 'vieneu', 'omnivoice', 'worker', 'tunnel') }
+            $targets = if ($Service) { @($Service) } else { @('engine', 'vieneu', 'worker', 'tunnel') }
             foreach ($svc in $targets) {
                 Write-Host "=== LOGS: $svc ===" -ForegroundColor Cyan
                 foreach ($suffix in @('log', 'err.log')) {
@@ -492,10 +445,10 @@ function Invoke-NativeGpuNode {
             exit 0
         }
         'stop' {
-            if ($resolvedSecret -and $Service -notin @('vieneu', 'omnivoice')) {
+            if ($resolvedSecret -and $Service -notin @('vieneu')) {
                 Unregister-EngineNode -EngineSecret $resolvedSecret
             }
-            $targets = if ($Service) { @($Service) } else { @('worker', 'tunnel', 'engine', 'vieneu', 'omnivoice') }
+            $targets = if ($Service) { @($Service) } else { @('worker', 'tunnel', 'engine', 'vieneu') }
             foreach ($svc in $targets) {
                 Stop-NativeService -Name $svc
                 Write-Host "[GPU NODE] Da dung dich vu: $svc" -ForegroundColor Yellow
@@ -543,15 +496,15 @@ function Start-TunnelAndPrint {
 
 switch ($Action) {
     'all' {
-        Write-Host "[1/3] Dang build Docker image CUDA cho Engine, VieNeu va OmniVoice..." -ForegroundColor Cyan
+        Write-Host "[1/3] Dang build Docker image CUDA cho Engine va VieNeu..." -ForegroundColor Cyan
         $buildArgs = $baseCompose + @('build')
         & $taskDockerPath @buildArgs
         if ($LASTEXITCODE -ne 0) { throw "Build image GPU that bai." }
 
-        Write-Host "[2/3] Dang khoi chay Engine, VieNeu va OmniVoice tren GPU..." -ForegroundColor Cyan
-        $upArgs = $baseCompose + @('up', '-d', '--wait', '--wait-timeout', '1800', 'engine', 'vieneu', 'omnivoice')
+        Write-Host "[2/3] Dang khoi chay Engine va VieNeu tren GPU..." -ForegroundColor Cyan
+        $upArgs = $baseCompose + @('up', '-d', '--wait', '--wait-timeout', '1800', 'engine', 'vieneu')
         & $taskDockerPath @upArgs
-        if ($LASTEXITCODE -ne 0) { throw "Khoi chay Engine/VieNeu/OmniVoice GPU that bai." }
+        if ($LASTEXITCODE -ne 0) { throw "Khoi chay Engine/VieNeu GPU that bai." }
 
         try {
             $health = Invoke-RestMethod -Uri 'http://127.0.0.1:8000/health/ready' -TimeoutSec 10
@@ -570,7 +523,7 @@ switch ($Action) {
         & $taskDockerPath @argsList
     }
     'up' {
-        $argsList = $baseCompose + @('up', '-d', '--wait', '--wait-timeout', '1800', 'engine', 'vieneu', 'omnivoice')
+        $argsList = $baseCompose + @('up', '-d', '--wait', '--wait-timeout', '1800', 'engine', 'vieneu')
         & $taskDockerPath @argsList
         if ($LASTEXITCODE -eq 0) {
             Write-Host "[GPU NODE] Kiem tra trang thái GPU tai http://127.0.0.1:8000/health/ready ..." -ForegroundColor Cyan
@@ -602,7 +555,7 @@ switch ($Action) {
     }
     'stop' {
         $resolvedSecret = Get-EngineSecret
-        if ($resolvedSecret -and $Service -notin @('vieneu', 'omnivoice')) {
+        if ($resolvedSecret -and $Service -notin @('vieneu')) {
             Unregister-EngineNode -EngineSecret $resolvedSecret
         }
         $argsList = $baseCompose + @('stop')

@@ -109,6 +109,7 @@ async function processJob(job, aiProgress) {
     if (!selectedVoice || !selectedVoice.voice_id || !['male', 'female'].includes(selectedVoice.gender)) {
         throw new Error('Chưa có giọng đọc được chọn cho yêu cầu cũ. Hãy tạo yêu cầu mới và chọn giọng cụ thể.');
     }
+    require('../app/services/tts_provider.service').validate(selectedVoice.provider || 'edge');
     if (checkpoint.voice && ['voice_id', 'gender', 'file_path', 'provider', 'model_revision', 'preset'].some((key) => checkpoint.voice[key] !== selectedVoice[key])) {
         throw new Error('Giọng đọc không khớp checkpoint. Hãy tạo yêu cầu mới khi muốn đổi giọng.');
     }

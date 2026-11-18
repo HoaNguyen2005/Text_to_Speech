@@ -52,7 +52,7 @@ async function engine(endpoint,payload) {
     if(!response.ok) {
         // Only forward authored diagnostics from known private Engine failures.
         const detail=result.detail;
-        const codes=new Set(['VOICE_SAMPLE_NOT_FOUND','VOICE_SAMPLE_ACCESS_DENIED','VOICE_SAMPLE_DOWNLOAD_FAILED','VOICE_SAMPLE_NETWORK','VOICE_SAMPLE_TOO_LARGE','VIENEU_SERVICE_ERROR','VIENEU_CONNECTION_FAILED','OMNIVOICE_SERVICE_ERROR','OMNIVOICE_CONNECTION_FAILED']);
+        const codes=new Set(['VOICE_SAMPLE_NOT_FOUND','VOICE_SAMPLE_ACCESS_DENIED','VOICE_SAMPLE_DOWNLOAD_FAILED','VOICE_SAMPLE_NETWORK','VOICE_SAMPLE_TOO_LARGE','VIENEU_SERVICE_ERROR','VIENEU_CONNECTION_FAILED']);
         const message=detail && typeof detail==='object' && codes.has(detail.code) && typeof detail.message==='string'
             ? detail.message:'Không tạo được đoạn nghe thử. Kiểm tra Engine và thử lại.';
         throw problem(503,message);

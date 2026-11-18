@@ -6,53 +6,12 @@ Nếu chạy **CPU bằng Docker**, mở Docker Desktop rồi chạy `.\deploy\s
 Nếu dựng **trạm GPU trên máy bàn**, xem [PC_AGENT_SETUP.md](../PC_AGENT_SETUP.md).
 Các bước cài Python dưới đây dành cho chế độ chạy trực tiếp. Dừng container Engine trước để dùng cổng 8000.
 
-## OmniVoice trong Docker Compose
+## Bộ tạo giọng trên main
 
-Trên laptop, từ thư mục gốc dự án, chạy `.\deploy\stack.ps1 build` sau khi
-cập nhật mã, sau đó chạy `.\deploy\stack.ps1 up`. Service `omnivoice` dùng CPU.
-Trên máy bàn NVIDIA, `.\deploy\gpu-node.ps1 -Action all` build và khởi động
-service với CUDA cùng Engine GPU và VieNeu.
-
-Trong trang Bài giảng hoặc Sách nói, chọn **OmniVoice** ở ô **Bộ tạo giọng**.
-Bạn có thể dùng một trong hai giọng hệ thống hoặc chọn giọng mẫu đã tải lên.
-Engine gửi yêu cầu đến `http://omnivoice:8002` trong mạng Compose và dùng chung
-thư mục âm thanh với service. Lần tạo đầu tiên tải OmniVoice và Whisper Base
-để chép lời mẫu giọng. Các lần sau dùng lại model trong bộ nhớ và file trong
-volume cache. Thanh tốc độ truyền trực tiếp sang OmniVoice.
-
-Xem log bằng `.\deploy\stack.ps1 logs omnivoice` trên laptop hoặc
-`.\deploy\gpu-node.ps1 -Action logs -Service omnivoice` trên máy bàn.
-
-Trên máy bàn chạy Windows trực tiếp, cùng lệnh `.\deploy\gpu-node.ps1 -Action all`
-dùng môi trường OmniVoice CUDA đã cài và mở dịch vụ nội bộ ở cổng 8002.
-Xem cách khởi động lại trạm và kiểm tra kết nối trong [PC_AGENT_SETUP.md](../PC_AGENT_SETUP.md).
-
-## Chạy thử OmniVoice độc lập trên Windows
-
-Từ thư mục gốc dự án, dùng Python 64-bit 3.10–3.12.
-Thay `py -3.10` bằng phiên bản Python đã cài trên máy.
-
-```powershell
-# Laptop dùng CPU
-py -3.10 .\deploy\try_omnivoice.py --device cpu
-
-# Máy bàn NVIDIA dùng GPU
-py -3.11 .\deploy\try_omnivoice.py --device cuda
-
-# Tự chọn CUDA khi có driver NVIDIA, còn lại dùng CPU
-py -3.10 .\deploy\try_omnivoice.py
-```
-
-Script cài PyTorch 2.8.0 và OmniVoice 0.2.1 trong thư mục
-`%USERPROFILE%\OmniVoice-trial\venv-<python>-<cpu|cuda>`.
-Model tải về bộ nhớ đệm Hugging Face của tài khoản Windows.
-CPU dùng FP32, CUDA dùng FP16. Khi yêu cầu CUDA mà PyTorch chưa nhận GPU,
-script báo lỗi để người chạy kiểm tra driver.
-
-File mẫu là `%USERPROFILE%\OmniVoice-trial\omnivoice-vi-cpu.wav`
-hoặc `omnivoice-vi-cuda.wav`. Terminal ghi riêng thời gian nạp model,
-thời gian sinh và thời lượng âm thanh. Lần đầu bao gồm tải model qua mạng.
-Chương trình thử phù hợp khi cần đo tốc độ riêng của một thiết bị.
+Nhánh `main` dùng Edge-TTS + OpenVoice V2 và VieNeu-TTS. Cấu hình CPU trong
+`deploy/compose.app.yaml`, GPU trong `deploy/compose.gpu-node.yaml`; Windows
+không dùng Docker chạy `deploy/gpu-node.ps1`. Bản thử OmniVoice được giữ riêng
+trên nhánh `codex/omnivoice-windows`. Xem [triển khai hai nhánh](../MAIN_DEPLOYMENT.md).
 
 ## Yêu Cầu Hệ Thống
 - Python 3.9 hoặc 3.10

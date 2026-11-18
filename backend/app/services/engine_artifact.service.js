@@ -103,11 +103,11 @@ async function probeUrl(url, timeoutMs = PROBE_TIMEOUT_MS) {
     }
 }
 
-async function resolveEngineUrl(jobId = null, { forceRefresh = false, excludeUrl = null, requireOmniVoice = false } = {}) {
+async function resolveEngineUrl(jobId = null, { forceRefresh = false, excludeUrl = null } = {}) {
     const candidates = await getCandidates(forceRefresh);
     const id = jobId ? String(jobId) : null;
 
-    if (!forceRefresh && !excludeUrl && !requireOmniVoice && candidates.length === 1) {
+    if (!forceRefresh && !excludeUrl && candidates.length === 1) {
         const single = candidates[0].url;
         if (id) jobPinnedUrl.set(id, single);
         return single;
@@ -116,22 +116,19 @@ async function resolveEngineUrl(jobId = null, { forceRefresh = false, excludeUrl
     if (id && jobPinnedUrl.has(id) && !forceRefresh) {
         const pinned = jobPinnedUrl.get(id);
         if (pinned !== excludeUrl) {
-            if (healthCache.url === pinned && Date.now() - healthCache.checkedAt < HEALTH_TTL_MS
-                && (!requireOmniVoice || healthCache.omnivoice)) {
+            if (healthCache.url === pinned && Date.now() - healthCache.checkedAt < HEALTH_TTL_MS) {
                 return pinned;
             }
             const check = await probeUrl(pinned, PROBE_TIMEOUT_MS);
-            if (check.online && (!requireOmniVoice || check.omnivoice === true)) {
-                healthCache = { checkedAt: Date.now(), url: pinned, role: 'pinned', device: check.device || null,
-                    omnivoice: check.omnivoice === true };
+            if (check.online) {
+                healthCache = { checkedAt: Date.now(), url: pinned, role: 'pinned', device: check.device || null };
                 return pinned;
             }
         }
         jobPinnedUrl.delete(id);
     }
 
-    if (!forceRefresh && !excludeUrl && healthCache.url && Date.now() - healthCache.checkedAt < HEALTH_TTL_MS
-        && (!requireOmniVoice || healthCache.omnivoice)) {
+    if (!forceRefresh && !excludeUrl && healthCache.url && Date.now() - healthCache.checkedAt < HEALTH_TTL_MS) {
         // If currently on a non-GPU node and a registered GPU node exists, re-probe once TTL expires.
         if (id) jobPinnedUrl.set(id, healthCache.url);
         return healthCache.url;
@@ -140,7 +137,7 @@ async function resolveEngineUrl(jobId = null, { forceRefresh = false, excludeUrl
     for (const candidate of candidates) {
         if (excludeUrl && candidate.url === excludeUrl) continue;
         const check = await probeUrl(candidate.url, PROBE_TIMEOUT_MS);
-        if (check.online && (!requireOmniVoice || check.omnivoice === true)) {
+        if (check.online) {
             if (healthCache.url !== candidate.url) {
                 console.log(`[ENGINE ROUTER] Chuyển sang node ${candidate.role} (${candidate.url}, device=${check.device || 'unknown'})`);
             }
@@ -149,25 +146,19 @@ async function resolveEngineUrl(jobId = null, { forceRefresh = false, excludeUrl
                 url: candidate.url,
                 role: candidate.role,
                 device: check.device || null,
-                omnivoice: check.omnivoice === true,
             };
             if (id) jobPinnedUrl.set(id, candidate.url);
             return candidate.url;
         }
     }
 
-    if (requireOmniVoice) {
-        if (excludeUrl) return excludeUrl;
-        throw problem(503, 'Chưa có TTS Engine hỗ trợ OmniVoice. Hãy khởi động stack Docker bản mới.');
-    }
     const fallback = (candidates.find((c) => c.url !== excludeUrl) || candidates[0]).url;
     if (id) jobPinnedUrl.set(id, fallback);
     return fallback;
 }
 
-async function fetchWithFailover(pathSuffix, initFactory, { jobId = null, provider } = {}) {
-    const requireOmniVoice = provider === 'omnivoice';
-    const firstUrl = await resolveEngineUrl(jobId, { requireOmniVoice });
+async function fetchWithFailover(pathSuffix, initFactory, { jobId = null } = {}) {
+    const firstUrl = await resolveEngineUrl(jobId);
     const attemptFetch = async (baseUrl) => {
         const init = typeof initFactory === 'function' ? initFactory(baseUrl) : initFactory;
         return fetch(`${baseUrl}${pathSuffix}`, init);
@@ -177,7 +168,7 @@ async function fetchWithFailover(pathSuffix, initFactory, { jobId = null, provid
         const response = await attemptFetch(firstUrl);
         // Cloudflare Tunnel offline codes: 530 (Error 1033), 502, 504
         if ([502, 504, 530].includes(response.status)) {
-            const nextUrl = await resolveEngineUrl(jobId, { forceRefresh: true, excludeUrl: firstUrl, requireOmniVoice });
+            const nextUrl = await resolveEngineUrl(jobId, { forceRefresh: true, excludeUrl: firstUrl });
             if (nextUrl && nextUrl !== firstUrl) {
                 console.warn(`[ENGINE FAILOVER] Node ${firstUrl} trả mã ${response.status}; chuyển tự động sang ${nextUrl}`);
                 return { response: await attemptFetch(nextUrl), engineUrl: nextUrl, switched: true };
@@ -186,7 +177,7 @@ async function fetchWithFailover(pathSuffix, initFactory, { jobId = null, provid
         return { response, engineUrl: firstUrl, switched: false };
     } catch (firstError) {
         if (firstError?.name === 'AbortError') throw firstError;
-        const nextUrl = await resolveEngineUrl(jobId, { forceRefresh: true, excludeUrl: firstUrl, requireOmniVoice });
+        const nextUrl = await resolveEngineUrl(jobId, { forceRefresh: true, excludeUrl: firstUrl });
         if (nextUrl && nextUrl !== firstUrl) {
             console.warn(`[ENGINE FAILOVER] Không kết nối được ${firstUrl} (${firstError.message}); chuyển tự động sang ${nextUrl}`);
             return { response: await attemptFetch(nextUrl), engineUrl: nextUrl, switched: true };
