@@ -18,11 +18,7 @@ const waveform = [14, 24, 18, 36, 52, 32, 68, 84, 54, 40, 70, 96, 78, 48, 62, 90
     <StudioAtmosphere :paused="motionPaused" />
     <header class="welcome-header">
       <div class="welcome-brand" aria-label="Text2Speech">
-        <span class="brand-symbol" aria-hidden="true">
-          <svg viewBox="0 0 40 40" fill="none">
-            <path d="M11 17v6M17 11v18M23 14v12M29 17v6" stroke="currentColor" stroke-width="3" stroke-linecap="round" />
-          </svg>
-        </span>
+        <img class="brand-symbol" src="/favicon.svg" alt="" width="38" height="38" />
         <span>Text2Speech<span class="brand-period">.</span></span>
       </div>
       <div class="welcome-header-actions"><span class="header-caption">{{ $t("Bài giảng & sách nói AI") }}</span><LocaleSelector /><ThemeToggle /></div>
@@ -136,8 +132,7 @@ const waveform = [14, 24, 18, 36, 52, 32, 68, 84, 54, 40, 70, 96, 78, 48, 62, 90
 .welcome-header, .welcome-main, .welcome-footer { width: 100%; max-width: 1120px; margin: 0 auto; }
 .welcome-header { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 30px 0; }
 .welcome-brand { display: inline-flex; align-items: center; gap: 11px; font-size: 21px; font-weight: 800; letter-spacing: -0.7px; }
-.brand-symbol { display: grid; place-items: center; width: 38px; height: 38px; border-radius: 11px; background: var(--action); color: var(--on-action); }
-.brand-symbol svg { width: 38px; height: 38px; }
+.brand-symbol { display: block; width: 38px; height: 38px; flex-shrink: 0; }
 .brand-period { color: var(--welcome-accent); }
 .header-caption { color: var(--welcome-muted); font-size: 13px; }
 .welcome-main { flex: 1; display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(340px, 1fr); align-items: center; gap: 80px; padding: 44px 0 64px; }

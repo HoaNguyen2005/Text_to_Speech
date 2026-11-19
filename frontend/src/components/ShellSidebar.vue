@@ -19,7 +19,7 @@ const navigation = computed(() => isAdmin.value
   <div class="sidebar-inner" :class="{ 'is-compact': collapsed }">
     <div class="sidebar-heading">
       <router-link :to="isAdmin ? '/admin' : '/'" class="sidebar-brand" :aria-label="$t('Text2Speech — Trang chủ')" @click="$emit('navigate')">
-        <span class="sidebar-mark"><UiIcon name="wave" /></span>
+        <img class="sidebar-mark" src="/favicon.svg" alt="" width="34" height="34" />
         <span class="sidebar-wordmark" :aria-hidden="collapsed">Text2Speech<span>.</span></span>
       </router-link>
       <button type="button" class="sidebar-icon-button sidebar-toggle" :class="{ 'points-left': !mobile && !collapsed }" :aria-label="$t(mobile ? 'Đóng menu' : collapsed ? 'Mở rộng menu' : 'Thu gọn menu')"
@@ -54,8 +54,7 @@ const navigation = computed(() => isAdmin.value
 .sidebar-inner { display: flex; flex-direction: column; height: 100%; min-height: 0; padding: 14px 12px 12px; transition: padding var(--sidebar-duration, 0s) var(--sidebar-ease); }
 .sidebar-heading { position: relative; display: flex; align-items: center; min-height: 38px; }
 .sidebar-brand { display: flex; align-items: center; gap: 9px; min-width: 0; margin-right: 28px; color: var(--ink); text-decoration: none; transition: gap var(--sidebar-duration, 0s), transform var(--sidebar-duration, 0s) var(--sidebar-ease); }
-.sidebar-mark { display: grid; place-items: center; width: 34px; height: 34px; flex-shrink: 0; background: var(--action); color: var(--on-action); border-radius: 11px; }
-.sidebar-mark .ui-icon { width: 21px; height: 21px; }
+.sidebar-mark { display: block; width: 34px; height: 34px; flex-shrink: 0; }
 .sidebar-wordmark { max-width: 150px; overflow: hidden; font-size: 17px; font-weight: 750; letter-spacing: -.65px; white-space: nowrap; }
 .sidebar-wordmark > span { color: var(--accent); }
 .sidebar-icon-button { display: grid; place-items: center; flex-shrink: 0; width: 28px; height: 32px; padding: 4px; border: 0; border-radius: 8px; color: var(--muted); background: transparent; }

@@ -59,7 +59,7 @@ onBeforeUnmount(() => {
 
     <dialog ref="dialogElement" class="notification-dialog" aria-labelledby="popup-title" aria-describedby="popup-message" @cancel.prevent="settleDialog(false)" @click="event => { if (event.target === dialogElement) settleDialog(false); }">
       <div v-if="displayedDialog" class="popup-content" :class="displayedDialog.kind" :inert="!activeDialog">
-        <header class="popup-brand"><span><UiIcon name="wave" />Text2Speech<span class="popup-dot">.</span></span><button class="notification-close" type="button" :aria-label="$t('Đóng thông báo')" @click="settleDialog(false)"><UiIcon name="close" /></button></header>
+        <header class="popup-brand"><span><img class="popup-logo" src="/favicon.svg" alt="" width="24" height="24" />Text2Speech<span class="popup-dot">.</span></span><button class="notification-close" type="button" :aria-label="$t('Đóng thông báo')" @click="settleDialog(false)"><UiIcon name="close" /></button></header>
         <span class="popup-symbol"><UiIcon :name="iconFor(displayedDialog.kind)" /></span>
         <h2 id="popup-title">{{ $t(displayedDialog.title) }}</h2>
         <p id="popup-message">{{ $t(displayedDialog.message) }}</p>
@@ -98,7 +98,7 @@ onBeforeUnmount(() => {
 .popup-content { padding: 24px 30px 30px; }
 .popup-brand { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 28px; }
 .popup-brand > span { display: flex; align-items: center; gap: 7px; font-size: 15px; font-weight: 800; }
-.popup-brand > span > .ui-icon { width: 24px; height: 24px; color: var(--accent); }
+.popup-logo { display: block; width: 24px; height: 24px; flex-shrink: 0; }
 .popup-dot { color: var(--accent); margin-left: -6px; }
 .popup-symbol { width: 56px; height: 56px; border-radius: 17px; margin-bottom: 20px; }
 .popup-symbol .ui-icon { width: 27px; height: 27px; }
