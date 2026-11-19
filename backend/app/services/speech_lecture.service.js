@@ -4,10 +4,10 @@ const path = require('path');
 const speech = require('./speech.service');
 const storage = require('./storage.service');
 const config = require('../config/book');
-const User = require('../models/user.model');
 const History = require('../models/generated_lecture.model');
 const providers = require('./tts_provider.service');
 const artifact = require('./engine_artifact.service');
+const tiers = require('./account_tier.service');
 const problem = (status,message) => Object.assign(new Error(message),{status});
 let running = 0;
 async function engine(endpoint,payload) {
@@ -39,6 +39,8 @@ async function render(user,body,preview=false) {
     // Old lecture callers are clone-only. New catalogue choices specify the
     // internal mode, independently of the system/user display group.
     const mode=body.voice_mode||'clone';
+    user=await tiers.currentUser(user);
+    tiers.assertLectureAllowed(user,body.text.length);
     const voice=await require('./book_voice.service').resolve(mode,body.teacher_id,user,provider);
     const jobId=crypto.randomBytes(12).toString('hex'),timings=[],parts=[];
     const published=[];
@@ -46,7 +48,8 @@ async function render(user,body,preview=false) {
     running++;
     let historySaved=false, prefetch;
     async function guard() {
-        if(!await User.exists({_id:user._id,status:'active',authSyncPending:false}))throw problem(403,'Tài khoản không hoạt động hoặc đang chờ đồng bộ.');
+        user=await tiers.currentUser(user);
+        tiers.assertLectureAllowed(user,body.text.length);
         const available=await require('./book_voice.service').resolve(mode,voice.voice_id,user,provider);
         if(available.file_path!==voice.file_path || available.gender!==voice.gender || available.model_revision!==voice.model_revision)throw problem(403,'Giọng mẫu đã thay đổi hoặc bạn không còn quyền sử dụng.');
     }
@@ -59,6 +62,10 @@ async function render(user,body,preview=false) {
             rate_percent:current.rate_percent,pitch_hz:current.pitch_hz||0,pause_ms:current.pause_ms};
     }
     try {
+        await tiers.consume(user,preview?'previews':'lectures',async current=>{
+            tiers.assertLectureAllowed(current,body.text.length);
+            tiers.assertVoiceAccessAllowed(current,voice,provider,mode);
+        });
         if(!preview)prefetch=await require('./edge_prefetch.service')({jobId,provider,parts:planned.parts,payload,guard});
         let previewBudget=30;
         for(const [index,part] of planned.parts.entries()) {

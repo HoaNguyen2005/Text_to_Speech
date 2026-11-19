@@ -42,6 +42,7 @@ async function verifyToken(req, res, next) {
     try {
         req.auth = await verifyAccessToken(header.replace(/^Bearer\s+/i, ''));
         req.user = await resolveIdentity(req.auth, { onAccountCreated: () => { req.identityCreated = true; } });
+        req.user = await require('../services/account_tier.service').resolveEffectiveUser(req.user);
         next();
     } catch (error) { authFailure(res, error); }
 }

@@ -3,8 +3,8 @@ const config = require('../config/book');
 const providers = require('./tts_provider.service');
 const access = require('./voice_access');
 const problem = (message, status = 400) => Object.assign(new Error(message), { status });
-const snapshot = ({ voice_id, name, gender, file_path, provider = 'edge', preset, origin }) => ({
-    voice_id, name, gender, file_path, origin, ...providers.settings(provider, preset),
+const snapshot = ({ voice_id, name, gender, file_path, provider = 'edge', preset, origin, class:voiceClass='free' }) => ({
+    voice_id, name, gender, file_path, origin, class:voiceClass, ...providers.settings(provider, preset),
 });
 
 async function choices(user, requested) {
@@ -13,11 +13,11 @@ async function choices(user, requested) {
     const standard = config.standardVoices
         .filter(voice => (voice.provider || 'edge') === provider)
         .map(({ voice_id, name, gender }) => ({
-            voice_id, name, gender, class: 'free', provider, preset_voice: true,
+            voice_id, name, gender, class: 'free', required_class:'free', usable:true, provider, preset_voice: true,
             voice_mode: 'standard', origin: 'system', choice_id: `preset:${provider}:${voice_id}`,
         }));
     const clone = voices.map(voice => ({
-        ...access.present(voice, user),
+        ...access.present(voice, user, provider),
         provider,
         voice_mode: 'clone',
         origin: voice.is_global ? 'system' : 'user',
@@ -39,6 +39,7 @@ async function resolve(mode, id, user, requested) {
     if (!access.visible(voice, user)) {
         throw problem('Giọng mẫu không còn khả dụng hoặc bạn không có quyền sử dụng. Hãy tải lại danh sách và chọn giọng khác.', 403);
     }
-    return snapshot({ ...voice, provider, origin: voice.is_global ? 'system' : 'user' });
+    require('./account_tier.service').assertVoiceAccessAllowed(user,voice,provider,mode);
+    return snapshot({ ...voice, class:voice.class, provider, origin: voice.is_global ? 'system' : 'user' });
 }
 module.exports = { choices, resolve };

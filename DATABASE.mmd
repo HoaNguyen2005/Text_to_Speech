@@ -1,6 +1,14 @@
 erDiagram
     direction LR
 
+    account_usage_daily {
+        text user_id PK, FK
+        date usage_date PK
+        integer lectures
+        integer books
+        integer previews
+    }
+
     book_caches {
         text _id PK
         text user_id FK
@@ -100,6 +108,27 @@ erDiagram
         text subtitle_timing
     }
 
+    payment_orders {
+        text _id PK
+        text user_id FK
+        text payment_code UK
+        text plan_class
+        text billing_cycle
+        integer duration_days
+        integer amount_vnd
+        text status
+        jsonb bank_details
+        text sepay_transaction_id UK
+        text bank_reference_code
+        bigint paid_amount_vnd
+        jsonb gateway_payload
+        timestamptz paid_at
+        timestamptz expires_at
+        timestamptz last_checked_at
+        timestamptz createdAt
+        timestamptz updatedAt
+    }
+
     reading_profiles {
         text _id PK
         float8 units_per_minute
@@ -128,6 +157,8 @@ erDiagram
         text keycloakId UK
         text account_class
         integer profile_version
+        timestamptz subscription_expires_at
+        text subscription_cycle
     }
 
     voices {
@@ -152,13 +183,15 @@ erDiagram
         jsonb legacy_data
     }
 
-    users ||--o{ voices : "user_id"
-    users ||--o{ book_job_requests : "user_id"
-    book_job_requests |o--o| generated_lectures : "book_job_id"
-    users |o--o{ generated_lectures : "user_id"
+    users ||--o{ account_usage_daily : "user_id"
     users ||--o{ book_caches : "user_id"
+    book_job_requests ||--|| book_job_drafts : "job_id"
+    users ||--o{ book_job_requests : "user_id"
+    book_job_requests ||--|| book_job_runtime : "job_id"
+    book_job_requests ||--|| book_job_sources : "job_id"
     users ||--o{ book_previews : "user_id"
     book_job_requests ||--o{ book_previews : "job_id"
-    book_job_requests ||--|| book_job_sources : "job_id"
-    book_job_requests ||--|| book_job_drafts : "job_id"
-    book_job_requests ||--|| book_job_runtime : "job_id"
+    book_job_requests |o--o| generated_lectures : "book_job_id"
+    users |o--o{ generated_lectures : "user_id"
+    users ||--o{ payment_orders : "user_id"
+    users ||--o{ voices : "user_id"

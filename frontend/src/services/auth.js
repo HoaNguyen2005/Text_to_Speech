@@ -61,7 +61,7 @@ export async function refreshSession() {
     invalidateSession(data.error || 'Không thể tải hồ sơ tài khoản.', response.status === 401);
     throw new Error(authError.value);
   }
-  session.value = { user: data.user };
+  session.value = { user: data.user, tier_info: data.tier_info };
   authError.value = '';
   welcomeUser(data.user, data.account_created === true);
   return session.value;

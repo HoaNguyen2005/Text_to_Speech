@@ -2,6 +2,18 @@ Project Text2Speech {
   database_type: 'PostgreSQL'
 }
 
+Table account_usage_daily {
+  "user_id" text [not null]
+  "usage_date" date [not null]
+  "lectures" integer [not null]
+  "books" integer [not null]
+  "previews" integer [not null]
+
+  indexes {
+    ("user_id", "usage_date") [pk]
+  }
+}
+
 Table book_caches {
   "_id" text [pk, not null]
   "user_id" text [not null]
@@ -109,6 +121,27 @@ Table generated_lectures {
   "subtitle_timing" text
 }
 
+Table payment_orders {
+  "_id" text [pk, not null]
+  "user_id" text [not null]
+  "payment_code" text [not null, unique]
+  "plan_class" text [not null]
+  "billing_cycle" text [not null]
+  "duration_days" integer [not null]
+  "amount_vnd" integer [not null]
+  "status" text [not null]
+  "bank_details" jsonb [not null]
+  "sepay_transaction_id" text [unique]
+  "bank_reference_code" text [not null]
+  "paid_amount_vnd" bigint
+  "gateway_payload" jsonb [not null]
+  "paid_at" timestamptz
+  "expires_at" timestamptz [not null]
+  "last_checked_at" timestamptz
+  "createdAt" timestamptz [not null]
+  "updatedAt" timestamptz [not null]
+}
+
 Table reading_profiles {
   "_id" text [pk, not null]
   "units_per_minute" float8
@@ -137,6 +170,8 @@ Table users {
   "keycloakId" text [unique]
   "account_class" text [not null]
   "profile_version" integer [not null]
+  "subscription_expires_at" timestamptz
+  "subscription_cycle" text
 }
 
 Table voices {
@@ -161,13 +196,15 @@ Table worker_leases {
   "legacy_data" jsonb [not null]
 }
 
-Ref: voices."user_id" > users."_id" [delete: restrict]
-Ref: book_job_requests."user_id" > users."_id" [delete: restrict]
-Ref: book_job_requests."_id" - generated_lectures."book_job_id" [delete: restrict]
-Ref: generated_lectures."user_id" > users."_id" [delete: restrict]
+Ref: account_usage_daily."user_id" > users."_id" [delete: restrict]
 Ref: book_caches."user_id" > users."_id" [delete: restrict]
+Ref: book_job_requests."_id" - book_job_drafts."job_id" [delete: cascade]
+Ref: book_job_requests."user_id" > users."_id" [delete: restrict]
+Ref: book_job_requests."_id" - book_job_runtime."job_id" [delete: cascade]
+Ref: book_job_requests."_id" - book_job_sources."job_id" [delete: cascade]
 Ref: book_previews."user_id" > users."_id" [delete: cascade]
 Ref: book_previews."job_id" > book_job_requests."_id" [delete: cascade]
-Ref: book_job_requests."_id" - book_job_sources."job_id" [delete: cascade]
-Ref: book_job_requests."_id" - book_job_drafts."job_id" [delete: cascade]
-Ref: book_job_requests."_id" - book_job_runtime."job_id" [delete: cascade]
+Ref: book_job_requests."_id" - generated_lectures."book_job_id" [delete: restrict]
+Ref: generated_lectures."user_id" > users."_id" [delete: restrict]
+Ref: payment_orders."user_id" > users."_id" [delete: restrict]
+Ref: voices."user_id" > users."_id" [delete: restrict]

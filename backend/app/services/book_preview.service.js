@@ -72,6 +72,9 @@ async function allowed(job,user,identity=false) {
         if(!state.user.enabled || (state.user.attributes?.legacyStatus?.[0] && state.user.attributes.legacyStatus[0]!=='active'))throw problem(403,'Tài khoản không còn hoạt động.');
         user.role=state.role;
     }
+    const tiers=require('./account_tier.service');
+    Object.assign(user,{...owner,role:user.role});
+    tiers.assertBookSubmissionAllowed(user,{textLength:0,targetMinutes:job.target_minutes});
     const voice=await voices.resolve(job.voice_mode,job.selected_voice.voice_id,user,job.selected_voice.provider);
     if(['file_path','gender','model_revision','preset'].some(k=>voice[k]!==job.selected_voice[k]) || voice.provider!==(job.selected_voice.provider||'edge'))throw problem(409,'Giọng mẫu đã đổi. Hãy tạo yêu cầu mới.');
 }
@@ -100,8 +103,8 @@ async function request(job,user) {
         if(existing && existing.status!=='pruning')await Preview.updateOne({_id:existing._id},{$set:{expires_at:new Date(),status:'failed',lease_until:new Date(0)}});
         // Every attempt owns a new scratch ID and output filename. A late old
         // process can never clean up or overwrite a retried preview's files.
-        return Preview.create({job_id:job._id,signature:sig,user_id:user._id,status:'processing',owner,
-            lease_until:new Date(Date.now()+LEASE),expires_at:new Date(Date.now()+TTL),result:null,error:''});
+        return require('./account_tier.service').consume(user,'previews',()=>Preview.create({job_id:job._id,signature:sig,user_id:user._id,status:'processing',owner,
+            lease_until:new Date(Date.now()+LEASE),expires_at:new Date(Date.now()+TTL),result:null,error:''}));
     });
     if(claimed) {
         // Start after admission commits, with an attached rejection handler.

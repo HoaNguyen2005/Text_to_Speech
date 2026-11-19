@@ -9,5 +9,6 @@ router.patch('/me',verifyToken,authController.updateProfile);
 router.get('/users', verifyToken, adminOnly, authController.getAllUsers);
 router.put('/users/:id/status', verifyToken, adminOnly, authController.updateUserStatus);
 router.put('/users/:id/role', verifyToken, adminOnly, authController.updateUserRole);
+router.put('/users/:id/account-class', verifyToken, adminOnly, authController.updateAccountClass);
 
 module.exports = router;

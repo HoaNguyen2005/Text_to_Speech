@@ -5,6 +5,7 @@ import { session } from '@/services/auth';
 import { notify } from '@/composables/useNotifications';
 import StudioBanner from '@/components/StudioBanner.vue';
 import VoicePicker from '@/components/VoicePicker.vue';
+import AccountUsage from '@/components/AccountUsage.vue';
 const voices = ref([]);
 const loading = ref(false);
 const mine = computed(() => voices.value.filter(voice =>
@@ -28,6 +29,7 @@ onMounted(load);
 <template>
   <StudioBanner :title="$t('Giọng của bạn')" icon="mic" :eyebrow="$t('THƯ VIỆN GIỌNG ĐỌC')" :description="$t('Thêm bản ghi âm, nghe mẫu và chỉnh sửa giọng riêng của bạn.')" />
   <section class="panel">
+    <AccountUsage scope="voices" />
     <div class="panel-heading">
       <div>
         <h2>{{ $t('Giọng của bạn') }}</h2>

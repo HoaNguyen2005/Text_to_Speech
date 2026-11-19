@@ -2,6 +2,7 @@
 import {nextTick,onBeforeUnmount,ref,watch} from 'vue';
 import api from '@/services/api';
 import {session} from '@/services/auth';
+import {refreshSession} from '@/services/auth';
 import {notify} from '@/composables/useNotifications';
 import UiIcon from './UiIcon.vue';
 const props=defineProps({open:Boolean,voice:{type:Object,default:null}});
@@ -28,6 +29,7 @@ async function save(){
       data.append('voice_id',voiceCode);data.append('audio_file',file.value);
       saved=(await api.post('/api/voices',data,{timeout:120000})).data.data;
     }
+    await refreshSession().catch(()=>{});
     notify(props.voice?'Đã cập nhật thông tin giọng đọc.':'Đã thêm giọng đọc.',{kind:'success'});emit('saved',saved);emit('update:open',false);
   }catch(error){message.value=error.response?.data?.error||error.message||'Không lưu được giọng đọc.';}
   finally{saving.value=false;}

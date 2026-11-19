@@ -12,13 +12,15 @@ const duration = require('../services/book_duration.service');
 const speech = require('../services/speech.service');
 const reliability = require('../services/gemini_reliability');
 const previews = require('../services/book_preview.service');
+const tiers = require('../services/account_tier.service');
 const { WorkerLease } = require('../models/book_cache.model');
 const { verifyToken } = require('../middlewares/auth.middleware');
 const router = express.Router();
 router.use(verifyToken);
 
 // Serialize submission/retry admission per owner, including requests from two tabs.
-async function admit(userId, work) {
+async function admit(user, work) {
+    const userId=user._id;
     const id = `submit-${userId}`;
     const owner = crypto.randomUUID();
     let acquired;
@@ -28,8 +30,7 @@ async function admit(userId, work) {
     } catch (error) { if (error.code !== 11000) throw error; }
     if (!acquired) throw Object.assign(new Error('Một yêu cầu khác đang được gửi. Hãy thử lại sau vài giây.'), { status: 409 });
     try {
-        const pending = await Job.countDocuments({ user_id: userId, delete_requested: false, status: { $in: ['queued', 'processing'] } });
-        if (pending >= 3) throw Object.assign(new Error('Bạn đang có 3 yêu cầu chờ/xử lý. Hãy chờ hoặc hủy một yêu cầu.'), { status: 429 });
+        await tiers.assertQueueAllowed(await tiers.currentUser(user));
         return await work();
     } finally { await WorkerLease.updateOne({ _id: id, owner }, { $set: { until: new Date(0) } }); }
 }
@@ -37,6 +38,8 @@ async function admit(userId, work) {
 async function present(job, includeScript = true) {
     if (job.delete_requested) throw Object.assign(new Error('Yêu cầu này đã được hủy và xóa. Hãy gửi yêu cầu mới nếu muốn tạo lại.'), { status: 410 });
     const value = job.toObject ? job.toObject() : { ...job };
+    value.ai_revisions=job.checkpoint?.revision_requests||0;
+    if(includeScript && !job.checkpoint)value.ai_revisions=(await query("SELECT COALESCE((checkpoint->>'revision_requests')::int,0) AS count FROM book_job_runtime WHERE job_id=$1",[job._id])).rows[0]?.count||0;
     if (job.checkpoint?.editorial?.source_duration_issue) value.source_duration_issue = job.checkpoint.editorial.source_duration_issue;
     delete value.source;
     delete value.source_hash;
@@ -90,13 +93,14 @@ router.post('/', async (req, res) => {
     }
     const existing = await Job.findOne({ user_id: req.user._id, request_id });
     if (existing) return res.json(await present(existing));
+    tiers.assertBookSubmissionAllowed(req.user,{textLength:text.length,targetMinutes:target_minutes});
     const selected_voice = await bookVoices.resolve(voice_mode, voice_id, req.user, req.body.tts_provider);
     const initialSpeech = req.body.speech ? speech.options(req.body.speech) : undefined;
     const metadata = normalizeMetadata(req.body.book_metadata, title);
     if (!config.engineSecret) return res.status(503).json({ error: 'Chạy npm run books:init ở backend trước khi tạo sách nói.' });
     const source = text.trim().replace(/\r\n/g, '\n');
     try {
-        const job = await admit(req.user._id, async () => {
+        const job = await admit(req.user, async () => {
             const duplicate = await Job.findOne({ user_id: req.user._id, request_id });
             if (duplicate) return duplicate;
             // Per-owner admission serializes rotation; only read the tiny JSON fields.
@@ -108,10 +112,15 @@ router.post('/', async (req, res) => {
             const openingIndex = (previousIndex + 1) % openingCount;
             const intro = introduction(metadata, openingLine(openingIndex));
             duration.rejectSource(await duration.checkSource(source, intro, target_minutes, selected_voice, voice_mode, initialSpeech));
-            return Job.create({ user_id: req.user._id, request_id, title: title.slice(0, 160).trim() || 'Sách nói',
+            return tiers.consume(req.user,'books',async current=>{
+                await tiers.assertQueueAllowed(current);
+                tiers.assertBookSubmissionAllowed(current,{textLength:text.length,targetMinutes:target_minutes});
+                await bookVoices.resolve(voice_mode,voice_id,current,req.body.tts_provider);
+                return Job.create({ user_id: req.user._id, request_id, title: title.slice(0, 160).trim() || 'Sách nói',
                 book_metadata: metadata, ai_assisted: true, workflow_version: 'review-v1', work_action: 'summary',
                 source, source_hash: crypto.createHash('sha256').update(source).digest('hex'), target_minutes, voice_mode, selected_voice,
                 checkpoint:{opening_index:openingIndex, analysis_chunk_chars:config.analysisChunkChars, analysis_strategy:'adaptive-v1', ...(initialSpeech ? { initial_speech: initialSpeech } : {})} });
+            });
         });
         res.status(202).json(await present(job));
     } catch (error) {
@@ -164,6 +173,8 @@ router.patch('/:id/draft', async (req, res) => {
 });
 for (const action of ['revise', 'preview', 'audio']) router.post(`/:id/${action}`, async (req, res) => {
     const current = req.bookJob;
+    tiers.assertBookSubmissionAllowed(req.user,{textLength:current.source?.length||0,targetMinutes:current.target_minutes});
+    await bookVoices.resolve(current.voice_mode,current.selected_voice.voice_id,req.user,current.selected_voice.provider);
     const revision = req.body?.revision;
     if (current.workflow_version !== 'review-v1' || current.status !== 'review' || !current.draft?.sections?.length) return res.status(409).json({ error: 'Bản tóm tắt chưa sẵn sàng. Hãy tải lại yêu cầu.' });
     if (!Number.isInteger(revision) || revision !== current.draft_revision) return res.status(409).json({ error: 'Bản tóm tắt đã đổi ở phiên khác. Hãy tải lại trước khi tiếp tục.' });
@@ -177,6 +188,7 @@ for (const action of ['revise', 'preview', 'audio']) router.post(`/:id/${action}
     }
     let edit_request = null;
     if (action === 'revise') {
+        tiers.assertBookReviseAllowed(req.user,current.checkpoint);
         const instruction = req.body?.instruction;
         const sectionIndex = req.body?.section_index;
         if (typeof instruction !== 'string' || instruction.trim().length < 5 || instruction.length > 2000
@@ -195,13 +207,21 @@ for (const action of ['revise', 'preview', 'audio']) router.post(`/:id/${action}
     const selfApprove=action==='audio' && req.body.self_approve===true;
     if(selfApprove && !current.draft.user_edited)return res.status(400).json({error:'Chỉ có thể tự duyệt bản tóm tắt đã sửa tay.'});
     const approval=selfApprove?{method:'user',user_id:String(req.user._id),revision,content_hash:content.textHash(current.draft.sections),approved_at:new Date().toISOString()}:null;
-    const job = await admit(req.user._id, () => Job.findOneAndUpdate({ _id: current._id, user_id: req.user._id, status: 'review', draft_revision: revision },
+    const job = await admit(req.user, () => tiers.withUserLock(req.user,async owner=>{
+        await tiers.assertQueueAllowed(owner);
+        const latest=await Job.findOne({_id:current._id,user_id:req.user._id}).select('+checkpoint');
+        if(action==='revise')tiers.assertBookReviseAllowed(owner,latest.checkpoint);
+        tiers.assertBookSubmissionAllowed(owner,{textLength:current.source?.length||0,targetMinutes:current.target_minutes});
+        await bookVoices.resolve(current.voice_mode,current.selected_voice.voice_id,owner,current.selected_voice.provider);
+        return Job.findOneAndUpdate({ _id: current._id, user_id: req.user._id, status: 'review', draft_revision: revision },
         { $set: { status: 'queued', work_action: action, edit_request, approved_revision: action === 'audio' ? revision : null,
             cancel_requested: false, error: '', runs: 0, next_attempt_at: null, retry_state: null, lease_until: new Date(0),
             'draft.user_approval':approval,
+            ...(action==='revise'?{'checkpoint.revision_requests':(latest.checkpoint?.revision_requests||0)+1}:{}),
             progress: { phase: action === 'revise' ? 'script' : action, percent: 55,
                 message: action === 'revise' ? 'Đang chờ AI chỉnh bản tóm tắt.' : action === 'preview' ? 'Đang chờ tạo đoạn nghe thử.' : 'Đã duyệt nội dung. Đang chờ tạo âm thanh.' } },
-        $unset: { lease_owner: '' } }, { returnDocument: 'after' }));
+        $unset: { lease_owner: '' } }, { returnDocument: 'after' });
+    }));
     if (!job) return res.status(409).json({ error: 'Yêu cầu đã đổi trạng thái. Hãy tải lại trước khi tiếp tục.' });
     res.status(202).json(await present(job));
 });
@@ -224,8 +244,13 @@ router.post('/:id/cancel', async (req, res) => {
     res.json(await present(await Job.findById(req.bookJob._id)));
 });
 router.post('/:id/retry', async (req, res) => {
+    tiers.assertBookSubmissionAllowed(req.user,{textLength:req.bookJob.source?.length||0,targetMinutes:req.bookJob.target_minutes});
+    await bookVoices.resolve(req.bookJob.voice_mode,req.bookJob.selected_voice.voice_id,req.user,req.bookJob.selected_voice.provider);
     duration.rejectSource(req.bookJob.checkpoint?.editorial?.source_duration_issue);
-    const job = await admit(req.user._id, () => transaction(async () => {
+    const job = await admit(req.user, () => tiers.withUserLock(req.user,async owner=>{
+        await tiers.assertQueueAllowed(owner);
+        tiers.assertBookSubmissionAllowed(owner,{textLength:req.bookJob.source?.length||0,targetMinutes:req.bookJob.target_minutes});
+        await bookVoices.resolve(req.bookJob.voice_mode,req.bookJob.selected_voice.voice_id,owner,req.bookJob.selected_voice.provider);
         const job = await Job.findOneAndUpdate({ _id: req.bookJob._id, user_id: req.user._id, status: 'failed' },
             { $set: { status: 'queued', error: '', runs: 0, cancel_requested: false, next_attempt_at: null, retry_state: null, lease_until: new Date(0),
                 progress: { ...req.bookJob.progress, phase: req.bookJob.retry_state?.resume_phase || req.bookJob.progress?.phase || 'analysis',
@@ -240,7 +265,7 @@ router.post('/:id/retry', async (req, res) => {
 });
 router.use((error, req, res, next) => {
     if (error.code === 'SOURCE_TOO_SHORT') return res.status(422).json({ error:error.message, code:error.code, duration_issue:error.duration_issue });
-    if (error.status) return res.status(error.status).json({ error: error.message });
+    if (error.status) return res.status(error.status).json({ error: error.message, code:error.code });
     console.error('[BOOK API]', error.name);
     res.status(500).json({ error: 'Không thể lưu hoặc đọc yêu cầu sách nói. Hãy thử lại.' });
 });

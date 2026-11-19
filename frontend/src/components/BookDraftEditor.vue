@@ -7,6 +7,8 @@ import SummaryDownload from './SummaryDownload.vue';
 import { notify, useFeedback, confirmAction } from '@/composables/useNotifications';
 import { translate } from '@/composables/useLocale';
 import { stripCues } from '@/services/expressions';
+import {useAccountTier} from '@/composables/useAccountTier';
+const {limits,refreshTier}=useAccountTier();
 const props = defineProps({ job: { type: Object, required: true }, busy: Boolean, speechTarget: { type: String, default: '' }, simpleControls: Boolean });
 const emit = defineEmits(['updated', 'reload', 'duration-issue']);
 const texts = ref([]);
@@ -40,6 +42,7 @@ watch(()=>props.job.draft.preview_request?.status,(status,previous)=>{
 const dirty = computed(() => texts.value.some((text, i) => text !== (props.job.draft.sections[i]?.delivery?.markup ?? props.job.draft.sections[i]?.text))
  || JSON.stringify(speechOptions.value)!==JSON.stringify(props.job.draft.speech||{version:'speech-v1',profile:'auto',normalize:false,dictionary:[],rate_percent:0})
  || JSON.stringify(deliveries.value)!==JSON.stringify(props.job.draft.sections.map(section=>({profile:section.delivery?.profile||'auto',paragraph_profiles:section.delivery?.paragraph_profiles||[]}))));
+const revisionLimitReached=computed(()=>limits.value.maxRevisions!=null&&(props.job.ai_revisions||0)>=limits.value.maxRevisions);
 const locked = computed(() => props.busy || Boolean(working.value) || previewPending.value);
 const units = text => stripCues(text).split(/\s+/u).filter(Boolean).length;
 const estimatedSeconds = computed(() => speechTools.value?.estimatedSeconds ?? Math.round((units(props.job.draft.introduction || '') + texts.value.reduce((sum, text) => sum + units(text), 0))
@@ -90,6 +93,7 @@ async function run(action) {
     }
     const { data } = await api.post(`/api/book-jobs/${job._id}/${action==='fit'?'revise':action}`, body, { timeout: 20000 });
     emit('updated', data);
+    refreshTier().catch(()=>{});
     notify(['revise','fit'].includes(action) ? 'Đã gửi yêu cầu AI chỉnh nội dung.' : action === 'preview' ? (data.draft?.preview_request?.status==='ready'?'Đoạn nghe thử đã sẵn sàng.':'Đang tạo nghe thử riêng, không chờ hàng đợi sách.') : 'Đã duyệt bản tóm tắt và gửi yêu cầu tạo âm thanh.', { kind: 'success' });
   } catch (failure) {
     if (failure.response?.data?.code === 'SOURCE_TOO_SHORT') {
@@ -130,9 +134,10 @@ defineExpose({ dirty, ratePercent, working });
     <div class="draft-actions"><button type="button" class="btn small" :disabled="locked || !dirty || !valid" @click="run('save')">{{ $t('Lưu chỉnh sửa') }}</button></div>
     <fieldset class="draft-ai" :disabled="locked">
       <legend>{{ $t('Nhờ AI chỉnh nội dung') }}</legend>
+      <p class="text-muted">{{ $t('AI chỉnh sửa: {0} / {1} lượt',[job.ai_revisions||0,limits.maxRevisions??$t('Không giới hạn')]) }}</p>
       <div class="field"><label for="draft-ai-scope">{{ $t('Phạm vi chỉnh sửa') }}</label><select id="draft-ai-scope" v-model.number="scope" class="input"><option :value="-1">{{ $t('Toàn bộ bản tóm tắt') }}</option><option v-for="(section, i) in job.draft.sections" :key="i" :value="i">{{ i + 1 }}. {{ section.title }}</option></select></div>
       <div class="field"><label for="draft-ai-instruction">{{ $t('Bạn muốn thay đổi điều gì?') }}</label><textarea id="draft-ai-instruction" v-model="instruction" class="input draft-instruction" maxlength="2000" :placeholder="$t('Ví dụ: viết dễ hiểu hơn, làm rõ quan hệ giữa các nhân vật, sửa phần chưa đúng với sách…')" /></div>
-      <button type="button" class="btn small" :disabled="locked || !valid || instruction.trim().length < 5" @click="run('revise')"><UiIcon name="spark" />{{ $t('Yêu cầu AI chỉnh') }}</button>
+      <button type="button" class="btn small" :disabled="locked || !valid || revisionLimitReached || instruction.trim().length < 5" @click="run('revise')"><UiIcon name="spark" />{{ $t('Yêu cầu AI chỉnh') }}</button>
     </fieldset>
     <button v-if="error" type="button" class="text-button" :disabled="locked" @click="emit('reload')">{{ $t('Tải lại bản mới') }}</button>
     <p v-if="estimatedSeconds >= 3600" class="notice error">{{ $t('Bản tóm tắt dự kiến đạt 1 giờ. Hãy rút gọn trước khi tạo âm thanh.') }}</p>

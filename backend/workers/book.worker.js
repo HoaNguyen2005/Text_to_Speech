@@ -146,9 +146,12 @@ async function processJob(job, aiProgress) {
             lastIdentityAt = Date.now();
         }
         owner.role = currentRole;
+        const tiers=require('../app/services/account_tier.service');
+        tiers.assertBookSubmissionAllowed(owner,{textLength:job.source?.length||0,targetMinutes:job.target_minutes});
         if (checkpoint.voice && job.voice_mode === 'clone') {
             const voice = await Voice.findOne({ voice_id: checkpoint.voice.voice_id, is_active: true }).lean();
             if (!require('../app/services/voice_access').visible(voice,owner)) throw new Error('Giọng đọc đã bị ẩn, xóa hoặc bạn không còn quyền sử dụng.');
+            tiers.assertVoiceAccessAllowed(owner,voice,selectedVoice.provider||'edge',job.voice_mode);
             if (voice.file_path !== checkpoint.voice.file_path || voice.gender !== checkpoint.voice.gender) throw new Error('Giọng mẫu đã thay đổi. Hãy tạo yêu cầu mới để giữ âm sắc thống nhất.');
         }
     }
@@ -545,6 +548,7 @@ async function main() {
     await database.close();
 }
 function safeMessage(error) {
+    if(error.code==='TIER_LIMIT')return error.message.slice(0,500);
     if (error.code === 'SOURCE_TOO_SHORT') return error.message.slice(0, 500);
     if (error.code === 'SPEECH_VALIDATION') return error.message.slice(0, 500);
     if (error instanceof reliability.GeminiRequestError) return error.message;

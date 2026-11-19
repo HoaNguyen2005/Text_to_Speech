@@ -12,10 +12,13 @@ import VoicePicker from '@/components/VoicePicker.vue';
 import SubtitleDownload from '@/components/SubtitleDownload.vue';
 import SummaryDownload from '@/components/SummaryDownload.vue';
 import api from '@/services/api';
+import {useAccountTier} from '@/composables/useAccountTier';
+import AccountUsage from '@/components/AccountUsage.vue';
+const {limits,refreshTier,openUpgrade}=useAccountTier();
 import * as mammoth from 'mammoth';
 import pdfjsLib from '@/services/pdf';
 
-const MAX_CHARS = 1000000;
+const maxChars = computed(()=>limits.value.bookChars);
 const fileInput = ref(null);
 const sourceName = ref('');
 const bookTitle = ref('');
@@ -25,7 +28,7 @@ const fullText = ref('');
 const targetMinutes = ref(10);
 const ratePercent = ref(0);
 const durationInput = ref(null), sourceInput = ref(null), sourceDurationIssue = ref(null);
-const validDuration = computed(() => Number.isInteger(targetMinutes.value) && targetMinutes.value >= 1 && targetMinutes.value <= 59);
+const validDuration = computed(() => Number.isInteger(targetMinutes.value) && targetMinutes.value >= 1 && targetMinutes.value <= limits.value.bookMinutes);
 const ttsProvider = ref('edge');
 const providerNames = { edge: 'Edge + OpenVoice', vieneu: 'VieNeu-TTS' };
 const selectedVoiceId = ref('');
@@ -68,7 +71,7 @@ async function focusSource() {
 }
 function useSuggestedDuration() {
   const minutes = sourceDurationIssue.value?.max_minutes;
-  if (Number.isInteger(minutes) && minutes >= 1 && minutes <= 59) targetMinutes.value = minutes;
+  if (Number.isInteger(minutes) && minutes >= 1 && minutes <= limits.value.bookMinutes) targetMinutes.value = minutes;
   focusDuration();
 }
 function handleDraftDurationIssue(issue) {
@@ -81,7 +84,7 @@ async function startNewSummary(minutes = 10) {
   ++selectionVersion;
   selected.value = null;
   sourceName.value = ''; bookTitle.value = ''; bookAuthor.value = ''; sourceCitation.value = ''; fullText.value = '';
-  targetMinutes.value = Number.isInteger(minutes) && minutes >= 1 && minutes <= 59 ? minutes : 10;
+  targetMinutes.value = Number.isInteger(minutes) && minutes >= 1 && minutes <= limits.value.bookMinutes ? minutes : 10;
   ratePercent.value = 0; selectedVoiceId.value = ''; ttsProvider.value = 'edge';
   requestId = null; requestSignature = null;
   sourceDurationIssue.value = null; fileStatus.value = ''; fileError.value = ''; errorMessage.value = ''; statusMessage.value = '';
@@ -156,7 +159,7 @@ async function handleFileUpload(event) {
           const content = await page.getTextContent();
           const pageText = content.items.map((item) => item.str + (item.hasEOL ? '\n' : ' ')).join('');
           total += pageText.length + 2;
-          if (total > MAX_CHARS) throw new Error('PDF vượt 1.000.000 ký tự. Hãy chia thành các tập; hệ thống không tự cắt bỏ trang.');
+          if (total > maxChars.value) throw new Error('Tài liệu vượt giới hạn ký tự của gói. Hãy chia thành các tập hoặc nâng cấp.');
           pages.push(pageText);
           page.cleanup();
         }
@@ -170,7 +173,7 @@ async function handleFileUpload(event) {
       }
     } else if (extension === 'txt' || extension === 'md') text = await file.text();
     else throw new Error('Chỉ hỗ trợ TXT, MD, DOCX và PDF.');
-    if (text.length > MAX_CHARS) throw new Error('Tài liệu vượt 1.000.000 ký tự. Hãy chia thành các tập nhỏ hơn.');
+    if (text.length > maxChars.value) throw new Error('Tài liệu vượt giới hạn ký tự của gói. Hãy chia thành các tập hoặc nâng cấp.');
     if (text.trim().length < 500) throw new Error('Tài liệu có quá ít văn bản. Với PDF scan, hãy chuyển thành văn bản bằng OCR trước.');
     if (sourceName.value) {
       bookTitle.value = '';
@@ -241,7 +244,7 @@ async function poll() {
 async function processBook() {
   if (disposed || busy.value || workspace.value) return;
   if (!validDuration.value) {
-    errorMessage.value = 'Thời lượng phải là số phút nguyên từ 1 đến 59 (dưới 1 giờ).'; return;
+    errorMessage.value = 'Thời lượng phải nằm trong giới hạn của gói hiện tại.'; return;
   }
   if (!chosenVoice.value || loadingVoices.value || voiceError.value) {
     errorMessage.value = 'Vui lòng tải danh sách và chọn giọng đọc cụ thể trước khi tạo sách nói.'; return;
@@ -249,8 +252,8 @@ async function processBook() {
   if (!bookTitle.value.trim()) {
     errorMessage.value = 'Vui lòng nhập tên sách hoặc tài liệu để ghi nguồn cho bản tóm tắt.'; return;
   }
-  if (fullText.value.trim().length < 500 || fullText.value.length > MAX_CHARS) {
-    errorMessage.value = 'Nội dung cần từ 500 đến 1.000.000 ký tự.'; return;
+  if (fullText.value.trim().length < 500 || fullText.value.length > maxChars.value) {
+    errorMessage.value = 'Nội dung phải có ít nhất 500 ký tự và nằm trong giới hạn gói.'; return;
   }
   submitting.value = true;
   creating.value = true;
@@ -270,6 +273,7 @@ async function processBook() {
     requestId = null;
     statusMessage.value = 'Đã gửi yêu cầu tạo bản tóm tắt. Hệ thống sẽ chờ bạn duyệt trước khi tạo âm thanh.';
     await refreshJobs();
+    await refreshTier().catch(()=>{});
   } catch (error) {
     const failure = error.response?.data;
     if (failure?.code === 'SOURCE_TOO_SHORT' && failure.duration_issue) {
@@ -341,7 +345,7 @@ onBeforeUnmount(() => { disposed = true; ++selectionVersion; clearTimeout(timer)
 
 <template>
   <StudioBanner :title="$t(workspace ? 'Hoàn thiện bản tóm tắt.' : 'Tri thức, theo nhịp của bạn.')" icon="book" :eyebrow="$t('SÁCH NÓI AI')" :description="$t(workspace ? 'Theo dõi tiến độ, duyệt nội dung và nghe thử trước khi tạo âm thanh.' : 'Biến ý chính từ tài liệu thành trải nghiệm nghe. Chọn giọng đọc và khoảng thời gian phù hợp với bạn.')">
-    <span v-if="!workspace" class="banner-chip"><UiIcon name="clock" />{{ $t("Tùy chọn 1–59 phút") }}</span><span v-if="!workspace" class="banner-chip"><UiIcon name="spark" />{{ $t("Tóm tắt bằng AI") }}</span>
+    <span v-if="!workspace" class="banner-chip"><UiIcon name="clock" />{{ $t("Tùy chọn 1–{0} phút",[limits.bookMinutes]) }}</span><span v-if="!workspace" class="banner-chip"><UiIcon name="spark" />{{ $t("Tóm tắt bằng AI") }}</span>
   </StudioBanner>
   <div class="studio-grid">
     <div class="studio-stack">
@@ -356,7 +360,7 @@ onBeforeUnmount(() => { disposed = true; ++selectionVersion; clearTimeout(timer)
           <div class="field book-source-citation"><label for="book-citation">{{ $t("Nguồn tài liệu") }}</label><input id="book-citation" v-model="sourceCitation" class="input" maxlength="500" :disabled="busy" :placeholder="$t('Nhà xuất bản, phiên bản, năm xuất bản hoặc đường dẫn nguồn')" /></div>
         </div>
         <p class="text-muted">{{ $t("Kiểm tra lại tên sách gợi ý từ tên file. Tác giả và nguồn chưa biết có thể để trống; hệ thống sẽ ghi “Chưa cung cấp”, không tự suy đoán.") }}</p>
-        <div class="field book-text-field"><label for="book-source">{{ $t("Hoặc dán nội dung sách") }}</label><textarea id="book-source" ref="sourceInput" v-model="fullText" class="editor-textarea" :disabled="busy" :placeholder="$t('Dán nội dung hoặc chỉnh sửa tài liệu đã đọc…')" /><p class="text-muted">{{ fullText.length.toLocaleString($locale) }} {{ $t("/ 1.000.000 ký tự · Nội dung nguồn càng đầy đủ, bản tóm tắt càng có giá trị.") }}</p></div>
+        <div class="field book-text-field"><label for="book-source">{{ $t("Hoặc dán nội dung sách") }}</label><textarea id="book-source" ref="sourceInput" v-model="fullText" class="editor-textarea" :disabled="busy" :placeholder="$t('Dán nội dung hoặc chỉnh sửa tài liệu đã đọc…')" /><p class="text-muted">{{ fullText.length.toLocaleString($locale) }} / {{ maxChars.toLocaleString($locale) }} {{ $t("ký tự") }}</p></div>
       </section>
       <button v-if="connectionMessage" class="btn small" type="button" @click="poll"><UiIcon name="refresh" />{{ $t("Kết nối lại") }}</button>
       <section v-if="creating && !selected" class="panel book-submitting" aria-live="polite"><span class="spinner" aria-hidden="true"></span><h2>{{ $t('Đang gửi yêu cầu…') }}</h2><p class="text-muted">{{ $t('Đang chuẩn bị không gian duyệt bản tóm tắt.') }}</p></section>
@@ -404,13 +408,14 @@ onBeforeUnmount(() => { disposed = true; ++selectionVersion; clearTimeout(timer)
       </section>
     </div>
     <aside class="studio-stack">
+      <section class="panel"><AccountUsage scope="books" /></section>
       <section v-if="!workspace" class="panel">
         <div class="panel-heading"><h2><UiIcon name="clock" />{{ $t("Thời lượng") }}</h2></div>
-        <fieldset class="book-duration"><legend class="sr-only">{{ $t("Thời lượng mục tiêu") }}</legend><label v-for="minutes in [10, 20, 30]" :key="minutes" :class="{ chosen: targetMinutes === minutes }"><input v-model="targetMinutes" type="radio" name="duration" :value="minutes" :disabled="busy" /><strong>{{ minutes }}</strong><span>{{ $t("phút") }}</span></label></fieldset>
+        <fieldset class="book-duration"><legend class="sr-only">{{ $t("Thời lượng mục tiêu") }}</legend><label v-for="minutes in [5,10,15,20,30].filter(value=>value<=limits.bookMinutes).slice(-3)" :key="minutes" :class="{ chosen: targetMinutes === minutes }"><input v-model="targetMinutes" type="radio" name="duration" :value="minutes" :disabled="busy" /><strong>{{ minutes }}</strong><span>{{ $t("phút") }}</span></label></fieldset>
         <div class="field book-custom-duration">
           <label for="book-custom-minutes">{{ $t("Tùy chọn (phút)") }}</label>
-        <input id="book-custom-minutes" ref="durationInput" v-model.number="targetMinutes" type="number" min="1" max="59" step="1" inputmode="numeric" class="input" :disabled="busy" :aria-invalid="!validDuration || Boolean(sourceDurationIssue)" aria-describedby="book-duration-help" />
-          <small id="book-duration-help" :class="{ 'duration-error': !validDuration }" :role="!validDuration ? 'alert' : undefined">{{ validDuration ? $t("1–59 phút · Thời lượng ước tính") : $t("Vui lòng nhập số nguyên từ 1 đến 59. Không nhận 0, 60 hoặc số lẻ.") }}</small>
+        <input id="book-custom-minutes" ref="durationInput" v-model.number="targetMinutes" type="number" min="1" :max="limits.bookMinutes" step="1" inputmode="numeric" class="input" :disabled="busy" :aria-invalid="!validDuration || Boolean(sourceDurationIssue)" aria-describedby="book-duration-help" />
+          <small id="book-duration-help" :class="{ 'duration-error': !validDuration }" :role="!validDuration ? 'alert' : undefined">{{ $t('Gói hiện tại: 1–{0} phút',[limits.bookMinutes]) }}</small><button type="button" class="text-button" @click="openUpgrade()">{{ $t('Nâng cấp gói') }}</button>
         </div>
         <div v-if="sourceDurationIssue" class="book-source-duration" role="alert"><small>{{ sourceDurationIssue.max_minutes ? $t('Nguồn hiện tại gợi ý tối đa khoảng {0} phút.',[sourceDurationIssue.max_minutes]) : $t('Hãy bổ sung nội dung nguồn để tạo bản tóm tắt từ 1 phút.') }}</small><small>{{ $t('Sau khi điều chỉnh, bấm Tạo bản tóm tắt để gửi yêu cầu mới.') }}</small><button v-if="sourceDurationIssue.max_minutes" type="button" class="btn small" :disabled="busy" @click="useSuggestedDuration">{{ $t('Chọn {0} phút',[sourceDurationIssue.max_minutes]) }}</button><button v-else type="button" class="btn small" :disabled="busy" @click="focusSource">{{ $t('Bổ sung nội dung') }}</button></div>
         <div class="book-voice-settings">

@@ -6,7 +6,14 @@ function fail(res, error) {
     return res.status(error.status || 503).json({ error: error.status ? error.message : 'Không thể cập nhật tài khoản. Hãy thử lại.',
         code: error.code || 'AUTH_SYNC_FAILED' });
 }
-exports.me = (req, res) => res.json({ user: req.user, account_created: Boolean(req.identityCreated) });
+exports.me = async (req, res) => {
+    try { res.json({user:req.user,tier_info:await require('../services/account_tier.service').describeForUser(req.user),account_created:Boolean(req.identityCreated)}); }
+    catch(error){fail(res,error);}
+};
+exports.updateAccountClass = async (req,res) => {
+    try { res.json({user:await require('../services/account_tier.service').setAccountClass(req.params.id,req.body)}); }
+    catch(error){fail(res,error);}
+};
 exports.updateProfile=async(req,res)=>{
     try {res.json({message:'Đã cập nhật thông tin cá nhân.',user:await require('../services/profile.service').update(req.user,req.body)});}
     catch(error){fail(res,error);}

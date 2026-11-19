@@ -78,7 +78,10 @@ exports.createVoice = async (req, res) => {
             user_id: req.user._id,
             is_global: req.user.role === 'admin'
         });
-        await newVoice.save();
+        await require('../services/account_tier.service').withUserLock(req.user,async current=>{
+            if(!newVoice.is_global)await require('../services/account_tier.service').assertVoiceUploadAllowed(current);
+            await newVoice.save();
+        });
         saved = true;
         
         res.status(201).json({ message: "Thêm giọng mẫu thành công", data: access.present(newVoice,req.user) });
@@ -100,6 +103,7 @@ exports.createVoice = async (req, res) => {
             return res.status(409).json({ error: 'Mã giọng này đã được sử dụng. Hãy chọn mã khác rồi lưu lại.' });
         }
         console.error('[VOICE UPLOAD]', error.code || error.name);
+        if(error.status)return res.status(error.status).json({error:error.message,code:error.code});
         res.status(500).json({ error: 'Không thể lưu giọng mẫu vào thư viện. Vui lòng thử lại.' });
     }
 };
@@ -135,16 +139,21 @@ exports.updateVoice = async (req, res) => {
             return res.status(403).json({ error: 'Bạn không có quyền chỉnh sửa giọng này' });
         }
 
+        const restoring=!voice.is_global&&!voice.is_active&&updates.is_active===true;
         if (updates.name !== undefined) voice.name = updates.name.trim();
         if (updates.gender !== undefined) voice.gender = updates.gender;
         if (updates.is_active !== undefined) voice.is_active = updates.is_active;
         if(updates.description!==undefined)voice.description=updates.description.trim();
         if(updates.class!==undefined)voice.class=updates.class;
-        await voice.save();
+        await require('../services/account_tier.service').withUserLock(req.user,async current=>{
+            if(restoring)await require('../services/account_tier.service').assertVoiceUploadAllowed(current);
+            await voice.save();
+        });
 
         res.json({ message: "Cập nhật thành công", data: access.present(voice,req.user) });
     } catch (error) {
         console.error('[ERROR] Cập nhật giọng mẫu:', error.message);
+        if(error.status)return res.status(error.status).json({error:error.message,code:error.code});
         res.status(500).json({ error: "Lỗi khi cập nhật giọng mẫu" });
     }
 };

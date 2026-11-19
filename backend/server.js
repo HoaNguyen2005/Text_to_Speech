@@ -37,6 +37,7 @@ app.use('/api/voices', voiceRoutes);
 app.use('/api/history', historyRoutes);
 app.use('/api/book-jobs', require('./app/routes/book.route'));
 app.use('/api/speech', require('./app/routes/speech.route'));
+app.use('/api/billing', require('./app/routes/billing.route'));
 
 // PostgreSQL application data is separate from the Keycloak database.
 async function start() {
@@ -70,6 +71,13 @@ app.post('/api/generate-lecture', verifyToken, async (req, res) => {
         console.log(`[DEBUG - HTTP REQUEST] Headers Origin: ${req.headers.origin}`);
         
         const { text, teacher_id, style_id } = req.body;
+        const tierService=require('./app/services/account_tier.service');
+        tierService.assertLectureAllowed(req.user,typeof text==='string'?text.length:0);
+        const selectedVoice=await require('./app/services/book_voice.service').resolve('clone',teacher_id,req.user,'edge');
+        await tierService.consume(req.user,'lectures',async current=>{
+            tierService.assertLectureAllowed(current,text.length);
+            tierService.assertVoiceAccessAllowed(current,selectedVoice,'edge','clone');
+        });
         console.log(`[DEBUG - PAYLOAD EXTRACT] Text Length : ${text ? text.length : 0} chars`);
         console.log(`[DEBUG - PAYLOAD EXTRACT] Teacher ID  : ${teacher_id || 'Chưa cung cấp'}`);
         console.log(`[DEBUG - PAYLOAD EXTRACT] Style ID    : ${style_id || 'Mặc định'}`);
@@ -178,7 +186,7 @@ app.post('/api/generate-lecture', verifyToken, async (req, res) => {
         console.log(`[CRITICAL ERROR - TRACE] ${error.message}`);
         console.log(`[CRITICAL ERROR - STACK]`, error.stack);
         console.log("=".repeat(100) + "\n");
-        res.status(500).json({ error: "Lỗi máy chủ nội bộ." });
+        res.status(error.status||500).json({ error:error.status?error.message:"Lỗi máy chủ nội bộ.",code:error.code });
     }
 });
 
@@ -232,6 +240,8 @@ app.post('/api/summarize-book', verifyToken, async (req, res) => {
         const metadata = normalizeMetadata(book_metadata, typeof title === 'string' ? title : '');
 
         const chosenVoice = await require('./app/services/book_voice.service').resolve(voice_mode, voice_id, req.user);
+        const tierService=require('./app/services/account_tier.service');
+        await tierService.consume(req.user,'books',current=>tierService.assertBookSubmissionAllowed(current,{textLength:text.length,targetMinutes:1}));
         console.log('[LLM] Bắt đầu tóm tắt với giọng do người dùng chọn.');
 
         const prompt = `Bạn là một biên tập viên làm bản tóm tắt sách.

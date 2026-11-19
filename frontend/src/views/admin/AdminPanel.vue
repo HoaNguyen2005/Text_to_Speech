@@ -6,6 +6,7 @@ import { session } from '@/services/auth';
 import UiIcon from '@/components/UiIcon.vue';
 import StudioBanner from '@/components/StudioBanner.vue';
 import VoicePicker from '@/components/VoicePicker.vue';
+import PaymentHistory from '@/components/PaymentHistory.vue';
 import { confirmAction, useFeedback, notify } from '@/composables/useNotifications';
 
 const users = ref([]);
@@ -19,6 +20,7 @@ const activeTab = ref('users');
 const search = ref('');
 const voiceSearch = ref('');
 const roleFilter = ref('');
+const tierFilter=ref(''),grantDays=ref(30);
 const showVoiceForm = ref(false);
 const voiceFormError = useFeedback('error');
 const newVoice = ref({ voice_id: '', name: '', gender: 'male',class:'free',description:'' });
@@ -28,6 +30,7 @@ const audioFile = ref(null);
 const audioInput = ref(null);
 const filteredUsers = computed(() => users.value.filter(user =>
   (!roleFilter.value || user.role === roleFilter.value) &&
+  (!tierFilter.value || (user.account_class||'free') === tierFilter.value) &&
   [user.fullName, user.email].join(' ').toLocaleLowerCase('vi-VN').includes(search.value.trim().toLocaleLowerCase('vi-VN'))));
 const filteredVoices = computed(() => voices.value.filter(voice =>
   [voice.name, voice.voice_id].join(' ').toLocaleLowerCase('vi-VN').includes(voiceSearch.value.trim().toLocaleLowerCase('vi-VN'))));
@@ -78,6 +81,13 @@ async function onUserChange(user, field, event) {
   // Keep the displayed value tied to the saved account until the request completes.
   event.target.value = user[field];
   await changeUser(user, field, value);
+}
+async function changeTier(user,event){
+  const account_class=event.target.value;event.target.value=user.account_class||'free';
+  if(!await confirmAction('Thay đổi gói tài khoản này theo thời hạn đã chọn?',{title:'Thay đổi gói tài khoản',confirmLabel:'Lưu thay đổi'}))return;
+  busy.value=user._id;
+  try{await api.put(`/api/auth/users/${user._id}/account-class`,{account_class,duration_days:grantDays.value});await fetchData();notify('Đã cập nhật gói tài khoản.',{kind:'success'});}
+  catch(error){errorMessage.value=error.response?.data?.error||'Không thể cập nhật tài khoản. Vui lòng thử lại.';}finally{busy.value='';}
 }
 function handleFileUpload(event) { audioFile.value = event.target.files[0] || null; }
 async function addVoice() {
@@ -136,22 +146,26 @@ async function hideVoice(voice) {
     <div class="section-tabs" :aria-label="$t('Danh mục quản trị')">
       <button type="button" :class="{ active: activeTab === 'users' }" :aria-pressed="activeTab === 'users'" @click="activeTab = 'users'"><UiIcon name="users" />{{ $t("Tài khoản") }}<span class="tab-count">{{ users.length }}</span></button>
       <button type="button" :class="{ active: activeTab === 'voices' }" :aria-pressed="activeTab === 'voices'" @click="activeTab = 'voices'"><UiIcon name="mic" />{{ $t("Giọng đọc") }}<span class="tab-count">{{ voices.length }}</span></button>
+      <button type="button" :class="{active:activeTab==='payments'}" :aria-pressed="activeTab==='payments'" @click="activeTab='payments'">{{ $t('Giao dịch nạp tiền') }}</button>
     </div>
+    <PaymentHistory v-if="activeTab==='payments'" :users="users" admin />
     <section v-if="activeTab === 'users'" class="panel flush" aria-labelledby="users-heading">
       <div class="panel-heading"><div><h2 id="users-heading">{{ $t("Danh sách tài khoản") }}</h2><p>{{ $t("Quyền truy cập và trạng thái hoạt động của người dùng.") }}</p></div><span class="pill">{{ users.length }} {{ $t("tài khoản") }}</span></div>
       <div class="toolbar table-toolbar">
         <div class="search-field"><UiIcon name="search" /><input v-model="search" type="search" class="input" :aria-label="$t('Tìm tài khoản')" :placeholder="$t('Tìm tên hoặc email…')" /></div>
         <select v-model="roleFilter" class="input role-filter" :aria-label="$t('Lọc theo vai trò')"><option value="">{{ $t("Tất cả vai trò") }}</option><option value="user">{{ $t("Người dùng") }}</option><option value="admin">{{ $t("Quản trị viên") }}</option></select>
+        <select v-model="tierFilter" class="input role-filter" :aria-label="$t('Lọc hạng tài khoản')"><option value="">{{ $t('Tất cả hạng tài khoản') }}</option><option value="free">Free</option><option value="gold">Gold</option><option value="diamond">Diamond</option></select>
+        <select v-model="grantDays" class="input role-filter" :aria-label="$t('Thời hạn cấp gói')"><option :value="30">{{ $t('Cấp 30 ngày') }}</option><option :value="365">{{ $t('Cấp 365 ngày') }}</option><option :value="null">{{ $t('Cấp vĩnh viễn') }}</option></select>
       </div>
       <div v-if="!filteredUsers.length" class="empty-state"><div class="empty-icon"><UiIcon name="users" /></div><h2>{{ $t("Chưa có tài khoản phù hợp") }}</h2><p>{{ $t("Thử đổi từ khóa hoặc bộ lọc vai trò.") }}</p></div>
       <div v-else class="table-scroll" tabindex="0" role="region" :aria-label="$t('Bảng tài khoản — cuộn ngang để xem các cột')">
-        <table class="data-table"><thead><tr><th scope="col">{{ $t("Tài khoản") }}</th><th scope="col">{{ $t("Giới tính") }}</th><th scope="col">{{ $t("Vai trò") }}</th><th scope="col">{{ $t("Trạng thái") }}</th><th scope="col">{{ $t("Thiết lập") }}</th></tr></thead>
+        <table class="data-table"><thead><tr><th scope="col">{{ $t("Tài khoản") }}</th><th scope="col">{{ $t("Giới tính") }}</th><th scope="col">{{ $t("Vai trò") }}</th><th scope="col">{{ $t("Trạng thái") }}</th><th scope="col">{{ $t("Hạng & Thời hạn") }}</th><th scope="col">{{ $t("Thiết lập") }}</th></tr></thead>
           <tbody><tr v-for="user in filteredUsers" :key="user._id">
             <td><div class="table-person"><span class="table-avatar">{{ initials(user.fullName || user.email) }}</span><div><strong>{{ user.fullName || $t("Chưa có tên") }} <span v-if="isSelf(user)" class="self-label">{{ $t("Bạn") }}</span></strong><small>{{ user.email }}</small><small v-if="user.authSyncPending" class="pending-label">{{ $t("Chờ đồng bộ · Chọn lại quyền hoặc trạng thái mong muốn") }}</small></div></div></td>
             <td class="text-muted">{{ user.gender === 'male' ? $t("Nam") : user.gender === 'female' ? $t("Nữ") : $t("Khác") }}</td>
             <td><span class="pill" :class="{ purple: user.role === 'admin' }">{{ user.role === 'admin' ? $t("Quản trị viên") : $t("Người dùng") }}</span></td>
             <td><span class="pill" :class="{ green: user.status === 'active', amber: user.status === 'inactive', red: user.status === 'banned' }">{{ $t(statusLabel(user.status)) }}</span></td>
-            <td><div class="table-actions">
+            <td><select :value="user.account_class||'free'" class="input" :disabled="!!busy" :aria-label="$t('Gói tài khoản')" @change="changeTier(user,$event)"><option value="free">Free</option><option value="gold">Gold</option><option value="diamond">Diamond</option></select><small class="text-muted">{{ user.subscription_expires_at?new Date(user.subscription_expires_at).toLocaleDateString($locale):$t('Không giới hạn thời hạn') }}</small></td><td><div class="table-actions">
               <select :value="user.status" class="input" :disabled="!!busy || isSelf(user)" :aria-label="$t('Trạng thái của ')+user.email" @change="onUserChange(user, 'status', $event)"><option value="active">{{ $t("Hoạt động") }}</option><option value="inactive">{{ $t("Tạm khóa") }}</option><option value="banned">{{ $t("Bị cấm") }}</option></select>
               <select :value="user.role" class="input" :disabled="!!busy || isSelf(user)" :aria-label="$t('Vai trò của ')+user.email" @change="onUserChange(user, 'role', $event)"><option value="user">{{ $t("Người dùng") }}</option><option value="admin">{{ $t("Quản trị viên") }}</option></select>
             </div></td>
@@ -160,7 +174,7 @@ async function hideVoice(voice) {
       </div>
       <div class="table-footer">{{ $t("Hiển thị") }} {{ filteredUsers.length }} / {{ users.length }} {{ $t("tài khoản") }}</div>
     </section>
-    <div v-else class="studio-stack">
+    <div v-else-if="activeTab==='voices'" class="studio-stack">
       <section v-if="showVoiceForm" class="panel">
         <div class="panel-heading"><div><h2><UiIcon name="mic" />{{ $t("Thêm giọng mẫu chung") }}</h2><p>{{ $t("Giọng mới sẽ xuất hiện trong thư viện của người dùng.") }}</p></div><button type="button" class="btn small" :disabled="!!busy" @click="showVoiceForm = false" :aria-label="$t('Đóng biểu mẫu giọng mẫu')"><UiIcon name="close" /></button></div>
         <form class="inline-form" @submit.prevent="addVoice">

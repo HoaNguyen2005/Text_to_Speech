@@ -6,6 +6,9 @@ import SpeechTools from '@/components/SpeechTools.vue';
 import SubtitleDownload from '@/components/SubtitleDownload.vue';
 import VoicePicker from '@/components/VoicePicker.vue';
 import api from '@/services/api';
+import {useAccountTier} from '@/composables/useAccountTier';
+import AccountUsage from '@/components/AccountUsage.vue';
+const {limits,refreshTier,openUpgrade}=useAccountTier();
 import * as mammoth from 'mammoth';
 import pdfjsLib from '@/services/pdf';
 import { useFeedback, notify } from '@/composables/useNotifications';
@@ -47,7 +50,7 @@ const fetchVoices = async () => {
     const res = await api.get('/api/book-jobs/voices',{params:{provider}});
     if(disposed||version!==voiceRequest)return;
     teachers.value = res.data.voices;
-    if (!chosenTeacher.value)teacherId.value=teachers.value[0]?.choice_id||'';
+    if (!chosenTeacher.value)teacherId.value=teachers.value.find(voice=>voice.usable!==false)?.choice_id||'';
   } catch (error) {
     if(disposed||version!==voiceRequest)return;
     teachers.value=[];teacherId.value='';
@@ -88,6 +91,7 @@ const generateLecture = async () => {
     errorMessage.value = error.response?.data?.error || 'Không thể kết nối đến máy chủ!';
   } finally {
     loading.value = false;
+    refreshTier().catch(()=>{});
   }
 };
 async function previewLecture(){
@@ -97,7 +101,7 @@ async function previewLecture(){
   speech:speechOptions.value,delivery:deliveries.value[0],speech_plan_hash:planned.hash},{responseType:'blob',timeout:20*60*1000});if(!disposed)previewUrl.value=URL.createObjectURL(data);}
  catch(failure){let message=failure.response?.data?.error;if(failure.response?.data instanceof Blob){try{message=JSON.parse(await failure.response.data.text()).error;}catch{}}
  errorMessage.value=message||'Không tạo được đoạn nghe thử. Hãy kiểm tra Engine rồi thử lại.';}
- finally{previewLoading.value=false;}
+ finally{previewLoading.value=false;refreshTier().catch(()=>{});}
 }
 const fileInput = ref(null);
 
@@ -171,7 +175,8 @@ const handleFileUpload = (event) => {
           <button type="button" class="btn small" :disabled="speechBusy" @click="triggerFileUpload"><UiIcon name="upload" />{{ $t("Tải tài liệu") }}</button>
         </div>
         <input type="file" ref="fileInput" @change="handleFileUpload" accept=".txt,.docx,.pdf" hidden />
-        <textarea id="script" v-model="text" class="editor-textarea" :disabled="speechBusy" maxlength="20000" :aria-label="$t('Nội dung bài giảng')" :placeholder="$t('Nhập nội dung bài giảng của bạn tại đây…\n\nHoặc tải lên tài liệu TXT, Word, PDF để bắt đầu.')" />
+        <textarea id="script" v-model="text" class="editor-textarea" :disabled="speechBusy" :maxlength="limits.lectureChars" :aria-label="$t('Nội dung bài giảng')" :placeholder="$t('Nhập nội dung bài giảng của bạn tại đây…\n\nHoặc tải lên tài liệu TXT, Word, PDF để bắt đầu.')" />
+        <p class="text-muted">{{ $t('{0} / {1} ký tự',[text.length,limits.lectureChars]) }} <button v-if="text.length>=limits.lectureChars" type="button" class="text-button" @click="openUpgrade()">{{ $t('Nâng cấp gói') }}</button></p>
         <div class="editor-meta"><span><UiIcon name="document" />{{ sourceName || $t("Hỗ trợ TXT, DOCX, PDF") }}</span><span>{{ wordCount.toLocaleString($locale) }} {{ $t("từ ·") }} {{ text.length.toLocaleString($locale) }} {{ $t("ký tự") }}</span></div>
       </section>
       <SpeechTools ref="speechTools" v-model="speechOptions" v-model:deliveries="deliveries" :sections="[{text,title:sourceName}]" :style="styleId" :provider="ttsProvider" :busy="speechBusy" auto-review />
@@ -187,13 +192,14 @@ const handleFileUpload = (event) => {
       </section>
     </div>
     <aside class="studio-stack">
+      <section class="panel"><AccountUsage scope="lectures" /></section>
       <section class="panel">
         <div class="panel-heading"><h2><UiIcon name="mic" />{{ $t("Thiết lập giọng đọc") }}</h2></div>
         <div class="settings-fields">
           <div class="field"><label for="lecture-tts-provider">{{ $t('Bộ tạo giọng') }}</label><select id="lecture-tts-provider" v-model="ttsProvider" class="input" :disabled="speechBusy"><option value="vieneu">VieNeu-TTS</option><option value="edge">Edge-TTS + OpenVoice</option></select></div>
           <div class="field"><label>{{ $t("Giọng đọc") }}</label><VoicePicker ref="voicePicker" v-model="teacherId" :voices="teachers" :provider="ttsProvider" :loading="loadingVoices" :disabled="speechBusy" @refresh="fetchVoices" /></div>
         </div>
-        <div class="settings-actions"><button type="button" class="btn full" :disabled="speechBusy || loadingVoices || !text.trim() || !chosenTeacher" @click="previewLecture"><UiIcon name="headphones" />{{ $t('Nghe thử tối đa 30 giây') }}</button><button type="button" class="btn primary full" @click="generateLecture" :disabled="speechBusy || loadingVoices || !text.trim() || !chosenTeacher"><span v-if="loading" class="spinner" aria-hidden="true"></span><UiIcon v-else name="wave" />{{ loading ? $t("Đang tạo âm thanh…") : $t("Tạo âm thanh") }}</button><p class="settings-hint">{{ $t("Kết quả được lưu trong lịch sử của bạn.") }}</p></div>
+        <div class="settings-actions"><button type="button" class="btn full" :disabled="speechBusy || loadingVoices || !text.trim() || text.length>limits.lectureChars || !chosenTeacher || chosenTeacher.usable===false" @click="previewLecture"><UiIcon name="headphones" />{{ $t('Nghe thử tối đa 30 giây') }}</button><button type="button" class="btn primary full" @click="generateLecture" :disabled="speechBusy || loadingVoices || !text.trim() || text.length>limits.lectureChars || !chosenTeacher || chosenTeacher.usable===false"><span v-if="loading" class="spinner" aria-hidden="true"></span><UiIcon v-else name="wave" />{{ loading ? $t("Đang tạo âm thanh…") : $t("Tạo âm thanh") }}</button><p class="settings-hint">{{ $t("Kết quả được lưu trong lịch sử của bạn.") }}</p></div>
       </section>
       <section class="panel helper-panel"><UiIcon name="mic" /><h3>{{ $t("Mang âm sắc của riêng bạn") }}</h3><p>{{ $t("Thêm bản ghi âm mẫu để tạo giọng đọc phù hợp với nội dung của bạn.") }}</p><button type="button" class="text-button" :disabled="speechBusy" @click="voicePicker.add()"><UiIcon name="plus" />{{ $t('Thêm giọng mới') }}</button></section>
     </aside>

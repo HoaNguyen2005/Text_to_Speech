@@ -5,6 +5,7 @@ import { watch } from 'vue';
 import Auth from '@/components/Auth.vue';
 import AppShell from '@/layouts/AppShell.vue';
 import NotificationCenter from '@/components/NotificationCenter.vue';
+import UpgradePlanDialog from '@/components/UpgradePlanDialog.vue';
 import { useFeedback, confirmAction } from '@/composables/useNotifications';
 import { useAuth } from '@/composables/useAuth';
 import { useRouter } from 'vue-router';
@@ -44,4 +45,5 @@ watch(() => session.value?.user?.role, (role) => {
     </AppShell>
   </div>
   <NotificationCenter />
+  <UpgradePlanDialog v-if="session" />
 </template>

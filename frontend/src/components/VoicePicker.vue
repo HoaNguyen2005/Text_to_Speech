@@ -1,10 +1,11 @@
 <script setup>
 import {computed,nextTick,onBeforeUnmount,ref,watch} from 'vue';
 import api from '@/services/api';
-import {session} from '@/services/auth';
+import {session,refreshSession} from '@/services/auth';
 import {notify,confirmAction} from '@/composables/useNotifications';
 import UiIcon from './UiIcon.vue';
 import VoiceEditorDialog from './VoiceEditorDialog.vue';
+import {openUpgrade} from '@/composables/useAccountTier';
 const props=defineProps({modelValue:String,voices:{type:Array,default:()=>[]},disabled:Boolean,loading:Boolean,provider:{type:String,default:'edge'},manage:Boolean,hideTrigger:Boolean,initialGroup:{type:String,default:'system'}});
 const emit=defineEmits(['update:modelValue','refresh']);
 const opened=ref(false),dialog=ref(null),search=ref(''),tab=ref(props.initialGroup),tier=ref('all'),playing=ref(''),preparing=ref(''),editOpen=ref(false),editing=ref(null),hiding=ref('');
@@ -21,7 +22,8 @@ const initials=name=>(name||'').trim().split(/\s+/u).slice(-2).map(w=>w[0]).join
 function stop(){sequence++;abort?.abort();abort=null;if(audio){audio.pause();audio.src='';audio=null;}if(objectUrl)URL.revokeObjectURL(objectUrl);objectUrl=null;playing.value='';preparing.value='';}
 watch(opened,async open=>{await nextTick();if(open){tab.value=nextTab||(chosen.value?(originOf(chosen.value)==='user'?'mine':'system'):props.initialGroup);nextTab=undefined;dialog.value?.showModal();}else{stop();dialog.value?.close();}});
 watch(()=>[props.provider,props.voices],()=>{stop();});
-function choose(voice){if(props.disabled)return;emit('update:modelValue',keyOf(voice));opened.value=false;}
+function choose(voice){if(props.disabled||voice.usable===false)return;emit('update:modelValue',keyOf(voice));opened.value=false;}
+watch(()=>session.value?.tier_info?.effective_class,()=>emit('refresh'));
 async function play(voice){
   if(playing.value===keyOf(voice)||preparing.value===keyOf(voice)){stop();return;}
   stop();const current=sequence;preparing.value=keyOf(voice);abort=new AbortController();
@@ -42,7 +44,7 @@ async function play(voice){
 async function hide(voice){
   stop();if(!await confirmAction({key:'Ẩn giọng mẫu “{0}” khỏi danh sách sử dụng?',params:[voice.name]},{title:'Ẩn giọng mẫu',confirmLabel:'Ẩn giọng',danger:true}))return;
   hiding.value=voice.voice_id;
-  try{await api.delete(`/api/voices/${voice._id}`);if(props.modelValue===keyOf(voice))emit('update:modelValue','');emit('refresh');notify('Đã ẩn giọng mẫu khỏi danh sách sử dụng.',{kind:'success'});}
+  try{await api.delete(`/api/voices/${voice._id}`);if(props.modelValue===keyOf(voice))emit('update:modelValue','');emit('refresh');await refreshSession().catch(()=>{});notify('Đã ẩn giọng mẫu khỏi danh sách sử dụng.',{kind:'success'});}
   catch(error){notify(error.response?.data?.error||'Không thể ẩn giọng mẫu.',{kind:'error'});}finally{hiding.value='';}
 }
 function edit(voice){stop();editing.value=voice;editOpen.value=true;}
@@ -60,8 +62,8 @@ onBeforeUnmount(()=>{stop();dialog.value?.close();});
     <div class="voice-picker-filters"><div class="search-field"><UiIcon name="search" /><input v-model="search" class="input" type="search" :aria-label="$t('Tìm giọng đọc')" :placeholder="$t('Tìm tên giọng đọc…')" /></div><select v-model="tier" class="input" :aria-label="$t('Phân hạng giọng')"><option value="all">{{ $t('Tất cả phân hạng') }}</option><option value="free">Free</option><option value="gold">Gold</option><option value="diamond">Diamond</option></select></div>
     <div class="voice-picker-grid"><article v-for="(voice, index) in filtered" :key="keyOf(voice)" class="voice-choice-card" :class="{selected:keyOf(voice)===modelValue}" :style="{ '--voice-enter-delay': Math.min(index, 5) * 40 + 'ms' }">
       <div class="voice-choice-heading"><span class="voice-avatar" aria-hidden="true">{{ initials(voice.name) }}</span><div class="voice-choice-info"><h3 :title="voice.name">{{ voice.name }}</h3><p class="voice-description" :title="voice.description">{{ voice.description||$t('Nghe mẫu để chọn giọng phù hợp.') }}</p></div><span v-if="keyOf(voice)===modelValue" class="voice-selected-mark" :title="$t('Đã chọn')"><UiIcon name="check" /></span></div>
-      <div class="voice-choice-actions"><span class="voice-class" :class="voice.class||'free'">{{ ({free:'Free',gold:'Gold',diamond:'Diamond'})[voice.class||'free'] }}</span><div class="voice-choice-controls"><button type="button" class="btn small voice-play" :class="{playing:playing===keyOf(voice)||preparing===keyOf(voice),audible:playing===keyOf(voice)}" :aria-label="playing===keyOf(voice)||preparing===keyOf(voice)?$t('Dừng')+' · '+voice.name:$t('Nghe mẫu {0}',[voice.name])" :title="$t(playing===keyOf(voice)||preparing===keyOf(voice)?'Dừng':'Nghe mẫu')" :aria-pressed="playing===keyOf(voice)||preparing===keyOf(voice)" @click="play(voice)"><span v-if="preparing===keyOf(voice)" class="spinner" /><UiIcon v-else :name="playing===keyOf(voice)?'pause':'play'" /></button><button v-if="!manage" type="button" class="btn small voice-select" :class="{primary:keyOf(voice)===modelValue}" :aria-pressed="keyOf(voice)===modelValue" :disabled="disabled" @click="choose(voice)">{{ $t(keyOf(voice)===modelValue?'Đã chọn':'Chọn') }}</button></div></div>
-      <div v-if="voice.can_edit" class="voice-manage-actions"><button type="button" class="text-button" @click="edit(voice)"><UiIcon name="edit" />{{ $t('Chỉnh sửa') }}</button><button type="button" class="text-button" :disabled="hiding===voice.voice_id" @click="hide(voice)">{{ $t('Ẩn giọng') }}</button></div>
+      <div class="voice-choice-actions"><span class="voice-class" :class="voice.class||'free'">{{ ({free:'Free',gold:'Gold',diamond:'Diamond'})[voice.class||'free'] }}</span><div class="voice-choice-controls"><button type="button" class="btn small voice-play" :class="{playing:playing===keyOf(voice)||preparing===keyOf(voice),audible:playing===keyOf(voice)}" :aria-label="playing===keyOf(voice)||preparing===keyOf(voice)?$t('Dừng')+' · '+voice.name:$t('Nghe mẫu {0}',[voice.name])" :title="$t(playing===keyOf(voice)||preparing===keyOf(voice)?'Dừng':'Nghe mẫu')" :aria-pressed="playing===keyOf(voice)||preparing===keyOf(voice)" @click="play(voice)"><span v-if="preparing===keyOf(voice)" class="spinner" /><UiIcon v-else :name="playing===keyOf(voice)?'pause':'play'" /></button><button v-if="!manage" type="button" class="btn small voice-select" :class="{primary:keyOf(voice)===modelValue}" :aria-pressed="keyOf(voice)===modelValue" :disabled="disabled||voice.usable===false" @click="choose(voice)">{{ $t(keyOf(voice)===modelValue?'Đã chọn':'Chọn') }}</button></div></div>
+      <button v-if="!manage&&voice.usable===false" type="button" class="text-button" @click="openUpgrade()">{{ $t('Nâng cấp để dùng giọng này') }}</button><div v-if="voice.can_edit" class="voice-manage-actions"><button type="button" class="text-button" @click="edit(voice)"><UiIcon name="edit" />{{ $t('Chỉnh sửa') }}</button><button type="button" class="text-button" :disabled="hiding===voice.voice_id" @click="hide(voice)">{{ $t('Ẩn giọng') }}</button></div>
     </article><p v-if="!filtered.length" class="voice-empty">{{ $t(loading?'Đang tải danh sách giọng…':tab==='mine'&&!hasOwnVoices&&!search&&tier==='all'?'Bạn chưa có giọng riêng. Bấm Thêm giọng mới để bắt đầu.':'Không tìm thấy giọng đọc phù hợp.') }}</p></div>
     <footer class="voice-picker-footer"><small>{{ $t('Nghe bản mẫu tối đa 30 giây.') }}</small><button type="button" class="text-button" :disabled="loading" @click="emit('refresh')"><UiIcon name="refresh" />{{ $t('Tải lại') }}</button></footer>
   </dialog></Teleport>
