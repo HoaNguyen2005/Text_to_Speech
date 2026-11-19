@@ -19,6 +19,7 @@ const MIGRATIONS = [
     { version: '010-reduce-egress', file: 'migrations/20261111150624_prune_unused_legacy_schema.sql' },
     { version: '011-split-book-job-storage', file: 'migrations/20261112030932_split_book_job_storage.sql' },
     { version: '012-account-subscriptions-billing', file: 'migrations/20261118103750_account_subscriptions_billing.sql' },
+    { version: '013-main-book-queue', file: 'migrations/20261119090100_main_book_queue.sql' },
 ];
 const SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;
 function createPool(connectionString, direct) {

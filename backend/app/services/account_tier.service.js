@@ -1,3 +1,4 @@
+const bookQueue = require('../db/book_queue');
 const db = require('../db/postgres');
 const { problem } = require('./keycloak.service');
 const VOICE_RANK = { free: 0, gold: 1, diamond: 2 };
@@ -51,8 +52,8 @@ async function getUsageToday(userId) {
     const row = (await db.query(`SELECT lectures,books,previews FROM account_usage_daily WHERE user_id=$1
         AND usage_date=(now() AT TIME ZONE 'Asia/Ho_Chi_Minh')::date`,[userId])).rows[0] || {};
     const counts = (await db.query(`SELECT
-        (SELECT count(*)::int FROM book_job_requests r JOIN book_job_runtime rt ON rt.job_id=r._id
-            WHERE r.user_id=$1 AND rt.delete_requested=false AND r.status IN ('queued','processing')) AS active_book_jobs,
+        (SELECT count(*)::int FROM ${bookQueue.jobs}
+            WHERE user_id=$1 AND delete_requested=false AND status IN ('queued','processing')) AS active_book_jobs,
         (SELECT count(*)::int FROM voices WHERE user_id=$1 AND is_global=false AND is_active=true) AS custom_voices`,[userId])).rows[0];
     return {lectures_today:row.lectures||0,books_today:row.books||0,previews_today:row.previews||0,...counts};
 }

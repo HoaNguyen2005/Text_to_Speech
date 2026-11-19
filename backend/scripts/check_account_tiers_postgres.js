@@ -61,6 +61,10 @@ async function main(){
             for(const role of ['anon','authenticated'])if(!roles.some(r=>r.rolname===role))split=split.replaceAll(', '+role,'');
             await admin.query(split);
             await admin.query(fs.readFileSync(path.join(dir,'migrations/20261118103750_account_subscriptions_billing.sql'),'utf8'));
+            await admin.query(fs.readFileSync(path.join(dir,'migrations/20261119090100_main_book_queue.sql'),'utf8'));
+            await admin.query('SAVEPOINT queue_test');
+            await admin.query(fs.readFileSync(path.join(__dirname,'lib/check_main_book_queue.sql'),'utf8'));
+            await admin.query('ROLLBACK TO SAVEPOINT queue_test');
             await admin.query('COMMIT');
         }catch(error){await admin.query('ROLLBACK');throw error;}finally{admin.release();}
         const user=await newUser(),other=await newUser();
@@ -87,7 +91,7 @@ async function main(){
         })));
         assert.equal(voices.filter(r=>r.status==='fulfilled').length,2);
         assert.equal((await tiers.getUsageToday(owner._id)).custom_voices,2);
-        const job=await Job.create({user_id:owner._id,request_id:id(),title:'Test',source:'x'.repeat(500),source_hash:'test',target_minutes:1,voice_mode:'standard'});
+        const job=await Job.create({user_id:owner._id,request_id:require('../app/db/book_queue').requestId(id()),title:'Test',source:'x'.repeat(500),source_hash:'test',target_minutes:1,voice_mode:'standard'});
         await assert.rejects(tiers.assertQueueAllowed(owner),{code:'TIER_LIMIT'});
         await Job.updateOne({_id:job._id},{$set:{delete_requested:true,status:'cancelled'}});await tiers.assertQueueAllowed(owner);
 

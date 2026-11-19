@@ -1,3 +1,4 @@
+const bookQueue = require('./book_queue');
 // Small SQL repository for the application's existing query interface.
 // Data is stored in typed relational columns, with JSONB only for nested book state.
 const crypto = require('crypto');
@@ -6,8 +7,9 @@ const tables = require('./tables');
 const quote = (name) => `"${name}"`;
 const newId = () => crypto.randomBytes(12).toString('hex');
 
-function repository(table) {
-    const spec = tables[table];
+function repository(name) {
+    const spec = tables[name];
+    const table = ({book_jobs: bookQueue.jobs, book_previews: bookQueue.previews, worker_leases: bookQueue.leases})[name] || name;
     if (!spec) throw new Error('Unknown SQL table');
     const columns = new Set(spec.columns);
     const json = new Set(spec.json || []);
@@ -127,7 +129,7 @@ function repository(table) {
             const predicate = where(filter, params);
             const sorting = order(options.sort);
             // A claimed job is locked until its update commits; other workers skip this row.
-            const skip = table === 'book_jobs' && options.sort ? ' SKIP LOCKED' : '';
+            const skip = name === 'book_jobs' && options.sort ? ' SKIP LOCKED' : '';
             const existing = (await db.query(`SELECT * FROM ${quote(table)} WHERE ${predicate}${sorting ? ' ORDER BY ' + sorting : ''} LIMIT 1 FOR UPDATE${skip}`, params)).rows[0];
             if (!existing) {
                 if (!options.upsert) return { row: null, matchedCount: 0, modifiedCount: 0 };

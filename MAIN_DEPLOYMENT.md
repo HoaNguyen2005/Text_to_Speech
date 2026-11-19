@@ -7,8 +7,10 @@
 
 Project main đã liên kết GitHub, production branch `main`, tự build khi push
 nhánh main và tắt preview cho các nhánh khác. Project cũ giữ nguyên cấu hình.
-Hiện hai frontend trỏ tới cùng API `https://text2speech-backend.onrender.com`;
-việc tạo Pages mới không thay đổi nhánh đang chạy của backend Render.
+API của bản OmniVoice là `https://text2speech-backend.onrender.com`. API cho
+`main` triển khai thành web service Render Free riêng ở Singapore, branch
+`main`, root `backend`, build `npm ci`, start `node server.js`, health check
+`/api/health`. Dùng URL Render cấp cho dịch vụ mới khi cấu hình Pages.
 
 Giao diện của `main` dùng cùng sidebar, Particles, Floating Lines, dropdown và
 hiệu ứng thông báo với nhánh thử nghiệm. Main không có service, lựa chọn API hay
@@ -54,10 +56,35 @@ Sau khi Cloudflare cấp domain, dùng đúng origin thực tế, chẳng hạn
    logout redirect URIs; thêm origin không có `/*` vào Web origins. Giữ cấu hình cũ.
 3. Kiểm tra trang mới, đăng nhập/đăng xuất, tải danh sách giọng của cả hai bộ tạo.
 
-**Hai Pages chỉ tách frontend.** Để chạy cả hai bản đồng thời, bản main cần
-backend/worker/Engine riêng; worker main từ chối yêu cầu OmniVoice cũ. Nếu hai bản
-dùng chung database/hàng đợi, cần tách môi trường trước khi chạy worker khác
-phiên bản. Không đổi nhánh dịch vụ Render hiện tại chỉ để tạo Pages mới.
+## API và worker riêng cho main
+
+Áp dụng migration `013-main-book-queue` với `npm --prefix backend run db:migrate`.
+Đặt `BOOK_QUEUE=main`, `HOST=0.0.0.0` và `FRONTEND_ORIGINS=https://text2speech-main.pages.dev`
+trên API mới. Dùng cấu hình production cho PostgreSQL, Keycloak, R2, Gemini
+và khóa Engine. Đặt `PUBLIC_BACKEND_URL` bằng URL HTTPS của API mới. Cấu hình
+SePay ở backend, dùng `BILLING_DEMO_PRICES=false` cho bảng giá chính thức.
+Webhook SePay của bản main nhận tiền tại `/api/billing/webhook/sepay` trên API mới.
+
+Trên máy bàn, mở checkout riêng của nhánh `main` và nạp các biến production
+của worker từ file riêng. Ví dụ từ thư mục gốc với Node.js 24:
+
+```powershell
+npm.cmd --prefix backend ci
+node --env-file=deploy/main-worker.env backend/workers/main-queue.js
+```
+
+File `deploy/main-worker.env` được Git bỏ qua. Worker cần `DATABASE_URL`,
+`KEYCLOAK_URL`, `KEYCLOAK_INTERNAL_URL` (URL HTTPS online), realm, audience,
+ID và secret của service client, Gemini, R2, `PUBLIC_BACKEND_URL`,
+`BOOK_ENGINE_SECRET` và `ENGINE_URL` của máy bàn. Worker dùng cùng tài khoản
+và lịch sử với API. Hai hàng đợi, bản nghe thử và khóa xử lý độc lập.
+Mã công việc cũ vẫn thuộc hàng đợi cũ. API main có thể đọc địa chỉ GPU đã
+đăng ký của máy bàn khi chưa đăng ký GPU riêng.
+
+Kiểm tra `GET /api/health`, `GET /api/billing/plans` (401 khi chưa đăng nhập)
+và thời hạn khóa `book-audio` trong `main_worker_leases` khi worker đang xử lý.
+Đổi `VITE_API_URL` trong Production của project Pages `text2speech-main` rồi
+build lại khi API và worker đã sẵn sàng.
 
 ## Chạy main trên CPU hoặc GPU
 

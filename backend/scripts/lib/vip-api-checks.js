@@ -27,12 +27,11 @@ module.exports=async function checks({query,newUser}){
         const me=await request(user,'/api/auth/me');assert.equal(me.status,200);assert.equal(me.body.tier_info.limits.bookMinutes,15);
         assert.equal((await request(null,'/api/book-jobs')).status,401);
         assert.equal((await request(user,'/api/book-jobs',{...body,target_minutes:16})).status,403);
-        const parallel=await Promise.all([request(user,'/api/book-jobs',body),request(user,'/api/book-jobs',{...body,request_id:crypto.randomUUID()})]);
+        const inputs=[body,{...body,request_id:crypto.randomUUID()}];
+        const parallel=await Promise.all(inputs.map(input=>request(user,'/api/book-jobs',input)));
         assert.ok(parallel.every(r=>[202,409,429].includes(r.status)),'Concurrent admission must not become an internal server error');
         const accepted=parallel.find(r=>r.status===202);assert.ok(accepted);assert.equal(parallel.filter(r=>r.status===202).length,1);
-        // The public response omits request IDs; retry the actual accepted fixture by its SQL request ID.
-        const saved=(await query('SELECT request_id FROM book_job_requests WHERE _id=$1',[accepted.body._id])).rows[0];
-        const repeated=await request(user,'/api/book-jobs',{...body,request_id:saved.request_id});assert.equal(repeated.status,200);assert.equal(repeated.body._id,accepted.body._id);
+        const repeated=await request(user,'/api/book-jobs',inputs[parallel.indexOf(accepted)]);assert.equal(repeated.status,200);assert.equal(repeated.body._id,accepted.body._id);
         assert.equal((await request(user,'/api/auth/me')).body.tier_info.usage.books_today,1);
         const outsider=await newUser();assert.equal((await request(outsider,'/api/book-jobs/'+accepted.body._id)).status,404);
         assert.equal((await request(user,'/api/book-jobs/'+accepted.body._id,null,'DELETE')).status,202);

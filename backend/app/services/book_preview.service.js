@@ -1,3 +1,4 @@
+const bookQueue = require('../db/book_queue');
 // Small previews run in the HTTP service, independently of the heavy book worker.
 // Only private Engine calls cross the boundary; no credentials reach the browser.
 const crypto = require('crypto');
@@ -174,8 +175,8 @@ async function render(row,job,user) {
         const updated=await Preview.updateOne({_id:row._id,owner:row.owner,status:'processing',lease_until:{$gt:new Date()}},{$set:{status:'ready',result,error:'',lease_until:new Date(0)}});
         if(!updated.matchedCount)throw problem(409,'Lượt nghe thử đã hết quyền xử lý.');
         published=false;
-        await db.query(`UPDATE book_previews SET expires_at=now() WHERE _id IN
-            (SELECT _id FROM book_previews WHERE job_id=$1 AND status='ready' ORDER BY expires_at DESC,_id DESC OFFSET 5)`,[job._id]);
+        await db.query(`UPDATE ${bookQueue.previews} SET expires_at=now() WHERE _id IN
+            (SELECT _id FROM ${bookQueue.previews} WHERE job_id=$1 AND status='ready' ORDER BY expires_at DESC,_id DESC OFFSET 5)`,[job._id]);
         console.log(`[BOOK PREVIEW] job=${job._id} cache=stored`);
     } catch(error) {
         await Preview.updateOne({_id:row._id,owner:row.owner,status:'processing'},{$set:{status:'failed',error:error.status?error.message:'Không tạo được đoạn nghe thử. Kiểm tra Engine và thử lại.',lease_until:new Date(0)}});

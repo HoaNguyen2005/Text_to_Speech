@@ -1,3 +1,4 @@
+const bookQueue = require('../app/db/book_queue');
 // Run independently of HTTP: npm run worker:books. PostgreSQL checkpoints survive restarts.
 const config = require('../app/config/book');
 const { getKeycloakConfig } = require('../app/config/keycloak');
@@ -527,7 +528,7 @@ async function main() {
                         }
                         const message = cancelled ? '' : safeMessage(error);
                         await database.transaction(async (client) => {
-                            await client.query('SELECT _id FROM book_jobs WHERE _id=$1 FOR UPDATE', [job._id]);
+                            await client.query(`SELECT _id FROM ${bookQueue.jobs} WHERE _id=$1 FOR UPDATE`, [job._id]);
                             const state = await Job.findOne({ _id: job._id, lease_owner: workerId, status: 'processing' });
                             const stop = cancelled || state?.cancel_requested || state?.delete_requested;
                             await Job.updateOne({ _id: job._id, lease_owner: workerId, status: 'processing', lease_until: { $gt: new Date() } }, { $set: {
@@ -560,4 +561,8 @@ function safeMessage(error) {
 }
 process.on('SIGINT', () => { stopping = true; });
 process.on('SIGTERM', () => { stopping = true; });
-if (require.main === module) main().catch((error) => { console.error('[BOOK WORKER]', safeMessage(error)); process.exitCode = 1; database.close(); });
+function run() {
+    return main().catch((error) => { console.error('[BOOK WORKER]', safeMessage(error)); process.exitCode = 1; return database.close(); });
+}
+if (require.main === module) run();
+module.exports = {run};

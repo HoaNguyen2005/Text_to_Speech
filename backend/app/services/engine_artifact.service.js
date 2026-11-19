@@ -1,3 +1,4 @@
+const bookQueue = require('../db/book_queue');
 const fs = require('fs/promises');
 const { createWriteStream } = require('fs');
 const path = require('path');
@@ -33,11 +34,18 @@ async function loadRegisteredNodes(force = false) {
     }
     try {
         const res = await db.query(
-            "SELECT _id, owner, until, legacy_data FROM worker_leases WHERE _id IN ('engine-node:gpu', 'engine-node:cpu')"
+            `SELECT _id, owner, until, legacy_data FROM ${bookQueue.leases} WHERE _id IN ('engine-node:gpu', 'engine-node:cpu')`
         );
         let gpu = null;
         let cpu = null;
-        for (const row of res.rows || []) {
+        // The desktop can serve both deployments. Reuse its registered tunnel
+        // until a dedicated main GPU is registered, without overwriting it.
+        const rows = [...res.rows];
+        if (bookQueue.leases === 'main_worker_leases' && !rows.some(row => row._id === 'engine-node:gpu' && row.owner)) {
+            const shared = await db.query("SELECT _id, owner, until, legacy_data FROM worker_leases WHERE _id='engine-node:gpu' AND owner IS NOT NULL");
+            rows.push(...shared.rows);
+        }
+        for (const row of rows) {
             if (!row.owner) continue;
             const entry = {
                 url: String(row.owner).replace(/\/+$/, ''),
@@ -207,7 +215,7 @@ async function registerNode({ role, engineUrl, label = '' }) {
         registered_at: new Date().toISOString(),
     };
     await db.query(
-        `INSERT INTO worker_leases (_id, owner, until, legacy_data)
+        `INSERT INTO ${bookQueue.leases} (_id, owner, until, legacy_data)
          VALUES ($1, $2, now(), $3::jsonb)
          ON CONFLICT (_id) DO UPDATE
          SET owner = EXCLUDED.owner, until = now(), legacy_data = EXCLUDED.legacy_data`,
@@ -233,9 +241,9 @@ async function unregisterNode(role) {
     if (!['gpu', 'cpu'].includes(normalizedRole)) {
         throw problem(400, 'role phải là "gpu" hoặc "cpu".');
     }
-    const existing = await db.query('SELECT owner FROM worker_leases WHERE _id = $1', [`engine-node:${normalizedRole}`]).catch(() => ({ rows: [] }));
+    const existing = await db.query(`SELECT owner FROM ${bookQueue.leases} WHERE _id = $1`, [`engine-node:${normalizedRole}`]).catch(() => ({ rows: [] }));
     const removedUrl = existing.rows?.[0]?.owner || null;
-    await db.query('DELETE FROM worker_leases WHERE _id = $1', [`engine-node:${normalizedRole}`]);
+    await db.query(`DELETE FROM ${bookQueue.leases} WHERE _id = $1`, [`engine-node:${normalizedRole}`]);
     invalidateEngineCache(removedUrl);
     console.log(`[ENGINE REGISTRY] Đã gỡ đăng ký node ${normalizedRole.toUpperCase()}`);
     return { status: 'ok', role: normalizedRole, unregistered: true };

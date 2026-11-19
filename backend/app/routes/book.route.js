@@ -1,3 +1,4 @@
+const bookQueue = require('../db/book_queue');
 const express = require('express');
 const crypto = require('crypto');
 const { isValidId, transaction, query } = require('../db/postgres');
@@ -80,7 +81,7 @@ router.get('/', async (req, res) => {
 });
 router.get('/voices', async (req, res) => res.json(await bookVoices.choices(req.user,req.query.provider)));
 router.post('/', async (req, res) => {
-    const { text, target_minutes, voice_mode = 'standard', voice_id, request_id, title = 'Sách nói' } = req.body || {};
+    const { text, target_minutes, voice_mode = 'standard', voice_id, request_id: clientId, title = 'Sách nói' } = req.body || {};
     if (typeof text !== 'string' || text.trim().length < 500 || text.length > config.maxChars) {
         return res.status(400).json({ error: 'Nội dung cần từ 500 đến 1.000.000 ký tự. PDF scan cần chuyển thành văn bản trước.' });
     }
@@ -88,9 +89,10 @@ router.post('/', async (req, res) => {
         return res.status(400).json({ error: 'Thời lượng phải là số phút nguyên từ 1 đến 59 (dưới 1 giờ).' });
     }
     if (!['standard', 'clone'].includes(voice_mode)
-        || typeof request_id !== 'string' || !/^[a-zA-Z0-9-]{16,64}$/.test(request_id) || typeof title !== 'string') {
+        || typeof clientId !== 'string' || !/^[a-zA-Z0-9-]{16,64}$/.test(clientId) || typeof title !== 'string') {
         return res.status(400).json({ error: 'Thời lượng, loại giọng hoặc mã yêu cầu không hợp lệ.' });
     }
+    const request_id = bookQueue.requestId(clientId);
     const existing = await Job.findOne({ user_id: req.user._id, request_id });
     if (existing) return res.json(await present(existing));
     tiers.assertBookSubmissionAllowed(req.user,{textLength:text.length,targetMinutes:target_minutes});
@@ -105,7 +107,7 @@ router.post('/', async (req, res) => {
             if (duplicate) return duplicate;
             // Per-owner admission serializes rotation; only read the tiny JSON fields.
             const previous = (await query(`SELECT draft->>'opening_index' AS draft_index, checkpoint->>'opening_index' AS saved_index
-                FROM book_jobs WHERE user_id=$1 AND delete_requested=false
+                FROM ${bookQueue.jobs} WHERE user_id=$1 AND delete_requested=false
                 AND (draft->>'opening_index' IN ('0','1','2','3') OR checkpoint->>'opening_index' IN ('0','1','2','3'))
                 ORDER BY "createdAt" DESC LIMIT 1`, [req.user._id])).rows[0];
             const previousIndex = previous ? Number(previous.draft_index ?? previous.saved_index) : -1;
@@ -140,7 +142,7 @@ router.get('/:id/subtitles',async(req,res)=>require('../services/subtitle_downlo
 router.delete('/:id', async (req, res) => {
     const pending = await transaction(async (client) => {
         // Serialize with worker publication/checkpoints and actions from other tabs.
-        await client.query('SELECT _id FROM book_jobs WHERE _id=$1 AND user_id=$2 FOR UPDATE', [req.bookJob._id, req.user._id]);
+        await client.query(`SELECT _id FROM ${bookQueue.jobs} WHERE _id=$1 AND user_id=$2 FOR UPDATE`, [req.bookJob._id, req.user._id]);
         const current = await Job.findOne({ _id: req.bookJob._id, user_id: req.user._id });
         if (current.delete_requested) return !current.artifacts_cleaned;
         if (current.status === 'completed' || current.progress?.phase === 'publishing'

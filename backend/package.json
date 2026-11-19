@@ -6,6 +6,7 @@
   "scripts": {
     "start": "node server.js",
     "worker:books": "node workers/book.worker.js",
+    "worker:books:main": "node workers/main-queue.js",
     "books:init": "node scripts/init_book_audio.js",
     "db:init": "node scripts/init_app_postgres.js",
     "db:migrate": "node scripts/migrate_postgres_schema.js",
