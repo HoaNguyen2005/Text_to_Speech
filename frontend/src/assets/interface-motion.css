@@ -3,26 +3,27 @@
   --pop-close: cubic-bezier(.36, -.45, .66, 1);
 }
 
-select.input, .locale-control select { transition: border-color .16s, background-color .16s; }
-select.input:hover:not(:disabled) { border-color: var(--accent); }
+select.input, .locale-control select { transition: border-color .16s, background-color .16s, box-shadow .16s; }
+select.input:hover:not(:disabled) { border-color: var(--input-border-hover); background-color: var(--input-bg-hover); }
+select.input:open:not(:disabled) { border-color: var(--accent); background-color: var(--input-bg-hover); box-shadow: 0 0 0 3.5px var(--focus-ring); }
 @supports (appearance: base-select) {
   select:not([multiple]), select::picker(select) { appearance: base-select; }
   select.input, .locale-control select { align-items: center; justify-content: space-between; gap: 12px; padding-right: 13px; white-space: nowrap; }
   .locale-control select { padding-right: 0; }
-  select::picker-icon { content: ''; width: 6px; height: 6px; margin-left: auto; margin-right: 3px; flex-shrink: 0; border-right: 1.7px solid var(--accent); border-bottom: 1.7px solid var(--accent); rotate: 45deg; transition: rotate .24s var(--pop-open); }
+  select::picker-icon { content: ''; width: 7px; height: 7px; margin-left: auto; margin-right: 3px; flex-shrink: 0; border-right: 2px solid var(--accent); border-bottom: 2px solid var(--accent); rotate: 45deg; transition: rotate .24s var(--pop-open); }
   select:open::picker-icon { rotate: 225deg; }
   select::picker(select) {
-    min-inline-size: max(160px, anchor-size(self-inline)); max-width: calc(100vw - 24px); max-height: min(340px, 45dvh); overflow-y: auto;
-    margin-block: 7px; padding: 6px; border: 1px solid var(--line-strong); border-radius: 14px;
-    color: var(--text-body); background: var(--surface); box-shadow: var(--shadow-float);
-    font: 13px/1.5 system-ui, 'Segoe UI', sans-serif;
+    min-inline-size: max(170px, anchor-size(self-inline)); max-width: calc(100vw - 24px); max-height: min(340px, 45dvh); overflow-y: auto;
+    margin-block: 7px; padding: 6px; border: 1.5px solid var(--line-strong); border-radius: 14px;
+    color: var(--ink); background: var(--surface); box-shadow: var(--shadow-float);
+    font: 13px/1.5 var(--font-ui, system-ui, 'Segoe UI', sans-serif);
     opacity: 0; transform: translateY(-5px) scale(.97); transform-origin: top center;
     transition: opacity .14s, transform .16s var(--pop-close), display .16s, overlay .16s;
     transition-behavior: allow-discrete;
   }
   select:open::picker(select) { opacity: 1; transform: none; transition-duration: .24s; transition-timing-function: ease, var(--pop-open), linear, linear; }
-  select option { display: flex; align-items: center; gap: 10px; min-height: 40px; padding: 10px 12px; border-radius: 9px; background: var(--surface); color: var(--text-body); white-space: normal; overflow-wrap: anywhere; }
-  select option:hover, select option:focus { background: var(--surface-raised); color: var(--ink); }
+  select option { display: flex; align-items: center; gap: 10px; min-height: 40px; padding: 9px 12px; border-radius: 9px; background: var(--surface); color: var(--ink); white-space: normal; overflow-wrap: anywhere; }
+  select option:hover, select option:focus { background: var(--btn-bg); color: var(--ink); }
   select option:checked { background: var(--accent-soft); color: var(--accent); font-weight: 650; }
   select option:disabled { opacity: .5; }
   select option::checkmark { margin-inline-start: auto; order: 1; color: var(--accent); }
@@ -68,15 +69,15 @@ dialog:not(.sidebar-drawer)[open]::backdrop { opacity: 1; }
 
 .app-container details > summary {
   display: flex; align-items: center; justify-content: space-between; gap: 12px; list-style: none;
-  padding: 11px 13px; border: 1px solid var(--line); border-radius: 11px;
-  background: var(--surface-raised); color: var(--text-body); cursor: pointer; font-size: 13px; font-weight: 600;
+  padding: 11px 14px; border: 1.5px solid var(--input-border); border-radius: 11px;
+  background: var(--btn-bg); color: var(--ink); cursor: pointer; font-size: 13px; font-weight: 650;
   transition: border-color .16s, background-color .16s;
 }
 .app-container details > summary::-webkit-details-marker { display: none; }
-.app-container details > summary::after { content: ''; flex-shrink: 0; width: 6px; height: 6px; margin-right: 3px; border-right: 1.7px solid var(--accent); border-bottom: 1.7px solid var(--accent); rotate: 45deg; transition: rotate .24s var(--pop-open); }
-.app-container details[open] > summary { margin-bottom: 12px; border-color: var(--accent-line); }
+.app-container details > summary::after { content: ''; flex-shrink: 0; width: 7px; height: 7px; margin-right: 3px; border-right: 2px solid var(--accent); border-bottom: 2px solid var(--accent); rotate: 45deg; transition: rotate .24s var(--pop-open); }
+.app-container details[open] > summary { margin-bottom: 12px; border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
 .app-container details[open] > summary::after { rotate: 225deg; }
-.app-container details > summary:hover { border-color: var(--accent); }
+.app-container details > summary:hover { border-color: var(--input-border-hover); background: var(--btn-bg-hover); }
 .app-container details > summary:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; }
 
 @media (prefers-reduced-motion: reduce) {

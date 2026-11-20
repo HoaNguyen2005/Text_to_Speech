@@ -1,5 +1,5 @@
 <script setup>
-import { watch } from 'vue';
+import { computed, watch } from 'vue';
 
 // Components & Composables
 import Auth from '@/components/Auth.vue';
@@ -23,6 +23,7 @@ watch(() => session.value?.user?.role, (role) => {
   if (role === 'admin' && !router.currentRoute.value.meta.shared) router.replace('/admin');
   else if (router.currentRoute.value.path === '/admin') router.replace('/');
 });
+const tierClass = computed(() => session.value?.tier_info?.effective_class || session.value?.user?.account_class || 'free');
 </script>
 
 <template>
@@ -40,7 +41,7 @@ watch(() => session.value?.user?.role, (role) => {
       @retry="retryAuth"
     />
 
-    <AppShell v-else :user="session.user" @logout="handleLogout">
+    <AppShell v-else :user="session.user" :tier="tierClass" @logout="handleLogout">
       <router-view />
     </AppShell>
   </div>

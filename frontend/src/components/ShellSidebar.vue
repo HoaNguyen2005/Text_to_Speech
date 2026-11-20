@@ -2,10 +2,11 @@
 import { computed, useId } from 'vue';
 import UiIcon from './UiIcon.vue';
 
-const props = defineProps({ user: { type: Object, required: true }, collapsed: Boolean, mobile: Boolean });
+const props = defineProps({ user: { type: Object, required: true }, tier: { type: String, default: '' }, collapsed: Boolean, mobile: Boolean });
 defineEmits(['toggle', 'navigate', 'logout']);
 const accountId = useId();
 const isAdmin = computed(() => props.user.role === 'admin');
+const tierClass = computed(() => props.tier || (isAdmin.value ? 'diamond' : props.user.account_class || 'free'));
 const name = computed(() => props.user.fullName || props.user.email || 'Tài khoản');
 const initials = computed(() => name.value.trim().split(/\s+/).slice(-2).map(word => word[0]).join('').toUpperCase());
 const navigation = computed(() => isAdmin.value
@@ -37,8 +38,8 @@ const navigation = computed(() => isAdmin.value
     </nav>
     <div class="sidebar-account">
       <button type="button" class="sidebar-account-button" :popovertarget="accountId" :aria-label="$t('Menu tài khoản')" :title="collapsed ? name : undefined">
-        <span class="sidebar-avatar">{{ initials }}</span>
-        <span class="sidebar-account-name" :aria-hidden="collapsed"><strong>{{ name }}</strong><small>{{ isAdmin ? $t('Quản trị viên') : $t('Tài khoản cá nhân') }}</small></span>
+        <span class="sidebar-avatar" :class="tierClass !== 'free' ? `avatar-tier-${tierClass}` : ''">{{ initials }}<span v-if="tierClass !== 'free'" class="avatar-tier-spark" aria-hidden="true">✦</span></span>
+        <span class="sidebar-account-name" :aria-hidden="collapsed"><strong :class="tierClass !== 'free' ? `tier-text-${tierClass}` : ''">{{ name }}</strong><small>{{ isAdmin ? $t('Quản trị viên') : $t(tierClass === 'gold' ? 'Tài khoản Gold' : tierClass === 'diamond' ? 'Tài khoản Diamond' : 'Tài khoản cá nhân') }}</small></span>
         <UiIcon class="sidebar-account-more" name="more" />
       </button>
       <div :id="accountId" popover="auto" class="sidebar-account-popover" :class="{ 'from-compact': collapsed }">

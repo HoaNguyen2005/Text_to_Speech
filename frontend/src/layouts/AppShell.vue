@@ -7,7 +7,7 @@ import LocaleSelector from '@/components/LocaleSelector.vue';
 import ShellSidebar from '@/components/ShellSidebar.vue';
 import StudioAtmosphere from '@/components/StudioAtmosphere.vue';
 import { useSceneMotion } from '@/composables/useSceneMotion';
-defineProps({ user: { type: Object, required: true } });
+defineProps({ user: { type: Object, required: true }, tier: { type: String, default: '' } });
 defineEmits(['logout']);
 const route = useRoute();
 const backdrop = ref(null);
@@ -38,11 +38,11 @@ onBeforeUnmount(() => { screenQuery?.removeEventListener('change', updateScreen)
     <div ref="backdrop" class="shell-backdrop" :class="{ 'motion-paused': motionPaused }" aria-hidden="true"><StudioAtmosphere :paused="motionPaused" /></div>
     <a href="#main-content" class="skip-link">{{ $t("Đến nội dung chính") }}</a>
     <aside ref="sidebar" class="shell-sidebar">
-      <ShellSidebar :user="user" :collapsed="collapsed" @toggle="toggleSidebar" @logout="$emit('logout')" />
+      <ShellSidebar :user="user" :tier="tier" :collapsed="collapsed" @toggle="toggleSidebar" @logout="$emit('logout')" />
     </aside>
     <dialog id="mobile-navigation" ref="drawer" class="sidebar-drawer" :aria-label="$t('Điều hướng chính')"
       @close="mobileOpen = false" @click="event => { if (event.target === drawer) closeMobile(); }">
-      <ShellSidebar :user="user" mobile @toggle="closeMobile" @navigate="closeMobile" @logout="closeMobile(); $emit('logout')" />
+      <ShellSidebar :user="user" :tier="tier" mobile @toggle="closeMobile" @navigate="closeMobile" @logout="closeMobile(); $emit('logout')" />
     </dialog>
     <div class="shell-workspace">
       <header class="shell-topbar">
