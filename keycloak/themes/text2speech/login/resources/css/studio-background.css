@@ -1,0 +1,31 @@
+.pf-v5-c-login {
+  isolation: isolate;
+  background: var(--canvas);
+}
+
+.pf-v5-c-login::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    url('../img/studio-lines.svg') center / 115% 105% no-repeat,
+    radial-gradient(ellipse at 18% 12%, color-mix(in srgb, var(--accent) 23%, transparent), transparent 56%),
+    radial-gradient(ellipse at 89% 86%, rgb(90 216 220 / 22%), transparent 52%);
+  opacity: .32;
+  animation: tts-studio-drift 22s ease-in-out infinite alternate;
+}
+
+:root[data-theme='dark'] .pf-v5-c-login::before {
+  opacity: .48;
+}
+
+@keyframes tts-studio-drift {
+  from { transform: scale(1.04); }
+  to { transform: translate(-3%, 2%) scale(1.13); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pf-v5-c-login::before { animation: none; }
+}

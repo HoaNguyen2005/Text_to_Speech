@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1440 900" preserveAspectRatio="none" fill="none">
+  <defs>
+    <linearGradient id="spectrum" x1="0" y1="0" x2="1440" y2="0" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#a78bfa"/>
+      <stop offset=".35" stop-color="#67e8f9"/>
+      <stop offset=".65" stop-color="#c4b5fd"/>
+      <stop offset="1" stop-color="#a78bfa"/>
+    </linearGradient>
+    <filter id="glow" x="-20%" y="-30%" width="140%" height="160%">
+      <feGaussianBlur stdDeviation="13"/>
+    </filter>
+    <path id="ribbon" d="M-160 675C140 270 365 770 660 517S1060 260 1600 475"/>
+    <path id="echo" d="M-180 270C180 505 295 166 681 390S1030 730 1620 605"/>
+  </defs>
+  <g stroke="url(#spectrum)" filter="url(#glow)">
+    <use href="#ribbon" stroke-width="34" opacity=".78"/>
+    <use href="#echo" stroke-width="27" opacity=".52"/>
+  </g>
+  <g stroke="url(#spectrum)" stroke-width="1.6">
+    <use href="#ribbon" transform="translate(0 -24)" opacity=".22"/>
+    <use href="#ribbon" transform="translate(0 -13)" opacity=".38"/>
+    <use href="#ribbon" opacity=".58"/>
+    <use href="#ribbon" transform="translate(0 12)" opacity=".42"/>
+    <use href="#ribbon" transform="translate(0 23)" opacity=".25"/>
+    <use href="#echo" transform="translate(0 -12)" opacity=".23"/>
+    <use href="#echo" opacity=".36"/>
+    <use href="#echo" transform="translate(0 12)" opacity=".22"/>
+  </g>
+</svg>
