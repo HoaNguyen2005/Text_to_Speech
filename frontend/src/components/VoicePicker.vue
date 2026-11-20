@@ -224,11 +224,17 @@ onBeforeUnmount(() => {
       <span v-if="chosenTier !== 'free'" class="avatar-tier-spark" aria-hidden="true">✦</span>
     </span>
     <span class="voice-trigger-body">
-      <span class="voice-name-frame" :class="chosenTier !== 'free' ? `is-${chosenTier}` : ''">
-        <span class="voice-trigger-name" :class="chosenTier !== 'free' ? `tier-text-${chosenTier}` : ''">
+      <span class="voice-trigger-main">
+        <span class="voice-trigger-name" :class="chosenTier !== 'free' ? `tier-text-${chosenTier}` : ''" :title="chosen?.name">
           {{ loading ? $t('Đang tải danh sách giọng…') : chosen?.name || $t(manage ? 'Mở thư viện giọng' : 'Chọn giọng đọc') }}
         </span>
+        <span v-if="chosen && chosenTier !== 'free'" class="voice-trigger-spark" :class="`is-${chosenTier}`" aria-hidden="true">✦</span>
       </span>
+      <small v-if="chosen && !loading" class="voice-trigger-sub">
+        <span>{{ chosen.gender === 'female' ? '♀' : '♂' }} {{ $t(chosen.gender === 'female' ? 'Nữ' : 'Nam') }}</span>
+        <span aria-hidden="true">·</span>
+        <span class="voice-trigger-tier" :class="chosenTier">{{ ({ free: 'Free', gold: 'Gold', diamond: 'Diamond' })[chosenTier] }}</span>
+      </small>
     </span>
     <UiIcon name="chevron" />
   </button>
@@ -346,7 +352,7 @@ onBeforeUnmount(() => {
 
               <div class="voice-row-meta">
                 <span class="voice-lang-tag"><span class="voice-flag-vn" aria-hidden="true">★</span>{{ $t('Tiếng Việt') }}</span>
-                <span class="voice-gender-tag">{{ voice.gender === 'female' ? '♀' : '♂' }} {{ $t(voice.gender === 'female' ? 'Nữ' : 'Nam') }}</span>
+                <span class="voice-gender-tag" :class="voice.gender === 'female' ? 'is-female' : 'is-male'">{{ voice.gender === 'female' ? '♀' : '♂' }} {{ $t(voice.gender === 'female' ? 'Nữ' : 'Nam') }}</span>
                 <span class="voice-class" :class="tierOf(voice)">{{ ({ free: 'Free', gold: 'Gold', diamond: 'Diamond' })[tierOf(voice)] }}</span>
                 <code v-if="admin && voice.voice_id" class="voice-code-tag">{{ voice.voice_id }}</code>
                 <span v-if="admin && voice.is_active === false" class="pill amber">{{ $t('Đã khóa') }}</span>
@@ -438,28 +444,71 @@ onBeforeUnmount(() => {
   background: var(--input-bg-hover);
 }
 .voice-picker-trigger.tier-trigger-gold {
-  border-color: var(--gold-border);
-  box-shadow: var(--input-shadow), 0 0 0 1px rgb(245 158 11 / 16%);
+  border: 1.5px solid transparent;
+  background-origin: border-box;
+  background-clip: padding-box, border-box;
+  background-image: linear-gradient(135deg, var(--gold-surface), var(--input-bg)), linear-gradient(120deg, #b45309, #fde047, #f59e0b, #fef08a);
+  box-shadow: var(--input-shadow), 0 0 12px -2px var(--gold-glow);
 }
 .voice-picker-trigger.tier-trigger-diamond {
-  border-color: var(--diamond-border);
-  box-shadow: var(--input-shadow), 0 0 0 1px rgb(56 189 248 / 18%);
+  border: 1.5px solid transparent;
+  background-origin: border-box;
+  background-clip: padding-box, border-box;
+  background-image: linear-gradient(135deg, var(--diamond-surface), var(--input-bg)), linear-gradient(120deg, #0284c7, #a5f3fc, #7c3aed, #38bdf8);
+  box-shadow: var(--input-shadow), 0 0 12px -2px var(--diamond-glow);
 }
 .voice-picker-trigger:focus-visible {
   outline: none;
   border-color: var(--accent);
-  box-shadow: 0 0 0 3.5px var(--focus-ring);
+  box-shadow: 0 0 0 3px var(--focus-ring);
+}
+.voice-picker-trigger.tier-trigger-gold:focus-visible {
+  box-shadow: 0 0 0 3px var(--focus-ring), 0 4px 14px var(--gold-glow);
+}
+.voice-picker-trigger.tier-trigger-diamond:focus-visible {
+  box-shadow: 0 0 0 3px var(--focus-ring), 0 4px 14px var(--diamond-glow);
 }
 .voice-trigger-body {
   flex: 1;
   min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+.voice-trigger-main {
   display: flex;
   align-items: center;
+  gap: 6px;
+  min-width: 0;
 }
 .voice-trigger-name {
-  font-weight: 600;
-  overflow-wrap: anywhere;
+  font-weight: 700;
+  font-size: 14px;
+  line-height: 1.35;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
+.voice-trigger-spark {
+  font-size: 11px;
+  line-height: 1;
+  flex-shrink: 0;
+  animation: tier-twinkle 2.1s ease-in-out infinite;
+}
+.voice-trigger-spark.is-gold { color: var(--gold-ink); }
+.voice-trigger-spark.is-diamond { color: var(--diamond-ink); }
+.voice-trigger-sub {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  line-height: 1.25;
+  color: var(--muted);
+}
+.voice-trigger-tier {
+  font-weight: 700;
+}
+.voice-trigger-tier.gold { color: var(--gold-ink); }
+.voice-trigger-tier.diamond { color: var(--diamond-ink); }
 .voice-avatar {
   position: relative;
   width: 40px;
@@ -726,10 +775,10 @@ onBeforeUnmount(() => {
 }
 .voice-row {
   display: grid;
-  grid-template-columns: 42px minmax(190px, 1.45fr) minmax(170px, 1.1fr) auto;
+  grid-template-columns: 42px minmax(190px, 1.3fr) minmax(240px, 1.15fr) auto;
   align-items: center;
-  gap: 14px;
-  padding: 10px 14px;
+  gap: 16px;
+  padding: 11px 14px;
   border: 1px solid transparent;
   border-radius: 14px;
   background: var(--surface);
@@ -811,7 +860,7 @@ onBeforeUnmount(() => {
 .voice-row-info {
   min-width: 0;
   display: grid;
-  gap: 4px;
+  gap: 6px;
 }
 .voice-row-titleline {
   display: flex;
@@ -855,7 +904,8 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 8px;
+  column-gap: 12px;
+  row-gap: 6px;
   min-width: 0;
 }
 .voice-lang-tag,
@@ -863,30 +913,50 @@ onBeforeUnmount(() => {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-size: 12px;
-  color: var(--text-body);
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  line-height: 1.3;
   white-space: nowrap;
+}
+.voice-lang-tag {
+  background: var(--surface-raised);
+  border: 1px solid var(--line);
+  color: var(--text-body);
+  font-weight: 550;
 }
 .voice-flag-vn {
   display: inline-grid;
   place-items: center;
-  width: 16px;
-  height: 16px;
+  width: 15px;
+  height: 15px;
   border-radius: 50%;
   background: #da251d;
   color: #ffdf00;
-  font-size: 9px;
+  font-size: 8.5px;
   line-height: 1;
   flex-shrink: 0;
 }
 .voice-gender-tag {
-  color: var(--muted);
-  font-size: 11px;
+  background: var(--surface-raised);
+  border: 1px solid var(--line-strong);
+  color: var(--text-body);
+  font-weight: 600;
+}
+.voice-gender-tag.is-male {
+  background: rgb(59 130 246 / 8%);
+  border-color: rgb(59 130 246 / 32%);
+  color: var(--ink);
+}
+.voice-gender-tag.is-female {
+  background: rgb(236 72 153 / 8%);
+  border-color: rgb(236 72 153 / 32%);
+  color: var(--ink);
 }
 .voice-class {
-  font-size: 11px;
+  font-size: 11.5px;
   font-weight: 700;
-  padding: 3px 9px;
+  padding: 3px 11px;
   border-radius: 999px;
   display: inline-flex;
   align-items: center;
