@@ -9,11 +9,17 @@ const {isValidId}=require('../db/postgres');
 // Lấy danh sách giọng mẫu
 // - Chưa đăng nhập (req.user = null): chỉ thấy giọng global
 // - Đã đăng nhập là user: thấy giọng global + giọng riêng của mình
-// - Đã đăng nhập là admin: thấy tất cả
+// - Admin có thể yêu cầu cả giọng đã khóa trong phạm vi quản lý.
 exports.getAllVoices = async (req, res) => {
     try {
-        const query={is_active:true,...access.filter(req.user)};
+        const includeLocked = req.query.include_locked === 'true';
+        if (includeLocked && req.user?.role !== 'admin') {
+            return res.status(403).json({ error: 'Chỉ quản trị viên được xem danh sách giọng đã khóa.' });
+        }
+        const query = access.filter(req.user);
+        if (!includeLocked) query.is_active = true;
         const voices = await Voice.find(query).sort({ createdAt: -1 });
+        res.setHeader('Cache-Control', 'private, no-store');
         res.json(voices.map(voice=>access.present(voice,req.user)));
     } catch (error) {
         res.status(500).json({ error: "Lỗi khi tải danh sách giọng mẫu" });

@@ -4,5 +4,5 @@ const visible = (voice,user) => Boolean(voice && (voice.is_global || owned(voice
 const editable = (voice,user) => Boolean(voice && user && (voice.is_global ? user.role==='admin' : owned(voice,user)));
 const filter = user => user ? {$or:[{is_global:true},{user_id:user._id}]} : {is_global:true};
 const present = (voice,user,provider='edge',mode='clone') => ({...voice.toObject?.()||voice,can_edit:editable(voice,user),
-    usable:require('./account_tier.service').canUseVoice(user,voice,provider,mode),required_class:voice.class||'free'});
+    usable:voice.is_active !== false && require('./account_tier.service').canUseVoice(user,voice,provider,mode),required_class:voice.class||'free'});
 module.exports={visible,editable,filter,present};

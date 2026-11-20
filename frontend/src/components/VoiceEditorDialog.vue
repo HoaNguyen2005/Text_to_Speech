@@ -41,6 +41,10 @@ onBeforeUnmount(()=>dialog.value?.close());
     <form class="voice-edit-form" @submit.prevent="save">
       <header><h2 id="voice-edit-title">{{ $t(voice?'Chỉnh sửa giọng đọc':'Thêm giọng đọc') }}</h2><button type="button" class="btn small" :disabled="saving" :aria-label="$t('Đóng')" @click="close"><UiIcon name="close" /></button></header>
       <fieldset :disabled="saving">
+        <div v-if="voice && isAdmin()" class="field">
+          <label for="voice-edit-code">{{ $t('Mã giọng đọc') }}</label>
+          <input id="voice-edit-code" :value="voice.voice_id" class="input" readonly />
+        </div>
         <div class="field"><label for="voice-edit-name">{{ $t('Tên hiển thị') }}</label><input id="voice-edit-name" v-model="form.name" class="input" maxlength="200" required autofocus /></div>
         <div class="field"><label for="voice-edit-gender">{{ $t('Giới tính giọng đọc') }}</label><select id="voice-edit-gender" v-model="form.gender" class="input"><option value="male">{{ $t('Nam') }}</option><option value="female">{{ $t('Nữ') }}</option></select></div>
         <div v-if="isAdmin()" class="field"><label for="voice-edit-class">{{ $t('Phân hạng giọng') }}</label><select id="voice-edit-class" v-model="form.class" class="input"><option value="free">Free</option><option value="gold">Gold</option><option value="diamond">Diamond</option></select></div>

@@ -23,7 +23,8 @@ const roleFilter = ref('');
 const tierFilter=ref(''),grantDays=ref(30);
 const showVoiceForm = ref(false);
 const voiceFormError = useFeedback('error');
-const newVoice = ref({ voice_id: '', name: '', gender: 'male',class:'free',description:'' });
+const newVoice = ref({ name: '', gender: 'male',class:'free',description:'' });
+let voiceCode;
 const voiceLibrary=ref(null),librarySelected=ref('');
 function openVoiceLibrary(voice){librarySelected.value=voice.voice_id;voiceLibrary.value?.open();}
 const audioFile = ref(null);
@@ -34,11 +35,12 @@ const filteredUsers = computed(() => users.value.filter(user =>
   [user.fullName, user.email].join(' ').toLocaleLowerCase('vi-VN').includes(search.value.trim().toLocaleLowerCase('vi-VN'))));
 const filteredVoices = computed(() => voices.value.filter(voice =>
   [voice.name, voice.voice_id].join(' ').toLocaleLowerCase('vi-VN').includes(voiceSearch.value.trim().toLocaleLowerCase('vi-VN'))));
+const activeVoices = computed(() => voices.value.filter(voice => voice.is_active));
 const stats = computed(() => [
   { label: 'Tổng tài khoản', value: users.value.length, icon: 'users' },
   { label: 'Đang hoạt động', value: users.value.filter(user => user.status === 'active').length, icon: 'check' },
   { label: 'Quản trị viên', value: users.value.filter(user => user.role === 'admin').length, icon: 'shield' },
-  { label: 'Giọng đang dùng', value: voices.value.length, icon: 'mic' }
+  { label: 'Giọng đang dùng', value: activeVoices.value.length, icon: 'mic' }
 ]);
 const initials = name => (name || '?').trim().split(/\s+/).slice(-2).map(word => word[0]).join('').toUpperCase();
 const statusLabel = status => ({ active: 'Hoạt động', inactive: 'Tạm khóa', banned: 'Bị cấm' }[status] || status);
@@ -47,7 +49,10 @@ const isSelf = user => user._id === session.value?.user?._id;
 async function fetchData() {
   loading.value = true;
   try {
-    const [usersRes, voicesRes] = await Promise.all([api.get('/api/auth/users'), api.get('/api/voices')]);
+    const [usersRes, voicesRes] = await Promise.all([
+      api.get('/api/auth/users'),
+      api.get('/api/voices', { params: { include_locked: true } })
+    ]);
     users.value = usersRes.data;
     voices.value = voicesRes.data;
     hasLoaded.value = true;
@@ -95,24 +100,22 @@ async function addVoice() {
   errorMessage.value = '';
   successMessage.value = '';
   voiceFormError.value = '';
-  if (!newVoice.value.voice_id.trim() || !newVoice.value.name.trim() || !audioFile.value) {
+  if (!newVoice.value.name.trim() || !audioFile.value) {
     voiceFormError.value = 'Vui lòng nhập đầy đủ thông tin và chọn file âm thanh mẫu.';
-    return;
-  }
-  if (voices.value.some(voice => voice.voice_id === newVoice.value.voice_id.trim())) {
-    voiceFormError.value = 'Mã giọng này đã có trong thư viện. Hãy chọn mã khác, ví dụ male_hn_2.';
     return;
   }
   busy.value = 'new-voice';
   const body = new FormData();
-  body.append('voice_id', newVoice.value.voice_id.trim());
   body.append('name', newVoice.value.name.trim());
   body.append('gender', newVoice.value.gender);
   body.append('class',newVoice.value.class);body.append('description',newVoice.value.description);
   body.append('audio_file', audioFile.value);
   try {
+    voiceCode ||= `voice_${crypto.randomUUID().replaceAll('-', '')}`;
+    body.append('voice_id', voiceCode);
     await api.post('/api/voices', body);
-    newVoice.value = { voice_id: '', name: '', gender: 'male',class:'free',description:'' };
+    voiceCode = undefined;
+    newVoice.value = { name: '', gender: 'male',class:'free',description:'' };
     audioFile.value = null;
     if (audioInput.value) audioInput.value.value = '';
     showVoiceForm.value = false;
@@ -122,15 +125,25 @@ async function addVoice() {
     voiceFormError.value = error.response?.data?.error || 'Không thể thêm giọng mẫu. Vui lòng kiểm tra kết nối và thử lại.';
   } finally { busy.value = ''; }
 }
-async function hideVoice(voice) {
-  if (!await confirmAction({ key: 'Ẩn giọng mẫu “{0}” khỏi danh sách sử dụng?', params: [voice.name] }, { title: 'Ẩn giọng mẫu', confirmLabel: 'Ẩn giọng', danger: true })) return;
+async function toggleVoiceLock(voice) {
+  if (busy.value) return;
+  const lock = voice.is_active;
+  if (!await confirmAction({
+    key: lock ? 'Khóa giọng “{0}” để người dùng không còn thấy hoặc chọn giọng này?' : 'Mở khóa giọng “{0}” để người dùng có thể chọn lại?',
+    params: [voice.name]
+  }, {
+    title: lock ? 'Khóa giọng đọc' : 'Mở khóa giọng đọc',
+    confirmLabel: lock ? 'Khóa' : 'Mở khóa',
+    danger: lock
+  })) return;
   busy.value = voice._id;
   errorMessage.value = '';
   successMessage.value = '';
   try {
-    await api.put('/api/voices/' + voice._id, { is_active: false });
-    if (await fetchData()) successMessage.value = 'Đã ẩn giọng mẫu khỏi danh sách sử dụng.';
-  } catch (error) { errorMessage.value = error.response?.data?.error || 'Không thể ẩn giọng mẫu.'; }
+    const { data } = await api.put('/api/voices/' + voice._id, { is_active: !lock });
+    voices.value = voices.value.map(row => row._id === voice._id ? data.data : row);
+    successMessage.value = lock ? 'Đã khóa giọng đọc.' : 'Đã mở khóa giọng đọc.';
+  } catch (error) { errorMessage.value = error.response?.data?.error || 'Không thể đổi trạng thái giọng đọc.'; }
   finally { busy.value = ''; }
 }
 </script>
@@ -178,7 +191,6 @@ async function hideVoice(voice) {
       <section v-if="showVoiceForm" class="panel">
         <div class="panel-heading"><div><h2><UiIcon name="mic" />{{ $t("Thêm giọng mẫu chung") }}</h2><p>{{ $t("Giọng mới sẽ xuất hiện trong thư viện của người dùng.") }}</p></div><button type="button" class="btn small" :disabled="!!busy" @click="showVoiceForm = false" :aria-label="$t('Đóng biểu mẫu giọng mẫu')"><UiIcon name="close" /></button></div>
         <form class="inline-form" @submit.prevent="addVoice">
-          <div class="field"><label for="voice-code">{{ $t("Mã giọng đọc") }}</label><input id="voice-code" v-model="newVoice.voice_id" class="input" placeholder="VD: male_hn_2" pattern="[a-zA-Z0-9_-]{1,80}" maxlength="80" required :disabled="!!busy" /><small>{{ $t("Mã phải khác các giọng đã có, kể cả giọng đã ẩn.") }}</small></div>
           <div class="field"><label for="voice-name">{{ $t("Tên hiển thị") }}</label><input id="voice-name" v-model="newVoice.name" class="input" :placeholder="$t('VD: Giọng Nam Hà Nội')" maxlength="200" required :disabled="!!busy" /></div>
           <div class="field"><label for="voice-gender">{{ $t("Giới tính giọng đọc") }}</label><select id="voice-gender" v-model="newVoice.gender" class="input" :disabled="!!busy"><option value="male">{{ $t("Nam") }}</option><option value="female">{{ $t("Nữ") }}</option></select></div>
           <div class="field"><label for="voice-class">{{ $t('Phân hạng giọng') }}</label><select id="voice-class" v-model="newVoice.class" class="input" :disabled="!!busy"><option value="free">Free</option><option value="gold">Gold</option><option value="diamond">Diamond</option></select></div>
@@ -188,19 +200,52 @@ async function hideVoice(voice) {
         </form>
       </section>
       <section class="panel flush" aria-labelledby="voices-heading">
-        <div class="panel-heading"><div><h2 id="voices-heading">{{ $t("Thư viện giọng đọc") }}</h2><p>{{ $t("Giọng mẫu chung và giọng cá nhân đang được sử dụng.") }}</p></div><button type="button" class="btn primary" :disabled="!!busy" @click="showVoiceForm = !showVoiceForm"><UiIcon name="plus" />{{ $t("Thêm giọng mẫu") }}</button></div>
+        <div class="panel-heading"><div><h2 id="voices-heading">{{ $t("Thư viện giọng đọc") }}</h2><p>{{ $t("Quản lý giọng mẫu chung và giọng cá nhân của bạn.") }}</p></div><button type="button" class="btn primary" :disabled="!!busy" @click="showVoiceForm = !showVoiceForm"><UiIcon name="plus" />{{ $t("Thêm giọng mẫu") }}</button></div>
         <div class="toolbar table-toolbar"><div class="search-field"><UiIcon name="search" /><input v-model="voiceSearch" type="search" class="input" :aria-label="$t('Tìm giọng đọc')" :placeholder="$t('Tìm tên hoặc mã giọng…')" /></div><span class="text-muted">{{ filteredVoices.length }} {{ $t("giọng đọc") }}</span></div>
         <div v-if="!filteredVoices.length" class="empty-state"><div class="empty-icon"><UiIcon name="mic" /></div><h2>{{ $t("Chưa có giọng đọc phù hợp") }}</h2><p>{{ $t("Thử từ khóa khác hoặc thêm giọng mẫu mới.") }}</p></div>
-        <div v-else class="table-scroll"><table class="data-table"><thead><tr><th scope="col">{{ $t('Giọng đọc') }}</th><th scope="col">{{ $t('Phân hạng giọng') }}</th><th scope="col">{{ $t('Mô tả') }}</th><th scope="col">{{ $t('Trạng thái') }}</th><th scope="col">{{ $t('Thao tác') }}</th></tr></thead><tbody><tr v-for="voice in filteredVoices" :key="voice._id"><td><button type="button" class="text-button" @click="openVoiceLibrary(voice)"><UiIcon name="mic" />{{ voice.name }}</button></td><td><span class="pill">{{ ({free:'Free',gold:'Gold',diamond:'Diamond'})[voice.class||'free'] }}</span></td><td class="text-muted">{{ voice.description||'—' }}</td><td><span class="pill green">{{ $t('Đang dùng') }}</span></td><td><div v-if="voice.can_edit" class="admin-voice-actions"><button type="button" class="btn small" :disabled="!!busy" @click="voiceLibrary.edit(voice)">{{ $t('Chỉnh sửa') }}</button><button type="button" class="btn small danger" :disabled="!!busy" @click="hideVoice(voice)">{{ $t('Ẩn giọng') }}</button></div></td></tr></tbody></table></div>
-        <div class="table-footer">{{ $t("Hiển thị") }} {{ filteredVoices.length }} / {{ voices.length }} {{ $t("giọng đang dùng") }}</div>
+        <div v-else class="table-scroll" tabindex="0" role="region" :aria-label="$t('Bảng giọng đọc')">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th scope="col">{{ $t('Giọng đọc') }}</th>
+                <th scope="col">{{ $t('Mã giọng đọc') }}</th>
+                <th scope="col">{{ $t('Phân hạng giọng') }}</th>
+                <th scope="col">{{ $t('Mô tả') }}</th>
+                <th scope="col">{{ $t('Trạng thái') }}</th>
+                <th scope="col" class="voice-actions-column">{{ $t('Thao tác') }}</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="voice in filteredVoices" :key="voice._id">
+                <td>
+                  <button v-if="voice.is_active" type="button" class="text-button" @click="openVoiceLibrary(voice)"><UiIcon name="mic" />{{ voice.name }}</button>
+                  <span v-else>{{ voice.name }}</span>
+                </td>
+                <td class="voice-code text-muted">{{ voice.voice_id }}</td>
+                <td><span class="pill">{{ ({free:'Free',gold:'Gold',diamond:'Diamond'})[voice.class||'free'] }}</span></td>
+                <td class="text-muted">{{ voice.description || '—' }}</td>
+                <td><span class="pill" :class="voice.is_active ? 'green' : 'amber'">{{ $t(voice.is_active ? 'Đang dùng' : 'Đã khóa') }}</span></td>
+                <td class="voice-actions-column">
+                  <div v-if="voice.can_edit" class="admin-voice-actions">
+                    <button type="button" class="btn small" :disabled="!!busy" @click="voiceLibrary.edit(voice)">{{ $t('Chỉnh sửa') }}</button>
+                    <button type="button" class="btn small" :class="{ danger: voice.is_active }" :disabled="!!busy" @click="toggleVoiceLock(voice)">{{ $t(voice.is_active ? 'Khóa' : 'Mở khóa') }}</button>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="table-footer">{{ $t("Hiển thị") }} {{ filteredVoices.length }} / {{ voices.length }} {{ $t("giọng đọc") }}</div>
       </section>
     </div>
   </template>
-  <VoicePicker ref="voiceLibrary" v-model="librarySelected" :voices="voices" manage hide-trigger @refresh="fetchData" />
+  <VoicePicker ref="voiceLibrary" v-model="librarySelected" :voices="activeVoices" :disabled="!!busy" manage admin hide-trigger @lock="toggleVoiceLock" @refresh="fetchData" />
 </template>
 
 <style scoped>
-.admin-voice-actions{display:flex;gap:8px;flex-wrap:wrap}
+.voice-code { min-width: 12ch; max-width: 26ch; overflow-wrap: anywhere; }
+.data-table .voice-actions-column { text-align: center; }
+.admin-voice-actions { display: inline-grid; grid-template-columns: repeat(2, 1fr); gap: 8px; white-space: nowrap; }
 .admin-feedback { margin-bottom: 18px; }
 .role-filter { width: auto; max-width: 200px; font-size: 12px; }
 .self-label { margin-left: 5px; color: var(--muted); font-size: 10px; font-weight: 500; }

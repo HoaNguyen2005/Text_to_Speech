@@ -6,8 +6,8 @@ import {notify,confirmAction} from '@/composables/useNotifications';
 import UiIcon from './UiIcon.vue';
 import VoiceEditorDialog from './VoiceEditorDialog.vue';
 import {openUpgrade} from '@/composables/useAccountTier';
-const props=defineProps({modelValue:String,voices:{type:Array,default:()=>[]},disabled:Boolean,loading:Boolean,provider:{type:String,default:'edge'},manage:Boolean,hideTrigger:Boolean,initialGroup:{type:String,default:'system'}});
-const emit=defineEmits(['update:modelValue','refresh']);
+const props=defineProps({modelValue:String,voices:{type:Array,default:()=>[]},disabled:Boolean,loading:Boolean,provider:{type:String,default:'edge'},manage:Boolean,admin:Boolean,hideTrigger:Boolean,initialGroup:{type:String,default:'system'}});
+const emit=defineEmits(['update:modelValue','refresh','lock']);
 const opened=ref(false),dialog=ref(null),search=ref(''),tab=ref(props.initialGroup),tier=ref('all'),playing=ref(''),preparing=ref(''),editOpen=ref(false),editing=ref(null),hiding=ref('');
 let audio,objectUrl,abort,sequence=0;
 let nextTab;
@@ -42,7 +42,9 @@ async function play(voice){
   }finally{if(current===sequence)preparing.value='';}
 }
 async function hide(voice){
-  stop();if(!await confirmAction({key:'Ẩn giọng mẫu “{0}” khỏi danh sách sử dụng?',params:[voice.name]},{title:'Ẩn giọng mẫu',confirmLabel:'Ẩn giọng',danger:true}))return;
+  stop();
+  if(props.admin){emit('lock',voice);return;}
+  if(!await confirmAction({key:'Ẩn giọng mẫu “{0}” khỏi danh sách sử dụng?',params:[voice.name]},{title:'Ẩn giọng mẫu',confirmLabel:'Ẩn giọng',danger:true}))return;
   hiding.value=voice.voice_id;
   try{await api.delete(`/api/voices/${voice._id}`);if(props.modelValue===keyOf(voice))emit('update:modelValue','');emit('refresh');await refreshSession().catch(()=>{});notify('Đã ẩn giọng mẫu khỏi danh sách sử dụng.',{kind:'success'});}
   catch(error){notify(error.response?.data?.error||'Không thể ẩn giọng mẫu.',{kind:'error'});}finally{hiding.value='';}
@@ -63,7 +65,7 @@ onBeforeUnmount(()=>{stop();dialog.value?.close();});
     <div class="voice-picker-grid"><article v-for="(voice, index) in filtered" :key="keyOf(voice)" class="voice-choice-card" :class="{selected:keyOf(voice)===modelValue}" :style="{ '--voice-enter-delay': Math.min(index, 5) * 40 + 'ms' }">
       <div class="voice-choice-heading"><span class="voice-avatar" aria-hidden="true">{{ initials(voice.name) }}</span><div class="voice-choice-info"><h3 :title="voice.name">{{ voice.name }}</h3><p class="voice-description" :title="voice.description">{{ voice.description||$t('Nghe mẫu để chọn giọng phù hợp.') }}</p></div><span v-if="keyOf(voice)===modelValue" class="voice-selected-mark" :title="$t('Đã chọn')"><UiIcon name="check" /></span></div>
       <div class="voice-choice-actions"><span class="voice-class" :class="voice.class||'free'">{{ ({free:'Free',gold:'Gold',diamond:'Diamond'})[voice.class||'free'] }}</span><div class="voice-choice-controls"><button type="button" class="btn small voice-play" :class="{playing:playing===keyOf(voice)||preparing===keyOf(voice),audible:playing===keyOf(voice)}" :aria-label="playing===keyOf(voice)||preparing===keyOf(voice)?$t('Dừng')+' · '+voice.name:$t('Nghe mẫu {0}',[voice.name])" :title="$t(playing===keyOf(voice)||preparing===keyOf(voice)?'Dừng':'Nghe mẫu')" :aria-pressed="playing===keyOf(voice)||preparing===keyOf(voice)" @click="play(voice)"><span v-if="preparing===keyOf(voice)" class="spinner" /><UiIcon v-else :name="playing===keyOf(voice)?'pause':'play'" /></button><button v-if="!manage" type="button" class="btn small voice-select" :class="{primary:keyOf(voice)===modelValue}" :aria-pressed="keyOf(voice)===modelValue" :disabled="disabled||voice.usable===false" @click="choose(voice)">{{ $t(keyOf(voice)===modelValue?'Đã chọn':'Chọn') }}</button></div></div>
-      <button v-if="!manage&&voice.usable===false" type="button" class="text-button" @click="openUpgrade()">{{ $t('Nâng cấp để dùng giọng này') }}</button><div v-if="voice.can_edit" class="voice-manage-actions"><button type="button" class="text-button" @click="edit(voice)"><UiIcon name="edit" />{{ $t('Chỉnh sửa') }}</button><button type="button" class="text-button" :disabled="hiding===voice.voice_id" @click="hide(voice)">{{ $t('Ẩn giọng') }}</button></div>
+      <button v-if="!manage&&voice.usable===false" type="button" class="text-button" @click="openUpgrade()">{{ $t('Nâng cấp để dùng giọng này') }}</button><div v-if="voice.can_edit" class="voice-manage-actions"><button type="button" class="text-button" @click="edit(voice)"><UiIcon name="edit" />{{ $t('Chỉnh sửa') }}</button><button type="button" class="text-button" :disabled="disabled || hiding===voice.voice_id" @click="hide(voice)">{{ $t(admin ? 'Khóa' : 'Ẩn giọng') }}</button></div>
     </article><p v-if="!filtered.length" class="voice-empty">{{ $t(loading?'Đang tải danh sách giọng…':tab==='mine'&&!hasOwnVoices&&!search&&tier==='all'?'Bạn chưa có giọng riêng. Bấm Thêm giọng mới để bắt đầu.':'Không tìm thấy giọng đọc phù hợp.') }}</p></div>
     <footer class="voice-picker-footer"><small>{{ $t('Nghe bản mẫu tối đa 30 giây.') }}</small><button type="button" class="text-button" :disabled="loading" @click="emit('refresh')"><UiIcon name="refresh" />{{ $t('Tải lại') }}</button></footer>
   </dialog></Teleport>
