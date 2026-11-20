@@ -7,7 +7,8 @@ document.addEventListener('DOMContentLoaded', () => {
   if (!form) return;
 
   const tab = new URL(form.action).searchParams.get('tab_id');
-  const fresh = location.hash === '#tts-welcome';
+  const signedOut = location.hash === '#tts-signed-out';
+  const fresh = signedOut || location.hash === '#tts-welcome';
   let returning = false;
   try {
     returning = !!tab && sessionStorage.getItem('tts.welcome-tab') === tab;
@@ -33,6 +34,7 @@ document.addEventListener('DOMContentLoaded', () => {
   host.classList.add('studio-host');
   slot.hidden = fresh;
   intro.hidden = !fresh;
+  intro.querySelector('.studio-signed-out').hidden = !signedOut;
   function openLogin() {
     intro.hidden = true;
     slot.hidden = false;

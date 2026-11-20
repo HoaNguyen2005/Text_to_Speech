@@ -15,6 +15,10 @@
 .studio-description { max-width: 480px; margin-top: 24px; color: var(--text-body); font-size: 16px; line-height: 1.85; }
 .studio-sound { margin-top: 28px; padding: 24px; background: linear-gradient(150deg, var(--hero-bg), var(--hero-line)); border: 1px solid var(--hero-line); border-radius: 18px; color: var(--hero-ink); }
 .studio-sound b, .studio-features li { font-size: 13px; }
+.studio-wave-heading, .studio-bottom { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.studio-wave-heading small { padding: 4px 8px; border: 1px solid var(--wave-faint); border-radius: 20px; }
+.studio-bottom { padding: 20px 0; border-top: 1px solid var(--line); color: var(--muted); font-size: 11px; }
+.studio-signed-out { margin-bottom: 16px; color: var(--success); }
 .studio-wave { display: flex; align-items: center; justify-content: space-between; gap: 4px; height: 62px; margin: 22px 0; }
 .studio-wave i { width: 5px; border-radius: 5px; background: var(--wave-mid); }
 .studio-wave i:nth-child(n+15):nth-child(-n+23) { background: var(--hero-accent); }

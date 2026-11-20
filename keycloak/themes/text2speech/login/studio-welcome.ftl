@@ -9,7 +9,7 @@
             <h1 id="studio-title">${msg("studioTitle")}<br><em>${msg("studioTitleAccent")}</em></h1>
             <p class="studio-description">${msg("studioDescription")}</p>
             <div class="studio-sound" aria-hidden="true">
-                <b>${msg("studioWaveTitle")}</b>
+                <div class="studio-wave-heading"><b>${msg("studioWaveTitle")}</b><small>${msg("studioVietnameseVoices")}</small></div>
                 <div class="studio-wave">
                     <#list [14,24,18,36,52,32,68,84,54,40,70,96,78,48,62,90,100,74,44,64,84,56,38,70,92,66,48,80,60,36,50,72,42,28,46,30,18,24] as bar>
                         <i style="height:${bar}%"></i>
@@ -25,6 +25,7 @@
         </section>
         <section class="studio-account" aria-label="${msg('studioSpace')}">
             <div class="studio-intro">
+                <p class="studio-signed-out" role="status" hidden>${msg("studioSignedOut")}</p>
                 <svg class="studio-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M4 13v-1a8 8 0 0 1 16 0v1"/><rect x="3" y="12" width="4" height="8" rx="2"/><rect x="17" y="12" width="4" height="8" rx="2"/></svg>
                 <p class="studio-eyebrow">${msg("studioSpace")}</p>
                 <h2>${msg("studioStart")}</h2>
@@ -39,4 +40,5 @@
             <div class="studio-form"></div>
         </section>
     </div>
+    <footer class="studio-bottom"><span>${msg("studioBrandFooter")}</span><span>${msg("studioLanguageFooter")}</span></footer>
 </template>
