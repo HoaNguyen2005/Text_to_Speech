@@ -191,7 +191,7 @@ exports.deleteVoice = async (req, res) => {
 exports.preview=async(req,res)=>{
     try {
         if(!isValidId(req.params.id))return res.status(404).json({error:'Không tìm thấy giọng mẫu'});
-        const voice=await Voice.findOne({_id:req.params.id,is_active:true});
+        const voice=await Voice.findOne(req.user?.role==='admin'?{_id:req.params.id}:{_id:req.params.id,is_active:true});
         if(!access.visible(voice,req.user))return res.status(404).json({error:'Không tìm thấy giọng mẫu'});
         res.setHeader('Cache-Control','private, no-store');
         if(storage.isStorageKey(voice.file_path)) {

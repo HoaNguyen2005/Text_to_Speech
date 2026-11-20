@@ -695,7 +695,7 @@
   "Nghe mẫu {0}": "Listen to {0}",
   "Nghe mẫu": "Listen",
   "Dừng": "Stop",
-  "Chọn": "Select",
+  "Chọn": "Use",
   "Đã chọn": "Selected",
   "Chỉnh sửa": "Edit",
   "Chỉnh sửa giọng đọc": "Edit voice",
@@ -882,5 +882,11 @@
   "Tìm kiếm": "Search",
   "Thời hạn khi cấp gói": "Plan grant duration",
   "Tài khoản Gold": "Gold account",
-  "Tài khoản Diamond": "Diamond account"
+  "Tài khoản Diamond": "Diamond account",
+  "Tất cả giới tính": "All genders",
+  "Đặt lại bộ lọc": "Reset all filters",
+  "Tiếng Việt": "Vietnamese",
+  "Bấm vào dòng để nghe thử": "Click row to preview",
+  "Đang nghe thử": "Previewing",
+  "Chọn giọng để nghe thử tối đa 30 giây.": "Click any voice row to preview up to 30 seconds."
 }

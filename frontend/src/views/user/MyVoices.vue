@@ -37,6 +37,6 @@ onMounted(load);
       </div>
       <span class="pill">{{ mine.length }}</span>
     </div>
-    <VoicePicker :voices="voices" :loading="loading" manage initial-group="mine" @refresh="load" />
+    <VoicePicker :voices="voices" :loading="loading" manage inline initial-group="mine" @refresh="load" />
   </section>
 </template>

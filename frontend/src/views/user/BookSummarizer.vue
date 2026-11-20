@@ -37,6 +37,8 @@ const loadingVoices = ref(false);
 const voiceError = useFeedback('error');
 const availableVoices = computed(() => voiceChoices.value.voices || []);
 const chosenVoice = computed(() => availableVoices.value.find((voice) => voice.choice_id === selectedVoiceId.value));
+const voiceTierClass = voice => (voice?.class === 'gold' || voice?.class === 'diamond') ? voice.class : '';
+const selectedVoiceTier = computed(() => voiceTierClass(selected.value?.selected_voice || chosenVoice.value));
 const voiceMode=computed(()=>chosenVoice.value?.voice_mode||'standard');
 watch(ttsProvider, () => { selectedVoiceId.value = ''; fetchVoiceChoices(); });
 const reading = ref(false);
@@ -367,7 +369,7 @@ onBeforeUnmount(() => { disposed = true; ++selectionVersion; clearTimeout(timer)
       <section v-if="selected" class="panel" aria-labelledby="book-progress-title">
         <div class="panel-heading"><h2 id="book-progress-title"><UiIcon name="spark" />{{ selected.title }}</h2><span class="pill" :class="{ green: selected.status === 'completed', purple: active(selected) }">{{ $t(statusLabel(selected)) }}</span></div>
         <div class="result-meta"><span class="pill">{{ $t("Mục tiêu") }} {{ selected.target_minutes }} {{ $t("phút") }}</span><span v-if="selected.selected_voice?.origin" class="pill">{{ $t(selected.selected_voice.origin==='user'?'Giọng của bạn':'Giọng hệ thống') }}</span><span class="text-muted">{{ formatDate(selected.createdAt) }}</span></div>
-        <p v-if="selected.selected_voice?.name || selected.result?.voice" class="text-muted">{{ $t("Giọng sử dụng:") }} <strong>{{ selected.selected_voice?.name || selected.result.voice }}</strong></p>
+        <p v-if="selected.selected_voice?.name || selected.result?.voice" class="text-muted">{{ $t("Giọng sử dụng:") }} <span class="voice-name-frame" :class="voiceTierClass(selected.selected_voice) ? `is-${voiceTierClass(selected.selected_voice)}` : ''"><strong :class="voiceTierClass(selected.selected_voice) ? `tier-text-${voiceTierClass(selected.selected_voice)}` : ''">{{ selected.selected_voice?.name || selected.result.voice }}</strong></span></p>
         <BookAttribution :metadata="selected.result?.book_metadata || selected.book_metadata" :fallback-title="selected.title" />
         <p v-if="selected.result?.verification_method==='user'" class="text-muted">{{ $t('Người dùng tự duyệt') }}</p>
         <template v-if="active(selected)">
@@ -439,7 +441,7 @@ onBeforeUnmount(() => { disposed = true; ++selectionVersion; clearTimeout(timer)
         <div class="book-locked-config">
           <strong>{{ selected?.title || bookTitle }}</strong>
           <span>{{ selected?.target_minutes || targetMinutes }} {{ $t('phút') }} · {{ providerNames[selected?.selected_voice?.provider || ttsProvider] || providerNames.edge }}</span>
-          <span>{{ selected?.selected_voice?.name || chosenVoice?.name }}</span>
+          <span class="voice-name-frame" :class="selectedVoiceTier ? `is-${selectedVoiceTier}` : ''"><span :class="selectedVoiceTier ? `tier-text-${selectedVoiceTier}` : ''">{{ selected?.selected_voice?.name || chosenVoice?.name }}</span></span>
         </div>
         <div id="book-speech-settings" />
         <p v-if="selected?.status === 'review'" class="book-review-hint">{{ $t('Chỉnh nội dung, nghe thử rồi duyệt tạo âm thanh.') }}</p>

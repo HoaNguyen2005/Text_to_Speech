@@ -26,15 +26,12 @@ const voiceFormError = useFeedback('error');
 const newVoice = ref({ name: '', gender: 'male',class:'free',description:'' });
 let voiceCode;
 const voiceLibrary=ref(null),librarySelected=ref('');
-function openVoiceLibrary(voice){librarySelected.value=voice.voice_id;voiceLibrary.value?.open();}
 const audioFile = ref(null);
 const audioInput = ref(null);
 const filteredUsers = computed(() => users.value.filter(user =>
   (!roleFilter.value || user.role === roleFilter.value) &&
   (!tierFilter.value || (user.account_class||'free') === tierFilter.value) &&
   [user.fullName, user.email].join(' ').toLocaleLowerCase('vi-VN').includes(search.value.trim().toLocaleLowerCase('vi-VN'))));
-const filteredVoices = computed(() => voices.value.filter(voice =>
-  [voice.name, voice.voice_id].join(' ').toLocaleLowerCase('vi-VN').includes(voiceSearch.value.trim().toLocaleLowerCase('vi-VN'))));
 const activeVoices = computed(() => voices.value.filter(voice => voice.is_active));
 const stats = computed(() => [
   { label: 'Tổng tài khoản', value: users.value.length, icon: 'users' },
@@ -211,47 +208,12 @@ async function toggleVoiceLock(voice) {
           <div class="form-wide"><button type="submit" class="btn primary" :disabled="!!busy"><span v-if="busy === 'new-voice'" class="spinner" aria-hidden="true"></span><UiIcon v-else name="plus" />{{ busy === 'new-voice' ? $t("Đang thêm giọng…") : $t("Lưu giọng mẫu") }}</button></div>
         </form>
       </section>
-      <section class="panel flush" aria-labelledby="voices-heading">
+      <section class="panel" aria-labelledby="voices-heading">
         <div class="panel-heading"><div><h2 id="voices-heading">{{ $t("Thư viện giọng đọc") }}</h2><p>{{ $t("Quản lý giọng mẫu chung và giọng cá nhân của bạn.") }}</p></div><button type="button" class="btn primary" :disabled="!!busy" @click="showVoiceForm = !showVoiceForm"><UiIcon name="plus" />{{ $t("Thêm giọng mẫu") }}</button></div>
-        <div class="toolbar table-toolbar"><div class="search-field"><UiIcon name="search" /><input v-model="voiceSearch" type="search" class="input" :aria-label="$t('Tìm giọng đọc')" :placeholder="$t('Tìm tên hoặc mã giọng…')" /></div><span class="text-muted">{{ filteredVoices.length }} {{ $t("giọng đọc") }}</span></div>
-        <div v-if="!filteredVoices.length" class="empty-state"><div class="empty-icon"><UiIcon name="mic" /></div><h2>{{ $t("Chưa có giọng đọc phù hợp") }}</h2><p>{{ $t("Thử từ khóa khác hoặc thêm giọng mẫu mới.") }}</p></div>
-        <div v-else class="table-scroll" tabindex="0" role="region" :aria-label="$t('Bảng giọng đọc')">
-          <table class="data-table">
-            <thead>
-              <tr>
-                <th scope="col">{{ $t('Giọng đọc') }}</th>
-                <th scope="col">{{ $t('Mã giọng đọc') }}</th>
-                <th scope="col">{{ $t('Phân hạng giọng') }}</th>
-                <th scope="col">{{ $t('Mô tả') }}</th>
-                <th scope="col">{{ $t('Trạng thái') }}</th>
-                <th scope="col" class="voice-actions-column">{{ $t('Thao tác') }}</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="voice in filteredVoices" :key="voice._id">
-                <td>
-                  <button v-if="voice.is_active" type="button" class="text-button" @click="openVoiceLibrary(voice)"><UiIcon name="mic" />{{ voice.name }}</button>
-                  <span v-else>{{ voice.name }}</span>
-                </td>
-                <td class="voice-code text-muted">{{ voice.voice_id }}</td>
-                <td><span class="pill" :class="voice.class && voice.class !== 'free' ? voice.class : ''">{{ ({free:'Free',gold:'Gold',diamond:'Diamond'})[voice.class||'free'] }}</span></td>
-                <td class="text-muted">{{ voice.description || '—' }}</td>
-                <td><span class="pill" :class="voice.is_active ? 'green' : 'amber'">{{ $t(voice.is_active ? 'Đang dùng' : 'Đã khóa') }}</span></td>
-                <td class="voice-actions-column">
-                  <div v-if="voice.can_edit" class="admin-voice-actions">
-                    <button type="button" class="btn small" :disabled="!!busy" @click="voiceLibrary.edit(voice)">{{ $t('Chỉnh sửa') }}</button>
-                    <button type="button" class="btn small" :class="{ danger: voice.is_active }" :disabled="!!busy" @click="toggleVoiceLock(voice)">{{ $t(voice.is_active ? 'Khóa' : 'Mở khóa') }}</button>
-                  </div>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-        <div class="table-footer">{{ $t("Hiển thị") }} {{ filteredVoices.length }} / {{ voices.length }} {{ $t("giọng đọc") }}</div>
+        <VoicePicker ref="voiceLibrary" v-model="librarySelected" :voices="voices" :loading="loading" :disabled="!!busy" manage admin inline @lock="toggleVoiceLock" @refresh="fetchData" />
       </section>
     </div>
   </template>
-  <VoicePicker ref="voiceLibrary" v-model="librarySelected" :voices="activeVoices" :disabled="!!busy" manage admin hide-trigger @lock="toggleVoiceLock" @refresh="fetchData" />
 </template>
 
 <style scoped>
