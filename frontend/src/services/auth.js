@@ -75,12 +75,19 @@ export function initializeAuth() {
     keycloak.onTokenExpired = () => { getAccessToken().catch(() => {}); };
     try {
       const authenticated = await keycloak.init({
-        onLoad: 'check-sso', pkceMethod: 'S256', flow: 'standard',
+        pkceMethod: 'S256', flow: 'standard',
         responseMode: 'query', checkLoginIframe: false, messageReceiveTimeout: 10000, locale: locale.value,
       });
       identitySession.value = authenticated;
       if (authenticated) await refreshSession();
-      if (!authenticated && saved(logoutKey)) notify('Bạn đã đăng xuất thành công.', { kind: 'success', key: 'logout' });
+      if (!authenticated) {
+        // Start the browser flow before showing the welcome card so its forms
+        // and the authentication cookies belong to the same Keycloak origin.
+        const target = new URL(await keycloak.createLoginUrl({ locale: locale.value }));
+        target.searchParams.set('kc_locale', locale.value);
+        target.hash = saved(logoutKey) ? 'tts-signed-out' : 'tts-welcome';
+        window.location.replace(target.href);
+      }
       save(logoutKey, null);
     } catch (error) {
       session.value = null;
