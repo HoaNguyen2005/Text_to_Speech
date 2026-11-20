@@ -1,4 +1,7 @@
 <#macro content>
+    <#if ((client.clientId)!'') == 'tts-frontend' && realm.password>
+        <#include "studio-welcome.ftl">
+    </#if>
     <span id="tts-notification-labels" hidden data-title="${msg('ttsNotice')}" data-error="${msg('ttsNoticeError')}" data-success="${msg('ttsNoticeSuccess')}" data-close="${msg('ttsNoticeClose')}"></span>
     <div class="tts-auth-tools">
         <button id="tts-theme-toggle" type="button" class="tts-theme-toggle" hidden
