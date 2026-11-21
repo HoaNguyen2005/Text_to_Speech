@@ -32,6 +32,30 @@ document.addEventListener('DOMContentLoaded', () => {
   host.append(shell);
   slot.append(nativeCard);
   host.classList.add('studio-host');
+  const backdrop = shell.querySelector('.studio-backdrop');
+  const motion = matchMedia('(prefers-reduced-motion: no-preference)');
+  function loadLines() {
+    if (!motion.matches) return;
+    motion.removeEventListener('change', loadLines);
+    import(backdrop.dataset.module).then(module => module.mountLines(backdrop))
+      .catch(() => { /* The theme keeps its CSS background while WebGL is unavailable. */ });
+  }
+  motion.addEventListener('change', loadLines);
+  loadLines();
+  const followPointer = matchMedia('(hover: hover) and (prefers-reduced-motion: no-preference)');
+  const resetPointer = () => {
+    host.style.removeProperty('--studio-x');
+    host.style.removeProperty('--studio-y');
+    host.style.removeProperty('--studio-tilt');
+  };
+  host.addEventListener('pointermove', event => {
+    if (!followPointer.matches || event.pointerType === 'touch') return;
+    host.style.setProperty('--studio-x', (event.clientX / innerWidth - .5) * 36 + 'px');
+    host.style.setProperty('--studio-y', (event.clientY / innerHeight - .5) * 24 + 'px');
+    host.style.setProperty('--studio-tilt', (event.clientY / innerHeight - .5) * 2 + 'deg');
+  }, { passive: true });
+  host.addEventListener('pointerleave', resetPointer);
+  followPointer.addEventListener('change', resetPointer);
   slot.hidden = fresh;
   intro.hidden = !fresh;
   intro.querySelector('.studio-signed-out').hidden = !signedOut;
