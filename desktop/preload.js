@@ -12,4 +12,15 @@ contextBridge.exposeInMainWorld('desktopApp', {
     ipcRenderer.on('desktop:status', listener);
     return () => ipcRenderer.removeListener('desktop:status', listener);
   },
+  synthesizeLocal: (payload, onProgress) => {
+    const listener = typeof onProgress === 'function'
+      ? (_event, progress) => {
+          if (!payload?.jobId || progress?.jobId === payload.jobId) onProgress(progress);
+        }
+      : null;
+    if (listener) ipcRenderer.on('desktop:synthesis-progress', listener);
+    return ipcRenderer.invoke('desktop:synthesize-local', payload).finally(() => {
+      if (listener) ipcRenderer.removeListener('desktop:synthesis-progress', listener);
+    });
+  },
 });

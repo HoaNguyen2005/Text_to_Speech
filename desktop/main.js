@@ -117,6 +117,13 @@ ipcMain.handle('desktop:get-status', () => runtime.getStatus());
 ipcMain.handle('desktop:warmup-cloud', () => runtime.warmupCloud());
 ipcMain.handle('desktop:setup-runtime', () => runtime.ensurePythonRuntime());
 ipcMain.handle('desktop:restart-services', () => runtime.restartServices());
+ipcMain.handle('desktop:synthesize-local', async (_event, payload) => {
+  return runtime.synthesizeLocal(payload, (progress) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('desktop:synthesis-progress', progress);
+    }
+  });
+});
 
 app.whenReady().then(async () => {
   setupTray();

@@ -1,11 +1,15 @@
 const crypto=require('crypto');
 const os=require('os');
+const multer=require('multer');
 const router=require('express').Router();
 const {verifyToken}=require('../middlewares/auth.middleware');
 const config=require('../config/book');
 const speech=require('../services/speech.service');
 const lecture=require('../services/speech_lecture.service');
 const artifact=require('../services/engine_artifact.service');
+const localTts=require('../services/local_client_tts.service');
+
+const uploadAudio=multer({storage:multer.memoryStorage(),limits:{fileSize:150*1024*1024,fieldSize:5*1024*1024,files:1}});
 
 function verifyEngineSecret(req,res,next){
     const expected=Buffer.from(String(config.engineSecret||''),'utf8');
@@ -62,8 +66,14 @@ router.post('/lecture-preview',async(req,res)=>{
     const result=await lecture.render(req.user,req.body||{},true);
     res.set('Content-Type','audio/mpeg').set('Cache-Control','no-store').send(result.buffer);
 });
+router.post('/local-authorize',async(req,res)=>{
+    res.json(await localTts.authorizeLecture(req.user,req.body||{},Boolean(req.body?.preview)));
+});
+router.post('/local-complete',uploadAudio.single('audio_file'),async(req,res)=>{
+    res.json(await localTts.completeLecture(req.user,req.body||{},req.file?.buffer));
+});
 router.use((error,req,res,next)=>{
     console.warn('[SPEECH API]',error.status||error.name);
-    res.status(error.status||503).json({error:error.status?error.message:'Không xử lý được cấu hình đọc hoặc kết nối Engine. Hãy thử lại.'});
+    res.status(error.status||503).json({error:error.status?error.message:'Không xử lý được cấu hình đọc hoặc kết nối Engine. Hãy thử lại.',...(error.code?{code:error.code}:{})});
 });
 module.exports=router;

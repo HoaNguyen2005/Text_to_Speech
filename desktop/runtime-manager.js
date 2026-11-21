@@ -161,6 +161,8 @@ class DesktopRuntimeManager extends EventEmitter {
       path.join(this.rootDir, 'backend', '.env'),
       path.join(this.rootDir, 'deploy', 'main-backend.env'),
       path.join(this.rootDir, 'deploy', 'main-worker.env'),
+      path.join(this.rootDir, 'deploy', 'engine.gpu.env'),
+      path.join(this.rootDir, 'deploy', 'engine.env'),
     ];
     for (const file of candidates) {
       if (!fs.existsSync(file)) continue;
@@ -501,6 +503,90 @@ class DesktopRuntimeManager extends EventEmitter {
     await this.stopServices();
     await this.startServices();
     return this.getStatus();
+  }
+
+  async synthesizeLocal({ jobId, parts, preview = false }, onProgress) {
+    if (!Array.isArray(parts) || !parts.length) {
+      throw new Error('Danh sách đoạn đọc trống.');
+    }
+    const engineBase = 'http://127.0.0.1:8000';
+    const health = await probeReady(engineBase, 3000);
+    if (!health.online) {
+      const err = new Error('Local Engine chưa sẵn sàng.');
+      err.code = 'LOCAL_ENGINE_UNAVAILABLE';
+      throw err;
+    }
+    const env = this.loadEnv();
+    const secret = env.BOOK_ENGINE_SECRET || '';
+    const callEngine = async (endpoint, payload) => {
+      const resp = await fetch(`${engineBase}${endpoint}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Book-Engine-Secret': secret },
+        body: JSON.stringify(payload),
+        signal: AbortSignal.timeout(20 * 60 * 1000),
+      });
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok) {
+        const msg = typeof data.detail === 'string' ? data.detail : data.detail?.message || 'Local Engine báo lỗi khi tạo âm thanh.';
+        throw new Error(msg);
+      }
+      return data;
+    };
+
+    try {
+      const timings = [];
+      for (let i = 0; i < parts.length; i++) {
+        const part = parts[i];
+        const result = await callEngine('/book/part', { ...part, job_id: jobId, interactive: Boolean(preview) });
+        timings.push({
+          part_id: part.part_id,
+          duration_seconds: result.duration_seconds,
+          speech_duration_seconds: result.speech_duration_seconds,
+        });
+        if (typeof onProgress === 'function') {
+          onProgress({
+            jobId,
+            current: i + 1,
+            total: parts.length,
+            percent: Math.round(((i + 1) / parts.length) * 100),
+          });
+        }
+      }
+
+      const merged = await callEngine('/book/merge', {
+        job_id: jobId,
+        part_ids: timings.map((t) => t.part_id),
+        interactive: Boolean(preview),
+      });
+      let outputName = path.posix.basename(String(merged.output_path || '').replace(/\\/g, '/'));
+      let finalDuration = merged.duration_seconds;
+
+      if (preview) {
+        const match = outputName.match(/^final_([a-f0-9]{64})[.]mp3$/);
+        if (!match) throw new Error('Đường dẫn nghe thử từ Local Engine không hợp lệ.');
+        const clip = await callEngine('/book/preview', { job_id: jobId, part_id: match[1], merged: true });
+        outputName = path.posix.basename(String(clip.output_path || '').replace(/\\/g, '/'));
+        finalDuration = clip.duration_seconds;
+      }
+
+      const fileResp = await fetch(`${engineBase}/book/artifact/${encodeURIComponent(jobId)}/${encodeURIComponent(outputName)}`, {
+        headers: { 'X-Book-Engine-Secret': secret },
+        signal: AbortSignal.timeout(120000),
+      });
+      if (!fileResp.ok) throw new Error('Không đọc được file âm thanh từ Local Engine.');
+      const buffer = Buffer.from(await fileResp.arrayBuffer());
+      return {
+        audioBase64: buffer.toString('base64'),
+        duration_seconds: finalDuration,
+        timings,
+      };
+    } finally {
+      await fetch(`${engineBase}/book/cleanup`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Book-Engine-Secret': secret },
+        body: JSON.stringify({ job_id: jobId }),
+      }).catch(() => {});
+    }
   }
 
   async stopServices() {

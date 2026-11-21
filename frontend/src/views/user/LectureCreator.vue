@@ -6,6 +6,7 @@ import SpeechTools from '@/components/SpeechTools.vue';
 import SubtitleDownload from '@/components/SubtitleDownload.vue';
 import VoicePicker from '@/components/VoicePicker.vue';
 import api from '@/services/api';
+import { isLocalSynthesisReady, synthesizeLectureLocal } from '@/services/localTtsClient';
 import {useAccountTier} from '@/composables/useAccountTier';
 import AccountUsage from '@/components/AccountUsage.vue';
 const {limits,refreshTier,openUpgrade}=useAccountTier();
@@ -72,12 +73,23 @@ const generateLecture = async () => {
 
   try {
     const planned=await speechTools.value.ensurePlan();
-    const response = await api.post('/api/generate-lecture', {
+    const requestPayload = {
       text: text.value,
       teacher_id: chosenTeacher.value.voice_id,voice_mode:chosenTeacher.value.voice_mode,
       tts_provider:ttsProvider.value,
       style_id: styleId.value,speech:speechOptions.value,delivery:deliveries.value[0],speech_plan_hash:planned.hash
-    });
+    };
+    let response;
+    if (await isLocalSynthesisReady()) {
+      try {
+        response = { data: await synthesizeLectureLocal(requestPayload, { preview: false }) };
+      } catch (err) {
+        if (!err?.localFallback) throw err;
+        response = await api.post('/api/generate-lecture', requestPayload);
+      }
+    } else {
+      response = await api.post('/api/generate-lecture', requestPayload);
+    }
 
     if (response.data.status === 'success') {
       resultAudioUrl.value = response.data.audio_url;
@@ -97,8 +109,18 @@ const generateLecture = async () => {
 async function previewLecture(){
  if(speechBusy.value||!text.value.trim()||!chosenTeacher.value||loadingVoices.value)return;
  previewLoading.value=true;errorMessage.value='';clearPreview();
- try{const planned=await speechTools.value.ensurePlan();const {data}=await api.post('/api/speech/lecture-preview',{text:text.value,teacher_id:chosenTeacher.value.voice_id,voice_mode:chosenTeacher.value.voice_mode,tts_provider:ttsProvider.value,style_id:styleId.value,
-  speech:speechOptions.value,delivery:deliveries.value[0],speech_plan_hash:planned.hash},{responseType:'blob',timeout:20*60*1000});if(!disposed)previewUrl.value=URL.createObjectURL(data);}
+ try{
+  const planned=await speechTools.value.ensurePlan();
+  const requestPayload={text:text.value,teacher_id:chosenTeacher.value.voice_id,voice_mode:chosenTeacher.value.voice_mode,tts_provider:ttsProvider.value,style_id:styleId.value,speech:speechOptions.value,delivery:deliveries.value[0],speech_plan_hash:planned.hash};
+  let blobData;
+  if(await isLocalSynthesisReady()){
+    try{blobData=await synthesizeLectureLocal(requestPayload,{preview:true});}
+    catch(err){if(!err?.localFallback)throw err;blobData=(await api.post('/api/speech/lecture-preview',requestPayload,{responseType:'blob',timeout:20*60*1000})).data;}
+  }else{
+    blobData=(await api.post('/api/speech/lecture-preview',requestPayload,{responseType:'blob',timeout:20*60*1000})).data;
+  }
+  if(!disposed)previewUrl.value=URL.createObjectURL(blobData);
+ }
  catch(failure){let message=failure.response?.data?.error;if(failure.response?.data instanceof Blob){try{message=JSON.parse(await failure.response.data.text()).error;}catch{}}
  errorMessage.value=message||'Không tạo được đoạn nghe thử. Hãy kiểm tra Engine rồi thử lại.';}
  finally{previewLoading.value=false;refreshTier().catch(()=>{});}

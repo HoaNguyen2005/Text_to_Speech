@@ -1,6 +1,7 @@
 <script setup>
 import { computed, ref, watch } from 'vue';
 import api from '@/services/api';
+import { isLocalSynthesisReady, synthesizeBookLocal } from '@/services/localTtsClient';
 import UiIcon from './UiIcon.vue';
 import SpeechTools from './SpeechTools.vue';
 import SummaryDownload from './SummaryDownload.vue';
@@ -17,6 +18,7 @@ const deliveries=ref([]),speechTools=ref(null);
 const instruction = ref('');
 const scope = ref(-1);
 const working = ref('');
+const localProgress = ref('');
 const selfApprove = ref(false);
 const error = useFeedback('error', { action: { label: 'Tải lại bản mới', run: () => emit('reload') } });
 const feedback = useFeedback('success');
@@ -91,6 +93,21 @@ async function run(action) {
       body.section_index = null;
       body.fit_duration = true;
     }
+    if (['preview', 'audio'].includes(action) && await isLocalSynthesisReady()) {
+      try {
+        const updated = await synthesizeBookLocal(job._id, body, {
+          action,
+          onProgress: (msg) => { localProgress.value = msg; },
+        });
+        emit('updated', updated);
+        refreshTier().catch(() => {});
+        notify(action === 'preview' ? 'Đoạn nghe thử đã sẵn sàng.' : 'Đã tạo và lưu sách nói vào lịch sử.', { kind: 'success' });
+        return;
+      } catch (err) {
+        localProgress.value = '';
+        if (!err?.localFallback) throw err;
+      }
+    }
     const { data } = await api.post(`/api/book-jobs/${job._id}/${action==='fit'?'revise':action}`, body, { timeout: 20000 });
     emit('updated', data);
     refreshTier().catch(()=>{});
@@ -101,7 +118,7 @@ async function run(action) {
       error.value = 'Nguồn quá ngắn cho thời lượng đã chọn. Hãy chọn lại thời lượng hoặc thêm nội dung nguồn rồi gửi yêu cầu mới.';
     } else error.value = failure.response?.data?.error || (failure.message==='Bản tóm tắt dự kiến đạt 1 giờ. Hãy rút gọn trước khi tạo âm thanh.'?failure.message:'Không lưu được bản tóm tắt. Hãy thử lại.');
   }
-  finally { working.value = ''; }
+  finally { working.value = ''; localProgress.value = ''; }
 }
 const ratePercent=computed(()=>speechOptions.value.rate_percent??0);
 defineExpose({ dirty, ratePercent, working });
@@ -146,7 +163,7 @@ defineExpose({ dirty, ratePercent, working });
       <button type="button" class="btn" :disabled="locked || !valid" @click="run('preview')"><UiIcon name="headphones" />{{ $t('Nghe thử tối đa 30 giây') }}</button>
       <button type="button" class="btn primary" :disabled="locked || !valid || estimatedSeconds >= 3600" @click="run('audio')"><UiIcon name="check" />{{ $t('Duyệt và tạo âm thanh') }}</button>
     </div>
-    <p v-if="working" class="text-muted" role="status">{{ $t('Đang lưu và gửi yêu cầu…') }}</p>
+    <p v-if="working" class="text-muted" role="status">{{ localProgress || $t('Đang lưu và gửi yêu cầu…') }}</p>
     <p v-if="previewPending" class="notice" role="status">{{ $t('Đang tạo nghe thử riêng, không chờ hàng đợi sách.') }}</p>
     <p v-else-if="job.draft.preview_request?.status==='failed'" class="text-muted">{{ $t(job.draft.preview_request.error) }}</p>
     <div v-if="job.draft.preview?.audio_url && !dirty" class="draft-preview"><p class="text-muted">{{ $t('Đoạn nghe thử · {0} · đúng giọng đã chọn', [time(Math.round(job.draft.preview.duration_seconds))]) }}</p><audio :key="job.draft.preview.audio_url" controls preload="none" :src="job.draft.preview.audio_url" class="audio-player" :aria-label="$t('Đoạn nghe thử sách nói')" /></div>

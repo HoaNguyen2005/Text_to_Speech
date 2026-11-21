@@ -1,6 +1,9 @@
 const bookQueue = require('../db/book_queue');
 const express = require('express');
 const crypto = require('crypto');
+const multer = require('multer');
+const localTts = require('../services/local_client_tts.service');
+const uploadLocalBookAudio = multer({ storage: multer.memoryStorage(), limits: { fileSize: 150 * 1024 * 1024, fieldSize: 5 * 1024 * 1024, files: 1 } });
 const { isValidId, transaction, query } = require('../db/postgres');
 const config = require('../config/book');
 const Job = require('../models/book_job.model');
@@ -226,6 +229,16 @@ for (const action of ['revise', 'preview', 'audio']) router.post(`/:id/${action}
     }));
     if (!job) return res.status(409).json({ error: 'Yêu cầu đã đổi trạng thái. Hãy tải lại trước khi tiếp tục.' });
     res.status(202).json(await present(job));
+});
+router.post('/:id/local-audio-plan', async (req, res) => {
+    res.json(await localTts.authorizeBookAudio(req.user, req.bookJob, req.body || {}, req.body?.action));
+});
+router.post('/:id/local-audio-progress', async (req, res) => {
+    res.json(await localTts.updateBookProgress(req.user, req.bookJob, req.body || {}));
+});
+router.post('/:id/local-audio-complete', uploadLocalBookAudio.single('audio_file'), async (req, res) => {
+    const updated = await localTts.completeBookAudio(req.user, req.bookJob, req.body || {}, req.file?.buffer);
+    res.json(await present(updated));
 });
 router.post('/:id/review', async (req, res) => {
     if (!req.bookJob.draft || !Number.isInteger(req.body?.revision)) return res.status(409).json({ error: 'Chưa có bản tóm tắt để quay lại. Hãy tiếp tục từ phần lỗi.' });
