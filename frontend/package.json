@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "build:keycloak-lines": "vite build --config vite.keycloak-lines.js",
     "preview": "vite preview"
   },
   "dependencies": {

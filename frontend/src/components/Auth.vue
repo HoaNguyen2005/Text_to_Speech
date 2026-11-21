@@ -53,7 +53,7 @@ const waveform = [14, 24, 18, 36, 52, 32, 68, 84, 54, 40, 70, 96, 78, 48, 62, 90
                 <path d="M4 5a2 2 0 0 1 2-2h12v18H6a2 2 0 0 1-2-2V5ZM4 17h14M8 7h6M8 11h4" />
               </svg>
             </span>
-            <span><strong>{{ $t("Tạo bài giảng") }}</strong><small>{{ $t("Từ văn bản, Word & PDF") }}</small></span>
+            <span><strong>{{ $t("Tạo giọng nói") }}</strong><small>{{ $t("Từ văn bản, Word & PDF") }}</small></span>
           </li>
           <li>
             <span class="feature-icon" aria-hidden="true">
@@ -167,12 +167,18 @@ const waveform = [14, 24, 18, 36, 52, 32, 68, 84, 54, 40, 70, 96, 78, 48, 62, 90
 #account-title { margin: 0; font-size: 28px; line-height: 1.35; font-weight: 700; letter-spacing: -1px; }
 .account-description { margin: 14px 0 0; color: var(--welcome-muted); font-size: 14px; line-height: 1.8; }
 .account-actions { margin-top: 30px; }
-.account-button { display: flex; align-items: center; justify-content: center; gap: 12px; width: 100%; min-height: 49px; padding: 13px 18px; border-radius: 9px; font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; transition: background .15s, border-color .15s, box-shadow .15s; }
+.account-button { display: flex; align-items: center; justify-content: center; gap: 12px; width: 100%; min-height: 49px; padding: 13px 18px; border-radius: 9px; font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; transition: background-color .18s, border-color .18s, color .18s, box-shadow .18s, translate .2s ease-out; }
 .account-button-primary { border: 1px solid var(--action); background: var(--action); color: var(--on-action); }
 .account-button-primary svg { width: 18px; height: 18px; }
-.account-button-primary:hover:not(:disabled) { background: var(--action-hover); border-color: var(--action-hover); box-shadow: var(--shadow); }
 .account-button-secondary { border: 1px solid var(--line-strong); background: var(--surface); color: var(--welcome-ink); }
-.account-button-secondary:hover:not(:disabled) { background: var(--surface-raised); border-color: var(--line-strong); }
+@media (hover: hover) {
+  .account-button-primary:hover:not(:disabled) { background: var(--action-hover); border-color: var(--action-hover); box-shadow: 0 6px 18px var(--action-glow); }
+  .account-button-secondary:hover:not(:disabled) { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); box-shadow: var(--shadow); }
+}
+@media (hover: hover) and (prefers-reduced-motion: no-preference) {
+  .account-button:hover:not(:disabled) { translate: 0 -2px; }
+  .account-button:active:not(:disabled) { translate: 0 0; }
+}
 .account-divider { display: flex; align-items: center; gap: 10px; margin: 19px 0; }
 .account-divider > span { flex: 1; height: 1px; background: var(--line); }
 .account-divider > p { margin: 0; color: var(--muted); font-size: 12px; }

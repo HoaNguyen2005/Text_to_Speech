@@ -431,6 +431,7 @@ const setup = () => {
     const dpr = renderer.getPixelRatio();
 
     targetMouseRef.value.set(x * dpr, (rect.height - y) * dpr);
+    if (!targetInfluenceRef.value && currentInfluenceRef.value < .01) currentMouseRef.value.copy(targetMouseRef.value);
     targetInfluenceRef.value = 1.0;
 
     if (props.parallax) {
@@ -447,7 +448,7 @@ const setup = () => {
     targetParallaxRef.value.set(0, 0);
   };
 
-  const pointerTarget = containerRef.value.closest('.welcome-page, .studio-banner, .app-shell') || containerRef.value;
+  const pointerTarget = containerRef.value.closest('.welcome-page, .studio-host, .studio-banner, .app-shell') || containerRef.value;
   if (props.interactive) {
     pointerTarget.addEventListener('pointermove', handlePointerMove as EventListener, { passive: true });
     pointerTarget.addEventListener('pointerleave', handlePointerLeave);
@@ -455,17 +456,18 @@ const setup = () => {
 
   const loop = floatingLinesLoop((delta: number) => {
     uniforms.iTime.value += delta;
+    const damping = 1 - Math.pow(1 - props.mouseDamping, delta * 30);
 
     if (props.interactive) {
-      currentMouseRef.value.lerp(targetMouseRef.value, props.mouseDamping);
+      currentMouseRef.value.lerp(targetMouseRef.value, damping);
       uniforms.iMouse.value.copy(currentMouseRef.value);
 
-      currentInfluenceRef.value += (targetInfluenceRef.value - currentInfluenceRef.value) * props.mouseDamping;
+      currentInfluenceRef.value += (targetInfluenceRef.value - currentInfluenceRef.value) * damping;
       uniforms.bendInfluence.value = currentInfluenceRef.value;
     }
 
     if (props.parallax) {
-      currentParallaxRef.value.lerp(targetParallaxRef.value, props.mouseDamping);
+      currentParallaxRef.value.lerp(targetParallaxRef.value, damping);
       uniforms.parallaxOffset.value.copy(currentParallaxRef.value);
     }
 
