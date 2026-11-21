@@ -26,6 +26,7 @@ const dialog = ref(null);
 const search = ref('');
 const tab = ref(props.initialGroup);
 const gender = ref('all');
+const selectedTiers = ref([]);
 const playing = ref('');
 const preparing = ref('');
 const lastVoice = ref(null);
@@ -39,12 +40,14 @@ let nextTab;
 
 const keyOf = voice => voice.choice_id || voice.voice_id;
 const originOf = voice => voice.origin || (!voice._id || voice.is_global ? 'system' : 'user');
+const tierLabels = { free: 'Free', gold: 'Gold', diamond: 'Diamond' };
 const tierOf = voice => (voice?.class === 'gold' || voice?.class === 'diamond') ? voice.class : 'free';
 const chosen = computed(() => props.voices.find(v => keyOf(v) === props.modelValue));
 const chosenTier = computed(() => tierOf(chosen.value));
 const hasOwnVoices = computed(() => props.voices.some(voice => originOf(voice) === 'user'));
 const systemCount = computed(() => props.voices.filter(voice => originOf(voice) === 'system').length);
 const ownCount = computed(() => props.voices.filter(voice => originOf(voice) === 'user').length);
+const hasFilters = computed(() => gender.value !== 'all' || selectedTiers.value.length > 0 || !!search.value);
 const activePreviewVoice = computed(() => {
   const currentId = playing.value || preparing.value;
   if (currentId) return props.voices.find(v => keyOf(v) === currentId) || lastVoice.value;
@@ -55,6 +58,7 @@ const filtered = computed(() => {
   return props.voices.filter(v =>
     originOf(v) === (tab.value === 'mine' ? 'user' : 'system') &&
     (gender.value === 'all' || v.gender === gender.value) &&
+    (!selectedTiers.value.length || selectedTiers.value.includes(tierOf(v))) &&
     (!query || [v.name, v.voice_id, v.description].join(' ').toLocaleLowerCase('vi').includes(query))
   );
 });
@@ -65,7 +69,16 @@ const formatSeconds = value => {
   return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`;
 };
 const toggleGender = value => { gender.value = gender.value === value ? 'all' : value; };
-const resetFilters = () => { gender.value = 'all'; search.value = ''; };
+function toggleTier(tier) {
+  selectedTiers.value = selectedTiers.value.includes(tier)
+    ? selectedTiers.value.filter(value => value !== tier)
+    : [...selectedTiers.value, tier];
+}
+function resetFilters() {
+  gender.value = 'all';
+  selectedTiers.value = [];
+  search.value = '';
+}
 
 function stop() {
   sequence++;
@@ -192,8 +205,7 @@ function edit(voice) {
 function saved(voice) {
   if (voice) {
     tab.value = voice.is_global ? 'system' : 'mine';
-    search.value = '';
-    gender.value = 'all';
+    resetFilters();
     if (!props.inline && !editing.value && !opened.value) {
       nextTab = tab.value;
       opened.value = true;
@@ -258,10 +270,10 @@ onBeforeUnmount(() => {
       </header>
 
       <div class="voice-picker-body">
-        <aside class="voice-picker-sidebar" :aria-label="$t('Giới tính')">
+        <aside class="voice-picker-sidebar">
           <div class="voice-filter-group">
             <h3 class="voice-filter-label">{{ $t('Giới tính') }}</h3>
-            <div class="voice-gender-pills">
+            <div class="voice-filter-pills" role="group" :aria-label="$t('Giới tính')">
               <button type="button" class="voice-filter-pill" :class="{ active: gender === 'male' }" :aria-pressed="gender === 'male'" @click="toggleGender('male')">
                 <span aria-hidden="true">♂</span>{{ $t('Nam') }}
               </button>
@@ -273,7 +285,26 @@ onBeforeUnmount(() => {
               </button>
             </div>
           </div>
-          <button type="button" class="text-button voice-reset-filters" :disabled="gender === 'all' && !search" @click="resetFilters">
+          <div class="voice-filter-group">
+            <h3 class="voice-filter-label">{{ $t('Phân hạng giọng') }}</h3>
+            <div class="voice-filter-pills" role="group" :aria-label="$t('Phân hạng giọng')">
+              <button
+                v-for="(label, tier) in tierLabels"
+                :key="tier"
+                type="button"
+                class="voice-filter-pill"
+                :class="{ active: selectedTiers.includes(tier) }"
+                :aria-pressed="selectedTiers.includes(tier)"
+                @click="toggleTier(tier)"
+              >
+                {{ label }}
+              </button>
+              <button type="button" class="voice-filter-pill" :class="{ active: !selectedTiers.length }" :aria-pressed="!selectedTiers.length" @click="selectedTiers = []">
+                {{ $t('Tất cả giọng') }}
+              </button>
+            </div>
+          </div>
+          <button type="button" class="text-button voice-reset-filters" :disabled="!hasFilters" @click="resetFilters">
             <UiIcon name="refresh" />{{ $t('Đặt lại bộ lọc') }}
           </button>
         </aside>
@@ -353,7 +384,7 @@ onBeforeUnmount(() => {
               <div class="voice-row-meta">
                 <span class="voice-lang-tag"><span class="voice-flag-vn" aria-hidden="true">★</span>{{ $t('Tiếng Việt') }}</span>
                 <span class="voice-gender-tag" :class="voice.gender === 'female' ? 'is-female' : 'is-male'">{{ voice.gender === 'female' ? '♀' : '♂' }} {{ $t(voice.gender === 'female' ? 'Nữ' : 'Nam') }}</span>
-                <span class="voice-class" :class="tierOf(voice)">{{ ({ free: 'Free', gold: 'Gold', diamond: 'Diamond' })[tierOf(voice)] }}</span>
+                <span class="voice-class" :class="tierOf(voice)">{{ tierLabels[tierOf(voice)] }}</span>
                 <code v-if="admin && voice.voice_id" class="voice-code-tag">{{ voice.voice_id }}</code>
                 <span v-if="admin && voice.is_active === false" class="pill amber">{{ $t('Đã khóa') }}</span>
               </div>
@@ -382,7 +413,7 @@ onBeforeUnmount(() => {
             </div>
 
             <p v-if="!filtered.length" class="voice-empty">
-              {{ $t(loading ? 'Đang tải danh sách giọng…' : tab === 'mine' && !hasOwnVoices && !search && gender === 'all' ? 'Bạn chưa có giọng riêng. Bấm Thêm giọng mới để bắt đầu.' : 'Không tìm thấy giọng đọc phù hợp.') }}
+              {{ $t(loading ? 'Đang tải danh sách giọng…' : tab === 'mine' && !hasOwnVoices && !hasFilters ? 'Bạn chưa có giọng riêng. Bấm Thêm giọng mới để bắt đầu.' : 'Không tìm thấy giọng đọc phù hợp.') }}
             </p>
           </div>
         </div>
@@ -595,7 +626,6 @@ onBeforeUnmount(() => {
 .voice-picker-sidebar {
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
   gap: 18px;
   padding: 18px 16px;
   border-right: 1px solid var(--line);
@@ -611,7 +641,7 @@ onBeforeUnmount(() => {
   font-weight: 700;
   color: var(--ink);
 }
-.voice-gender-pills {
+.voice-filter-pills {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
@@ -640,6 +670,7 @@ onBeforeUnmount(() => {
   color: var(--canvas);
 }
 .voice-reset-filters {
+  margin-top: auto;
   justify-content: flex-start;
   font-size: 12px;
   color: var(--muted);
@@ -1009,10 +1040,10 @@ onBeforeUnmount(() => {
   transform: translateX(4px);
   transition: opacity .14s, transform .14s, background-color .14s;
 }
-.voice-use-btn:hover:not(:disabled) {
-  background: var(--accent-hover);
-  border-color: var(--accent-hover);
-  color: #ffffff;
+.btn.voice-use-btn:is(:hover, :focus-visible):not(:disabled) {
+  background: var(--action-hover);
+  border-color: var(--action-hover);
+  color: var(--on-action);
 }
 .voice-use-btn.is-upgrade {
   background: var(--gold-bg);
