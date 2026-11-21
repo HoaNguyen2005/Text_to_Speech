@@ -108,7 +108,8 @@ async function render(user,body,preview=false) {
         const audioUrl=await publish(file,'audio/mpeg'),subtitleUrl=await publish(subtitle,'application/x-subrip; charset=utf-8');
         const saved=await History.create({user_id:user._id,text:planned.sections[0].text,teacher_id:voice.voice_id,style_id:planned.speech.profile,
             audio_url:audioUrl,subtitle_url:subtitleUrl,subtitle_timing:'estimated-within-measured-segments',duration_seconds:merged.duration_seconds,
-            speech_config:{...planned.speech,...providers.settings(provider,voice.preset,voice.model_revision),voice_origin:voice.origin,voice_mode:mode,deliveries:planned.sections.map(section=>section.delivery)}});
+            speech_config:{...planned.speech,...providers.settings(provider,voice.preset,voice.model_revision),
+                voice_name:voice.name,voice_class:voice.class,voice_origin:voice.origin,voice_mode:mode,deliveries:planned.sections.map(section=>section.delivery)}});
         historySaved=true;
         return {status:'success',history_id:saved._id,audio_url:await storage.resolveUrl(audioUrl),subtitle_url:await storage.resolveUrl(subtitleUrl),subtitle_timing:saved.subtitle_timing,duration_seconds:merged.duration_seconds};
     } finally {

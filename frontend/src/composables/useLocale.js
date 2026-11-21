@@ -56,7 +56,7 @@ function saveCookie(value) {
 function apply(value, persist = true) {
   locale.value = valid(value) ? value : 'vi';
   document.documentElement.lang = locale.value;
-  document.title = locale.value === 'en' ? 'Text2Speech — AI Lectures' : 'Text2Speech — Bài giảng AI';
+  document.title = 'Text2Speech — ' + translate('Tạo giọng nói');
   if (persist) {
     saveCookie(locale.value);
     try { localStorage.setItem(key, locale.value); } catch {}

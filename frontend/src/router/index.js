@@ -8,7 +8,7 @@ const routes = [
     path: '/',
     name: 'LectureCreator',
     component: () => import('../views/user/LectureCreator.vue'),
-    meta: { title: 'Tạo bài giảng' }
+    meta: { title: 'Tạo giọng nói' }
   },
   {
     path: '/book',

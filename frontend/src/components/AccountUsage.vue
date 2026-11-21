@@ -4,7 +4,7 @@ import { useAccountTier } from '@/composables/useAccountTier';
 const props=defineProps({scope:{type:String,default:'all'},showUpgrade:{type:Boolean,default:true}});
 const {tier,limits,usage,openUpgrade}=useAccountTier();
 const rows=computed(()=>[
-  {key:'lectures',label:'Bài giảng hôm nay',value:usage.value.lectures_today||0,max:limits.value.lecturesPerDay},
+  {key:'lectures',label:'Lượt tạo giọng hôm nay',value:usage.value.lectures_today||0,max:limits.value.lecturesPerDay},
   {key:'books',label:'Sách nói hôm nay',value:usage.value.books_today||0,max:limits.value.booksPerDay},
   {key:'books',label:'Hàng đợi đang xử lý',value:usage.value.active_book_jobs||0,max:limits.value.maxActiveBookJobs},
   {key:'voices',label:'Giọng riêng',value:usage.value.custom_voices||0,max:limits.value.maxVoices},

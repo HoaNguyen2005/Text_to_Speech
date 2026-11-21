@@ -62,7 +62,7 @@ const generateLecture = async () => {
   if(speechBusy.value)return;
   if(!chosenTeacher.value||loadingVoices.value)return;
   if (!text.value.trim()) {
-    errorMessage.value = 'Vui lòng nhập kịch bản bài giảng!';
+    errorMessage.value = 'Vui lòng nhập nội dung cần đọc!';
     return;
   }
 
@@ -83,7 +83,7 @@ const generateLecture = async () => {
       resultAudioUrl.value = response.data.audio_url;
       subtitleUrl.value=response.data.subtitle_url||'';
       resultHistoryId.value=response.data.history_id||'';
-      notify('Bài giảng đã được tạo thành công và lưu vào thư viện.', { kind: 'success' });
+      notify('Bản âm thanh đã được tạo và lưu vào thư viện.', { kind: 'success' });
     } else {
       errorMessage.value = 'Có lỗi xảy ra từ máy chủ.';
     }
@@ -165,17 +165,17 @@ const handleFileUpload = (event) => {
 
 
 <template>
-  <StudioBanner :title="$t('Từ trang viết, thành lời nói.')" :eyebrow="$t('STUDIO ÂM THANH')" :description="$t('Tạo bài giảng với âm sắc riêng. Bắt đầu từ nội dung, chọn giọng đọc và lắng nghe kết quả.')">
+  <StudioBanner :title="$t('Từ trang viết, thành lời nói.')" :eyebrow="$t('STUDIO ÂM THANH')" :description="$t('Chuyển văn bản thành giọng nói. Nhập nội dung, chọn giọng đọc và nghe kết quả.')">
     <span class="banner-chip"><UiIcon name="document" />{{ $t("Văn bản · Word · PDF") }}</span><span class="banner-chip"><UiIcon name="mic" />{{ $t("Giọng đọc tiếng Việt") }}</span>
   </StudioBanner>
   <div class="studio-grid">
     <div class="studio-stack">
       <section class="panel editor-body" aria-labelledby="editor-title">
-        <div class="panel-heading"><h2 id="editor-title"><UiIcon name="document" />{{ $t("Nội dung bài giảng") }}</h2>
+        <div class="panel-heading"><h2 id="editor-title"><UiIcon name="document" />{{ $t("Nội dung cần đọc") }}</h2>
           <button type="button" class="btn small" :disabled="speechBusy" @click="triggerFileUpload"><UiIcon name="upload" />{{ $t("Tải tài liệu") }}</button>
         </div>
         <input type="file" ref="fileInput" @change="handleFileUpload" accept=".txt,.docx,.pdf" hidden />
-        <textarea id="script" v-model="text" class="editor-textarea" :disabled="speechBusy" :maxlength="limits.lectureChars" :aria-label="$t('Nội dung bài giảng')" :placeholder="$t('Nhập nội dung bài giảng của bạn tại đây…\n\nHoặc tải lên tài liệu TXT, Word, PDF để bắt đầu.')" />
+        <textarea id="script" v-model="text" class="editor-textarea" :disabled="speechBusy" :maxlength="limits.lectureChars" :aria-label="$t('Nội dung cần đọc')" :placeholder="$t('Nhập nội dung bạn muốn chuyển thành giọng nói…\n\nHoặc tải lên tài liệu TXT, Word, PDF để bắt đầu.')" />
         <p class="text-muted">{{ $t('{0} / {1} ký tự',[text.length,limits.lectureChars]) }} <button v-if="text.length>=limits.lectureChars" type="button" class="text-button" @click="openUpgrade()">{{ $t('Nâng cấp gói') }}</button></p>
         <div class="editor-meta"><span><UiIcon name="document" />{{ sourceName || $t("Hỗ trợ TXT, DOCX, PDF") }}</span><span>{{ wordCount.toLocaleString($locale) }} {{ $t("từ ·") }} {{ text.length.toLocaleString($locale) }} {{ $t("ký tự") }}</span></div>
       </section>
@@ -184,11 +184,11 @@ const handleFileUpload = (event) => {
       <section v-if="previewUrl" class="panel"><h2>{{ $t('Nghe thử tối đa 30 giây') }}</h2><audio controls :src="previewUrl" class="audio-player" /></section>
       <div v-if="loading" class="notice" role="status"><span class="spinner" aria-hidden="true"></span>{{ $t("Đang tạo âm thanh. Nội dung dài có thể cần thêm thời gian.") }}</div>
       <section v-if="resultAudioUrl" class="panel" aria-labelledby="result-title">
-        <div class="panel-heading"><h2 id="result-title"><UiIcon name="headphones" />{{ $t("Bài giảng của bạn") }}</h2><span class="pill green">{{ $t("Đã hoàn thành") }}</span></div>
-        <audio controls :src="resultAudioUrl" class="audio-player" :aria-label="$t('Âm thanh bài giảng vừa tạo')"></audio>
+        <div class="panel-heading"><h2 id="result-title"><UiIcon name="headphones" />{{ $t("Bản âm thanh của bạn") }}</h2><span class="pill green">{{ $t("Đã hoàn thành") }}</span></div>
+        <audio controls :src="resultAudioUrl" class="audio-player" :aria-label="$t('Bản âm thanh vừa tạo')"></audio>
         <SubtitleDownload v-if="subtitleUrl && resultHistoryId" :endpoint="`/api/history/${resultHistoryId}/subtitles`" />
         <p v-if="subtitleUrl" class="text-muted">{{ $t('Mốc câu trong phụ đề là ước lượng theo đoạn âm thanh đo được.') }}</p>
-        <p class="text-muted">{{ $t("Bạn có thể nghe lại bài giảng trong") }} <router-link to="/history" class="text-button">{{ $t("Lịch sử của tôi") }}</router-link>.</p>
+        <p class="text-muted">{{ $t("Bạn có thể nghe lại bản âm thanh trong") }} <router-link to="/history" class="text-button">{{ $t("Lịch sử của tôi") }}</router-link>.</p>
       </section>
     </div>
     <aside class="studio-stack">

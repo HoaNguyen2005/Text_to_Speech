@@ -11,7 +11,7 @@ const name = computed(() => props.user.fullName || props.user.email || 'Tài kho
 const initials = computed(() => name.value.trim().split(/\s+/).slice(-2).map(word => word[0]).join('').toUpperCase());
 const navigation = computed(() => isAdmin.value
   ? [{ to: '/admin', label: 'Tổng quan quản trị', icon: 'grid' }, { to: '/profile', label: 'Hồ sơ', icon: 'user' }]
-  : [{ to: '/', label: 'Tạo bài giảng', icon: 'wave' }, { to: '/book', label: 'Sách nói AI', icon: 'book' },
+  : [{ to: '/', label: 'Tạo giọng nói', icon: 'wave' }, { to: '/book', label: 'Sách nói AI', icon: 'book' },
     { to: '/history', label: 'Lịch sử', icon: 'history' }, { to: '/voices', label: 'Giọng của bạn', icon: 'mic' },
     { to: '/profile', label: 'Hồ sơ', icon: 'user' }]);
 </script>

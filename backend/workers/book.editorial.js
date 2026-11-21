@@ -471,7 +471,7 @@ module.exports = async function editorial(job, context) {
         text: summary, teacher_id: checkpoint.voice.voice_id, style_id: draft.style, audio_url: audioUrl,
         target_minutes: job.target_minutes, duration_seconds: merged.duration_seconds, voice_mode: job.voice_mode, book_metadata: metadata, ai_assisted: true,
         speech_config: { ...(draft.speech || {}), provider:checkpoint.voice.provider || 'edge', model_revision:checkpoint.voice.model_revision,
-            voice_origin:checkpoint.voice.origin,
+            voice_name:checkpoint.voice.name, voice_class:checkpoint.voice.class, voice_origin:checkpoint.voice.origin,
             verification_method:userApproved?'user':'ai',user_approval:draft.user_approval||null,
             deliveries: draft.sections.map(section => section.delivery) },
         subtitle_url: subtitleUrl, subtitle_timing: 'estimated-within-measured-segments' } }, { upsert: true });
