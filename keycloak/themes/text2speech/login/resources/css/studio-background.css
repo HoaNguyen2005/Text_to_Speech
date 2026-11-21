@@ -13,7 +13,7 @@
   z-index: -1;
   pointer-events: none;
   background:
-    url('../img/studio-lines.svg') center / 100% 100% no-repeat,
+    url('../img/studio-lines.svg?v=2') center / 100% 100% no-repeat,
     radial-gradient(ellipse at 18% 12%, color-mix(in srgb, var(--accent) 23%, transparent), transparent 56%),
     radial-gradient(ellipse at 89% 86%, rgb(90 216 220 / 22%), transparent 52%);
   opacity: .46;
