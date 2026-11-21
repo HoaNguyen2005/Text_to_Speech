@@ -1,7 +1,7 @@
 import {
-  session, authLoading, authError, identitySession, handleLogin, handleRegister, handleLogout, retryAuth,
+  session, authLoading, authError, identitySession, cloudWakeState, handleLogin, handleRegister, handleLogout, retryAuth,
 } from '@/services/auth';
 
 export function useAuth() {
-  return { session, authLoading, authError, identitySession, handleLogin, handleRegister, handleLogout, retryAuth };
+  return { session, authLoading, authError, identitySession, cloudWakeState, handleLogin, handleRegister, handleLogout, retryAuth };
 }

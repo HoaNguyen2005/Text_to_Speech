@@ -6,6 +6,7 @@ import ThemeToggle from '@/components/ThemeToggle.vue';
 import LocaleSelector from '@/components/LocaleSelector.vue';
 import ShellSidebar from '@/components/ShellSidebar.vue';
 import StudioAtmosphere from '@/components/StudioAtmosphere.vue';
+import DesktopEngineBar from '@/components/DesktopEngineBar.vue';
 import { useSceneMotion } from '@/composables/useSceneMotion';
 defineProps({ user: { type: Object, required: true }, tier: { type: String, default: '' } });
 defineEmits(['logout']);
@@ -50,7 +51,7 @@ onBeforeUnmount(() => { screenQuery?.removeEventListener('change', updateScreen)
           <button type="button" class="shell-menu-button" :aria-label="$t('Mở menu')" :aria-expanded="mobileOpen" aria-controls="mobile-navigation" @click="openMobile"><UiIcon name="menu" /></button>
           <div class="shell-breadcrumb"><span>{{ user.role === 'admin' ? $t("Quản trị viên") : $t("Không gian làm việc") }}</span><span class="breadcrumb-divider">/</span><strong>{{ $t(route.meta.title || 'Text2Speech') }}</strong></div>
         </div>
-        <div class="shell-topbar-actions"><LocaleSelector /><ThemeToggle /></div>
+        <div class="shell-topbar-actions"><DesktopEngineBar compact /><LocaleSelector /><ThemeToggle /></div>
       </header>
       <main id="main-content" class="shell-content" tabindex="-1"><slot /></main>
       <footer class="shell-footer"><span>Text2Speech</span><span>{{ $t("Bài giảng & sách nói tiếng Việt") }}</span></footer>

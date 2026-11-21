@@ -1,12 +1,59 @@
 {
   "name": "text2speech-workspace",
+  "version": "1.0.0",
   "private": true,
+  "main": "desktop/main.js",
   "scripts": {
     "build": "npm --prefix frontend run build",
     "start": "npm --prefix backend start",
     "dev": "npm --prefix frontend run dev",
     "worker:books": "npm --prefix backend run worker:books",
     "db:migrate": "npm --prefix backend run db:migrate",
-    "db:status": "npm --prefix backend run db:status"
+    "db:status": "npm --prefix backend run db:status",
+    "desktop": "npm --prefix frontend run build && electron .",
+    "desktop:dev": "electron .",
+    "desktop:pack": "npm --prefix frontend run build && electron-builder --dir",
+    "desktop:dist": "npm --prefix frontend run build && electron-builder"
+  },
+  "build": {
+    "appId": "com.text2speech.desktop",
+    "productName": "Text2Speech",
+    "asar": false,
+    "directories": {
+      "output": "dist-desktop"
+    },
+    "files": [
+      "desktop/**/*",
+      "frontend/dist/**/*",
+      "frontend/public/favicon.svg",
+      "backend/server.js",
+      "backend/package.json",
+      "backend/app/**/*",
+      "backend/workers/**/*",
+      "backend/scripts/**/*",
+      "backend/node_modules/**/*",
+      "engine/*.py",
+      "engine/core_tts/**/*",
+      "engine/openvoice/**/*",
+      "engine/vieneu_service/app.py",
+      "engine/vieneu_service/requirements.txt",
+      "engine/requirements*.txt",
+      "!**/*.env*",
+      "!**/venv/**",
+      "!**/.venv/**",
+      "!**/__pycache__/**",
+      "!backend/data/**",
+      "!backend/public/audio/generated/**",
+      "!backend/public/audio/samples/**"
+    ],
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ]
+    }
+  },
+  "devDependencies": {
+    "electron": "^45.4.1"
   }
 }

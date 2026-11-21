@@ -62,13 +62,19 @@ async function loadRegisteredNodes(force = false) {
     return dbNodesCache;
 }
 
+const isLocalEngineUrl = (url) => /^https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?(\/|$)/i.test(String(url || '').trim());
+
 async function getCandidates(forceDb = false) {
     const registered = await loadRegisteredNodes(forceDb);
     const raw = [];
+    const preferLocal = process.env.LOCAL_ENGINE_FIRST === 'true' || isLocalEngineUrl(config.engineUrl);
+    if (preferLocal && config.engineUrl) {
+        raw.push({ role: 'local-primary', source: 'env-local', url: config.engineUrl, meta: { local: true } });
+    }
     if (registered.gpu?.url) {
         raw.push({ role: 'gpu', source: 'registered-gpu', url: registered.gpu.url, meta: registered.gpu.meta });
     }
-    if (config.engineUrl) {
+    if (!preferLocal && config.engineUrl) {
         raw.push({ role: 'primary-env', source: 'env-primary', url: config.engineUrl, meta: {} });
     }
     if (registered.cpu?.url) {
@@ -374,6 +380,7 @@ module.exports = {
     pushToEngine,
     cleanupLocal,
     status,
+    getCandidates,
     resolveEngineUrl,
     fetchWithFailover,
     registerNode,

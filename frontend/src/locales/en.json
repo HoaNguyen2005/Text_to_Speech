@@ -902,5 +902,20 @@
   "Tiếng Việt": "Vietnamese",
   "Bấm vào dòng để nghe thử": "Click row to preview",
   "Đang nghe thử": "Previewing",
-  "Chọn giọng để nghe thử tối đa 30 giây.": "Click any voice row to preview up to 30 seconds."
+  "Chọn giọng để nghe thử tối đa 30 giây.": "Click any voice row to preview up to 30 seconds.",
+  "Xem trạng thái phần cứng & Engine trên máy": "View local hardware and Engine status",
+  "Đang đánh thức máy chủ Cloud (Render), vui lòng đợi trong giây lát…": "Waking up Cloud servers (Render), please wait a moment…",
+  "Thiết bị xử lý & Engine trên máy": "Local Processing Hardware & Engine",
+  "Tự động ưu tiên GPU NVIDIA (CUDA) và chuyển về CPU khi cần.": "Automatically prioritizes NVIDIA GPU (CUDA) and falls back to CPU when needed.",
+  "Phần cứng ưu tiên": "Preferred hardware",
+  "Chế độ tự động GPU/CPU": "Automatic GPU/CPU mode",
+  "Sẵn sàng": "Ready",
+  "Đang khởi động": "Starting",
+  "Thiết bị": "Device",
+  "Định tuyến Engine": "Engine routing",
+  "Worker đang chạy": "Worker running",
+  "Chưa bật Worker": "Worker not started",
+  "Xem nhật ký Engine / Cài đặt": "View Engine / setup logs",
+  "Đánh thức Cloud": "Wake Cloud",
+  "Khởi động lại Engine": "Restart Engine"
 }

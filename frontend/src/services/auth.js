@@ -8,9 +8,12 @@ export const session = ref(null);
 export const authLoading = ref(false);
 export const authError = ref('');
 export const identitySession = ref(false);
+export const cloudWakeState = ref({ waking: false, attempt: 0, message: '' });
+const keycloakUrl = import.meta.env.VITE_KEYCLOAK_URL || 'http://localhost:8080';
+const keycloakRealm = import.meta.env.VITE_KEYCLOAK_REALM || 'tts-local';
 const keycloak = new Keycloak({
-  url: import.meta.env.VITE_KEYCLOAK_URL || 'http://localhost:8080',
-  realm: import.meta.env.VITE_KEYCLOAK_REALM || 'tts-local',
+  url: keycloakUrl,
+  realm: keycloakRealm,
   clientId: import.meta.env.VITE_KEYCLOAK_CLIENT_ID || 'tts-frontend',
 });
 let initialized, refreshing;
@@ -51,32 +54,60 @@ export async function getAccessToken(force = false) {
     throw new Error(authError.value);
   }
 }
+export function warmupCloudServices() {
+  try {
+    fetch(`${API_BASE_URL}/api/health`, { mode: 'cors', cache: 'no-store' }).catch(() => {});
+    fetch(`${keycloakUrl}/realms/${keycloakRealm}/.well-known/openid-configuration`, { mode: 'cors', cache: 'no-store' }).catch(() => {});
+    window.desktopApp?.warmupCloud?.().catch(() => {});
+  } catch {}
+}
 export async function refreshSession() {
   const token = await getAccessToken();
-  const response = await fetch(`${API_BASE_URL}/api/auth/me`, {
-    headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(20000)
-  });
-  const data = await response.json();
-  if (!response.ok) {
-    invalidateSession(data.error || 'Không thể tải hồ sơ tài khoản.', response.status === 401);
-    throw new Error(authError.value);
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/auth/me`, {
+        headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(35000)
+      });
+      if ([502, 503, 504].includes(response.status) && attempt < 3) {
+        cloudWakeState.value = { waking: true, attempt, message: 'Đang đánh thức máy chủ Cloud (Render), vui lòng đợi trong giây lát…' };
+        await new Promise((resolve) => setTimeout(resolve, 2500));
+        continue;
+      }
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        cloudWakeState.value = { waking: false, attempt: 0, message: '' };
+        invalidateSession(data.error || 'Không thể tải hồ sơ tài khoản.', response.status === 401);
+        throw new Error(authError.value);
+      }
+      cloudWakeState.value = { waking: false, attempt: 0, message: '' };
+      session.value = { user: data.user, tier_info: data.tier_info };
+      authError.value = '';
+      welcomeUser(data.user, data.account_created === true);
+      return session.value;
+    } catch (error) {
+      const isColdStart = error?.name === 'TimeoutError' || error?.name === 'AbortError' || error?.name === 'TypeError';
+      if (isColdStart && attempt < 3) {
+        cloudWakeState.value = { waking: true, attempt, message: 'Đang đánh thức máy chủ Cloud (Render), vui lòng đợi trong giây lát…' };
+        await new Promise((resolve) => setTimeout(resolve, 2500));
+        continue;
+      }
+      cloudWakeState.value = { waking: false, attempt: 0, message: '' };
+      throw error;
+    }
   }
-  session.value = { user: data.user, tier_info: data.tier_info };
-  authError.value = '';
-  welcomeUser(data.user, data.account_created === true);
-  return session.value;
 }
 export function initializeAuth() {
   if (!initialized) initialized = (async () => {
     authLoading.value = true;
     clearLegacyStorage();
+    warmupCloudServices();
     keycloak.onAuthLogout = () => { session.value = null; identitySession.value = false; };
     keycloak.onAuthSuccess = () => { identitySession.value = true; };
     keycloak.onTokenExpired = () => { getAccessToken().catch(() => {}); };
     try {
       const authenticated = await keycloak.init({
         pkceMethod: 'S256', flow: 'standard',
-        responseMode: 'query', checkLoginIframe: false, messageReceiveTimeout: 10000, locale: locale.value,
+        responseMode: 'query', checkLoginIframe: false, messageReceiveTimeout: 30000, locale: locale.value,
       });
       identitySession.value = authenticated;
       if (authenticated) await refreshSession();

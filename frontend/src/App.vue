@@ -4,6 +4,7 @@ import { computed, watch } from 'vue';
 // Components & Composables
 import Auth from '@/components/Auth.vue';
 import AppShell from '@/layouts/AppShell.vue';
+import DesktopEngineBar from '@/components/DesktopEngineBar.vue';
 import NotificationCenter from '@/components/NotificationCenter.vue';
 import UpgradePlanDialog from '@/components/UpgradePlanDialog.vue';
 import { useFeedback, confirmAction } from '@/composables/useNotifications';
@@ -28,6 +29,9 @@ const tierClass = computed(() => session.value?.tier_info?.effective_class || se
 
 <template>
   <div class="app-container">
+    <div v-if="!session" class="desktop-preauth-bar">
+      <DesktopEngineBar />
+    </div>
     <!-- Màn hình Đăng Nhập / Đăng Ký -->
     <Auth 
       v-if="!session" 
@@ -48,3 +52,13 @@ const tierClass = computed(() => session.value?.tier_info?.effective_class || se
   <NotificationCenter />
   <UpgradePlanDialog v-if="session" />
 </template>
+
+<style scoped>
+.desktop-preauth-bar {
+  position: fixed;
+  bottom: 14px;
+  left: 16px;
+  z-index: 40;
+  max-width: calc(100vw - 32px);
+}
+</style>

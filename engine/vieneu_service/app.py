@@ -16,24 +16,45 @@ SECRET = os.environ.get('BOOK_ENGINE_SECRET', '')
 REVISION = '61b85e3d937fbbacb387714180e8182823512523'
 IDENTITY = 'vieneu-3.8.3-v3turbo-' + REVISION
 model = None
+active_device = 'cpu'
 lock = threading.Lock()
 
 
 @asynccontextmanager
 async def lifespan(app):
-    global model
+    global model, active_device
     from vieneu import Vieneu
-    device = os.getenv('VIENEU_DEVICE', 'cpu')
-    if device not in ('cpu', 'cuda'):
-        raise RuntimeError('VIENEU_DEVICE must be cpu or cuda')
-    folder = snapshot_download('pnnbao-ump/VieNeu-TTS-v3-Turbo', revision=REVISION, max_workers=2,
-        allow_patterns=['config.json', 'voices_v3_turbo.json', '*encoder.onnx', '*denois*.onnx',
-                        'onnx_update/*' if device == 'cpu' else 'update/*'])
-    model = Vieneu(mode='v3turbo', backbone_repo=folder, device=device,
-        backend='onnx' if device == 'cpu' else 'pytorch',
-        **({'onnx_dir': str(Path(folder) / 'onnx_update')} if device == 'cpu' else {}),
-        threads=max(1, min(8, int(os.getenv('VIENEU_CPU_THREADS', '4')))), max_batch_size=4)
-    print(f'[VIENEU] ready device={device} model={IDENTITY}', flush=True)
+    requested = os.getenv('VIENEU_DEVICE', 'auto').strip().lower()
+    if requested not in ('auto', 'cpu', 'cuda'):
+        raise RuntimeError('VIENEU_DEVICE must be auto, cpu or cuda')
+    has_cuda = False
+    try:
+        import torch
+        has_cuda = bool(torch.cuda.is_available())
+    except Exception:
+        has_cuda = False
+    candidates = ['cuda', 'cpu'] if (requested in ('auto', 'cuda') and has_cuda) else ['cpu']
+    last_error = None
+    for dev in candidates:
+        try:
+            folder = snapshot_download('pnnbao-ump/VieNeu-TTS-v3-Turbo', revision=REVISION, max_workers=2,
+                allow_patterns=['config.json', 'voices_v3_turbo.json', '*encoder.onnx', '*denois*.onnx',
+                                'onnx_update/*' if dev == 'cpu' else 'update/*'])
+            model = Vieneu(mode='v3turbo', backbone_repo=folder, device=dev,
+                backend='onnx' if dev == 'cpu' else 'pytorch',
+                **({'onnx_dir': str(Path(folder) / 'onnx_update')} if dev == 'cpu' else {}),
+                threads=max(1, min(8, int(os.getenv('VIENEU_CPU_THREADS', '4')))), max_batch_size=4)
+            active_device = dev
+            print(f'[VIENEU] ready device={dev} requested={requested} model={IDENTITY}', flush=True)
+            break
+        except Exception as err:
+            last_error = err
+            if dev == 'cuda':
+                print(f'[VIENEU] CUDA init failed ({type(err).__name__}: {err}), falling back to CPU ONNX', flush=True)
+            else:
+                raise
+    if model is None and last_error is not None:
+        raise last_error
     yield
     model = None
 
@@ -54,7 +75,7 @@ class Synthesis(BaseModel):
 def health():
     if model is None or not SECRET:
         raise HTTPException(503, 'VieNeu đang nạp model.')
-    return {'status': 'ok', 'model_revision': IDENTITY, 'device': os.getenv('VIENEU_DEVICE', 'cpu')}
+    return {'status': 'ok', 'model_revision': IDENTITY, 'device': active_device}
 
 
 @app.post('/synthesize')

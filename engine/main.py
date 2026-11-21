@@ -51,7 +51,7 @@ def readiness():
         ready = ready and directory.is_dir() and os.access(directory, os.R_OK | os.W_OK)
     if not ready:
         raise HTTPException(status_code=503, detail='Engine/model hoặc thư mục dùng chung chưa sẵn sàng.')
-    device = getattr(getattr(pipeline, 'converter', None), 'device', 'cuda:0' if torch.cuda.is_available() else 'cpu')
+    device = getattr(pipeline, 'device', None) or getattr(getattr(pipeline, 'tone_converter', None), 'device', 'cuda:0' if torch.cuda.is_available() else 'cpu')
     gpu_name = torch.cuda.get_device_name(0) if torch.cuda.is_available() else None
     return {'status': 'ok', 'standard': True, 'clone': True, 'device': str(device), 'gpu_name': gpu_name}
 

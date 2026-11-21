@@ -33,7 +33,18 @@ class LectureTTSPipeline:
         try:
             print(f"[LOADER] Đang nạp Edge-TTS và OpenVoice...")
             self.base_tts = EdgeTTSModel()
-            self.tone_converter = OpenVoiceConverter(self.device)
+            try:
+                self.tone_converter = OpenVoiceConverter(self.device)
+            except Exception as cuda_err:
+                if self.device != "cuda":
+                    raise
+                print(f"[WARNING] Không khởi tạo được OpenVoice trên CUDA ({cuda_err}), tự động chuyển về CPU")
+                try:
+                    torch.cuda.empty_cache()
+                except Exception:
+                    pass
+                self.device = "cpu"
+                self.tone_converter = OpenVoiceConverter("cpu")
             
             if self.device == "cuda":
                 print(f"[MEMORY] VRAM đang chiếm dụng sau khi nạp Model: {torch.cuda.memory_allocated() / 1024**2:.2f} MB")

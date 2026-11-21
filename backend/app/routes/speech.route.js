@@ -1,4 +1,5 @@
 const crypto=require('crypto');
+const os=require('os');
 const router=require('express').Router();
 const {verifyToken}=require('../middlewares/auth.middleware');
 const config=require('../config/book');
@@ -32,6 +33,26 @@ router.delete('/engine-register/:role',verifyEngineSecret,async(req,res)=>{
 router.use(verifyToken);
 router.get('/engine-status',async(_req,res)=>{
     res.json(await artifact.status());
+});
+router.get('/local-hardware',async(_req,res)=>{
+    const engineStatus=await artifact.status().catch(()=>({online:false}));
+    let vieneu={online:false,device:'unknown'};
+    try{
+        const resp=await fetch(`${String(process.env.VIENEU_URL||'http://127.0.0.1:8001').replace(/\/+$/,'')}/health/ready`,{signal:AbortSignal.timeout(2000)});
+        const body=await resp.json().catch(()=>({}));
+        vieneu={online:resp.ok&&body?.status==='ok',device:body?.device||'unknown'};
+    }catch{}
+    const cpus=os.cpus();
+    res.json({
+        device:engineStatus.device||'cpu',
+        gpu_name:engineStatus.gpu_name||null,
+        engine_online:Boolean(engineStatus.online),
+        vieneu_online:vieneu.online,
+        vieneu_device:vieneu.device,
+        cpu_model:cpus[0]?.model||'',
+        cpu_threads:cpus.length,
+        local_engine_first:process.env.LOCAL_ENGINE_FIRST==='true',
+    });
 });
 router.post('/plan',(req,res)=>{
     const planned=speech.plan(req.body || {});

@@ -20,6 +20,7 @@ venv.bak/
 # Node/JavaScript
 node_modules/
 dist/
+dist-desktop/
 
 # Python
 __pycache__/
