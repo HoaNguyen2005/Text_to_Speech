@@ -41,6 +41,7 @@ onBeforeUnmount(() => {
 });
 
 const hardware = computed(() => status.value?.hardware || null);
+const toolchain = computed(() => status.value?.toolchain || null);
 const setup = computed(() => status.value?.setup || { running: false, percent: 0, message: '' });
 const engineInfo = computed(() => status.value?.services?.engine || null);
 const vieneuInfo = computed(() => status.value?.services?.vieneu || null);
@@ -145,6 +146,9 @@ async function handleWarmup() {
               <small>{{ isDesktop ? 'Book Worker & Cloud' : $t('Định tuyến Engine') }}</small>
               <strong>{{ isDesktop ? (workerInfo?.running ? $t('Worker đang chạy') : $t('Chưa bật Worker')) : (webHardware?.local_engine_first ? 'Local First' : 'Auto') }}</strong>
               <span v-if="isDesktop">Backend Cloud: {{ cloudInfo?.backend || '—' }} · Auth: {{ cloudInfo?.keycloak || '—' }}</span>
+              <span v-if="isDesktop && toolchain">
+                Python: {{ toolchain.pythonVersion || '—' }} ({{ toolchain.pythonSource }}) · FFmpeg: {{ toolchain.ffmpegReady ? `${$t('Sẵn sàng')} (${toolchain.ffmpegSource})` : $t('Đang kiểm tra') }}
+              </span>
             </div>
           </div>
 

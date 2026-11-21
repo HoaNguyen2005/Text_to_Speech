@@ -77,12 +77,72 @@ function parseNvidiaSmiOutput(stdout) {
   };
 }
 
+function prependToPathEnv(envObj, dirs) {
+  const existingChunks = [];
+  for (const key of Object.keys(envObj)) {
+    if (/^path$/i.test(key)) {
+      if (envObj[key]) existingChunks.push(envObj[key]);
+      delete envObj[key];
+    }
+  }
+  const seen = new Set();
+  const merged = [];
+  const pushItem = (raw) => {
+    const item = String(raw || '').trim();
+    if (!item) return;
+    const norm = process.platform === 'win32' ? item.toLowerCase() : item;
+    if (seen.has(norm)) return;
+    seen.add(norm);
+    merged.push(item);
+  };
+  for (const d of Array.isArray(dirs) ? dirs : []) pushItem(d);
+  for (const chunk of existingChunks) {
+    for (const part of String(chunk).split(path.delimiter)) pushItem(part);
+  }
+  const combined = merged.join(path.delimiter);
+  envObj.PATH = combined;
+  if (process.platform === 'win32') envObj.Path = combined;
+  return envObj;
+}
+
+function findFilesRecursive(rootDir, targetNames) {
+  const wantedMap = new Map(
+    (Array.isArray(targetNames) ? targetNames : []).map((n) => [process.platform === 'win32' ? n.toLowerCase() : n, n])
+  );
+  const found = {};
+  if (!rootDir || !fs.existsSync(rootDir) || wantedMap.size === 0) return found;
+  const stack = [rootDir];
+  while (stack.length > 0) {
+    const current = stack.pop();
+    let entries;
+    try {
+      entries = fs.readdirSync(current, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const entry of entries) {
+      const fullPath = path.join(current, entry.name);
+      if (entry.isDirectory()) {
+        stack.push(fullPath);
+      } else if (entry.isFile()) {
+        const norm = process.platform === 'win32' ? entry.name.toLowerCase() : entry.name;
+        const originalName = wantedMap.get(norm);
+        if (originalName && !found[originalName]) {
+          found[originalName] = fullPath;
+        }
+      }
+    }
+  }
+  return found;
+}
+
 class DesktopRuntimeManager extends EventEmitter {
   constructor(options = {}) {
     super();
     this.rootDir = path.resolve(options.rootDir || path.join(__dirname, '..'));
     this.dataDir = this._resolveWritableDataDir(options.dataDir);
     this.runtimeDir = path.join(this.dataDir, 'desktop-app');
+    this.toolsDir = path.join(this.dataDir, 'tools');
     this.venvBaseDir = this._isDirWritable(path.join(this.rootDir, 'engine'))
       ? path.join(this.rootDir, 'engine')
       : path.join(this.dataDir, 'python-runtime');
@@ -90,6 +150,7 @@ class DesktopRuntimeManager extends EventEmitter {
     this.logs = { vieneu: [], engine: [], backend: [], worker: [], setup: [] };
     this.setupState = { running: false, stage: 'idle', percent: 0, message: '' };
     this.hardware = { hasNvidiaGpu: false, gpuName: null, vramMb: null, preferredDevice: 'cpu', cpuModel: '', cpuThreads: 1 };
+    this.toolchain = { pythonSource: 'unknown', pythonVersion: null, ffmpegReady: false, ffmpegSource: 'unknown', ffmpegDir: null };
     this.cloud = { backendUrl: '', keycloakUrl: '', realm: 'tts-local', backend: 'unknown', keycloak: 'unknown', lastCheck: null };
     this.services = {
       vieneu: { running: false, online: false, managed: false, device: 'cpu', pid: null },
@@ -137,6 +198,7 @@ class DesktopRuntimeManager extends EventEmitter {
     return {
       isDesktop: true,
       hardware: { ...this.hardware },
+      toolchain: { ...this.toolchain },
       setup: { ...this.setupState },
       cloud: { ...this.cloud },
       services: JSON.parse(JSON.stringify(this.services)),
@@ -245,17 +307,264 @@ class DesktopRuntimeManager extends EventEmitter {
     });
   }
 
-  async _findSystemPython() {
-    const candidates = process.platform === 'win32'
-      ? [['python', ['--version']], ['py', ['-3', '--version']]]
-      : [['python3', ['--version']], ['python', ['--version']]];
-    for (const [cmd, args] of candidates) {
-      try {
-        await execFileAsync(cmd, args, { timeout: 4000 });
-        return { cmd, prefix: args[0] === '-3' ? ['-3'] : [] };
-      } catch {}
+  async _downloadFile(url, destFile, onProgress) {
+    fs.mkdirSync(path.dirname(destFile), { recursive: true });
+    const partFile = `${destFile}.part`;
+    const resp = await fetch(url, { redirect: 'follow', signal: AbortSignal.timeout(10 * 60 * 1000) });
+    if (!resp.ok || !resp.body) {
+      throw new Error(`HTTP ${resp.status} khi tải ${url}`);
     }
-    throw new Error('Không tìm thấy Python 3 trên máy. Vui lòng cài Python 3.10+ rồi thử lại.');
+    const totalBytes = Number.parseInt(resp.headers.get('content-length') || '0', 10) || 0;
+    let downloadedBytes = 0;
+    let lastEmit = 0;
+    const out = fs.createWriteStream(partFile);
+    try {
+      for await (const chunk of resp.body) {
+        downloadedBytes += chunk.length;
+        if (!out.write(chunk)) {
+          await new Promise((resolve) => out.once('drain', resolve));
+        }
+        const now = Date.now();
+        if (typeof onProgress === 'function' && (now - lastEmit >= 250 || downloadedBytes === totalBytes)) {
+          lastEmit = now;
+          const pct = totalBytes > 0 ? Math.min(100, Math.round((downloadedBytes / totalBytes) * 100)) : 0;
+          onProgress(
+            pct,
+            (downloadedBytes / (1024 * 1024)).toFixed(1),
+            totalBytes > 0 ? (totalBytes / (1024 * 1024)).toFixed(1) : null
+          );
+        }
+      }
+      await new Promise((resolve, reject) => {
+        out.on('error', reject);
+        out.end(resolve);
+      });
+      fs.renameSync(partFile, destFile);
+    } catch (err) {
+      out.destroy();
+      try { fs.unlinkSync(partFile); } catch {}
+      throw err;
+    }
+    return destFile;
+  }
+
+  async _extractArchive(archivePath, destDir) {
+    fs.mkdirSync(destDir, { recursive: true });
+    const lower = archivePath.toLowerCase();
+    if (lower.endsWith('.tar.gz') || lower.endsWith('.tgz')) {
+      await execFileAsync('tar', ['-xzf', archivePath, '-C', destDir], { timeout: 5 * 60 * 1000 });
+      return;
+    }
+    try {
+      await execFileAsync('tar', ['-xf', archivePath, '-C', destDir], { timeout: 5 * 60 * 1000 });
+    } catch (tarErr) {
+      if (process.platform !== 'win32') throw tarErr;
+      await execFileAsync(
+        'powershell',
+        [
+          '-NoProfile',
+          '-NonInteractive',
+          '-Command',
+          `Expand-Archive -LiteralPath '${archivePath.replace(/'/g, "''")}' -DestinationPath '${destDir.replace(/'/g, "''")}' -Force`,
+        ],
+        { timeout: 5 * 60 * 1000 }
+      );
+    }
+  }
+
+  async _probePythonCommand(cmd, prefix = []) {
+    try {
+      const { stdout } = await execFileAsync(
+        cmd,
+        [
+          ...prefix,
+          '-c',
+          'import sys, venv; assert sys.version_info >= (3, 10); print(f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}")',
+        ],
+        { timeout: 6000 }
+      );
+      return String(stdout || '').trim().split(/\r?\n/)[0] || null;
+    } catch {
+      return null;
+    }
+  }
+
+  async ensurePortablePython(updateSetup) {
+    const portableDir = path.join(this.toolsDir, 'python');
+    const portableCandidates = process.platform === 'win32'
+      ? [
+          path.join(portableDir, 'tools', 'python.exe'),
+          path.join(portableDir, 'python.exe'),
+          path.join(portableDir, 'python', 'python.exe'),
+        ]
+      : [
+          path.join(portableDir, 'bin', 'python3'),
+          path.join(portableDir, 'python', 'bin', 'python3'),
+        ];
+
+    for (const candidate of portableCandidates) {
+      if (!fs.existsSync(candidate)) continue;
+      const version = await this._probePythonCommand(candidate, []);
+      if (version) {
+        this.toolchain = { ...this.toolchain, pythonSource: 'portable', pythonVersion: version };
+        return { cmd: candidate, prefix: [], source: 'portable', version };
+      }
+    }
+
+    const systemCandidates = process.platform === 'win32'
+      ? [['python', []], ['py', ['-3']], ['python3', []]]
+      : [['python3', []], ['python', []]];
+    for (const [cmd, prefix] of systemCandidates) {
+      const version = await this._probePythonCommand(cmd, prefix);
+      if (version) {
+        this.toolchain = { ...this.toolchain, pythonSource: 'system', pythonVersion: version };
+        return { cmd, prefix, source: 'system', version };
+      }
+    }
+
+    if (process.platform !== 'win32') {
+      throw new Error('Không tìm thấy Python 3.10+ (có module venv). Vui lòng cài Python 3.10+ rồi thử lại.');
+    }
+
+    const urls = [
+      process.env.PORTABLE_PYTHON_URL,
+      'https://www.nuget.org/api/v2/package/python/3.10.11',
+      'https://github.com/astral-sh/python-build-standalone/releases/download/20250317/cpython-3.10.16+20250317-x86_64-pc-windows-msvc-install_only.tar.gz',
+    ].filter(Boolean);
+
+    let lastErr = null;
+    for (const url of urls) {
+      const isTarGz = /\.(tar\.gz|tgz)(?:$|\?)/i.test(url);
+      const archivePath = path.join(this.toolsDir, '_downloads', isTarGz ? 'python-portable.tar.gz' : 'python-portable.zip');
+      try {
+        updateSetup?.('downloading-python', 5, 'Máy chưa có Python 3.10+ — đang tải Portable Python…');
+        await this._downloadFile(url, archivePath, (pct, mb, totalMb) => {
+          const scaled = 5 + Math.round(pct * 0.12);
+          const detail = totalMb ? `${mb}/${totalMb} MB` : `${mb} MB`;
+          updateSetup?.('downloading-python', scaled, `Đang tải Portable Python (${detail})…`);
+        });
+        updateSetup?.('downloading-python', 18, 'Đang giải nén Portable Python…');
+        fs.rmSync(portableDir, { recursive: true, force: true });
+        await this._extractArchive(archivePath, portableDir);
+        try { fs.unlinkSync(archivePath); } catch {}
+
+        const foundExe = portableCandidates.find((p) => fs.existsSync(p))
+          || findFilesRecursive(portableDir, ['python.exe'])['python.exe'];
+        if (!foundExe) {
+          throw new Error('Không tìm thấy python.exe sau khi giải nén Portable Python.');
+        }
+        await execFileAsync(foundExe, ['-m', 'ensurepip', '--upgrade'], { timeout: 60000 }).catch(() => {});
+        const version = await this._probePythonCommand(foundExe, []);
+        if (!version) {
+          throw new Error('Portable Python vừa tải không hỗ trợ đầy đủ module venv.');
+        }
+        this.toolchain = { ...this.toolchain, pythonSource: 'portable', pythonVersion: version };
+        this._emitStatus();
+        return { cmd: foundExe, prefix: [], source: 'portable', version };
+      } catch (err) {
+        lastErr = err;
+        try { fs.unlinkSync(archivePath); } catch {}
+        this._appendLog('setup', `Thử tải Portable Python từ ${url} thất bại: ${err.message}`);
+      }
+    }
+
+    throw new Error(`Không thể tải Portable Python 3.10+: ${lastErr?.message || 'lỗi mạng'}`);
+  }
+
+  async _probeFfmpegDir(dir) {
+    const ffmpegName = process.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg';
+    const ffprobeName = process.platform === 'win32' ? 'ffprobe.exe' : 'ffprobe';
+    const ffmpegBin = dir ? path.join(dir, ffmpegName) : 'ffmpeg';
+    const ffprobeBin = dir ? path.join(dir, ffprobeName) : 'ffprobe';
+    if (dir && (!fs.existsSync(ffmpegBin) || !fs.existsSync(ffprobeBin))) {
+      return false;
+    }
+    try {
+      await Promise.all([
+        execFileAsync(ffmpegBin, ['-version'], { timeout: 4000 }),
+        execFileAsync(ffprobeBin, ['-version'], { timeout: 4000 }),
+      ]);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  async ensureFfmpeg(updateSetup) {
+    const scriptsFolder = process.platform === 'win32' ? 'Scripts' : 'bin';
+    const rawCandidates = [
+      { dir: path.join(this.toolsDir, 'ffmpeg', 'bin'), source: 'portable' },
+      { dir: path.join(this.rootDir, 'engine', 'venv', scriptsFolder), source: 'venv' },
+      { dir: path.join(this.venvBaseDir, 'venv', scriptsFolder), source: 'venv' },
+      { dir: null, source: 'system' },
+    ];
+    const seenDirs = new Set();
+    const candidates = rawCandidates.filter((c) => {
+      const key = c.dir ? path.resolve(c.dir).toLowerCase() : '__system__';
+      if (seenDirs.has(key)) return false;
+      seenDirs.add(key);
+      return true;
+    });
+
+    for (const cand of candidates) {
+      if (await this._probeFfmpegDir(cand.dir)) {
+        this.toolchain = { ...this.toolchain, ffmpegReady: true, ffmpegSource: cand.source, ffmpegDir: cand.dir };
+        this._emitStatus();
+        return cand.dir;
+      }
+    }
+
+    if (process.platform !== 'win32') {
+      throw new Error('Không tìm thấy ffmpeg và ffprobe trong PATH.');
+    }
+
+    const ffmpegBinDir = path.join(this.toolsDir, 'ffmpeg', 'bin');
+    const tmpExtract = path.join(this.toolsDir, 'ffmpeg', '_tmp');
+    const urls = [
+      process.env.PORTABLE_FFMPEG_URL,
+      'https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip',
+      'https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip',
+    ].filter(Boolean);
+
+    let lastErr = null;
+    for (const url of urls) {
+      const archivePath = path.join(this.toolsDir, '_downloads', 'ffmpeg-portable.zip');
+      try {
+        updateSetup?.('downloading-ffmpeg', 19, 'Máy chưa có FFmpeg — đang tải Static FFmpeg & FFprobe…');
+        await this._downloadFile(url, archivePath, (pct, mb, totalMb) => {
+          const scaled = 19 + Math.round(pct * 0.08);
+          const detail = totalMb ? `${mb}/${totalMb} MB` : `${mb} MB`;
+          updateSetup?.('downloading-ffmpeg', scaled, `Đang tải FFmpeg (${detail})…`);
+        });
+        updateSetup?.('downloading-ffmpeg', 28, 'Đang giải nén FFmpeg & FFprobe…');
+        fs.rmSync(tmpExtract, { recursive: true, force: true });
+        await this._extractArchive(archivePath, tmpExtract);
+        try { fs.unlinkSync(archivePath); } catch {}
+
+        const located = findFilesRecursive(tmpExtract, ['ffmpeg.exe', 'ffprobe.exe']);
+        if (!located['ffmpeg.exe'] || !located['ffprobe.exe']) {
+          throw new Error('Gói FFmpeg không chứa đủ ffmpeg.exe và ffprobe.exe.');
+        }
+        fs.mkdirSync(ffmpegBinDir, { recursive: true });
+        fs.copyFileSync(located['ffmpeg.exe'], path.join(ffmpegBinDir, 'ffmpeg.exe'));
+        fs.copyFileSync(located['ffprobe.exe'], path.join(ffmpegBinDir, 'ffprobe.exe'));
+        fs.rmSync(tmpExtract, { recursive: true, force: true });
+
+        if (!(await this._probeFfmpegDir(ffmpegBinDir))) {
+          throw new Error('ffmpeg.exe / ffprobe.exe vừa giải nén không chạy được.');
+        }
+        this.toolchain = { ...this.toolchain, ffmpegReady: true, ffmpegSource: 'portable', ffmpegDir: ffmpegBinDir };
+        this._emitStatus();
+        return ffmpegBinDir;
+      } catch (err) {
+        lastErr = err;
+        try { fs.unlinkSync(archivePath); } catch {}
+        fs.rmSync(tmpExtract, { recursive: true, force: true });
+        this._appendLog('setup', `Thử tải FFmpeg từ ${url} thất bại: ${err.message}`);
+      }
+    }
+
+    throw new Error(`Không thể tải FFmpeg: ${lastErr?.message || 'lỗi mạng'}`);
   }
 
   async ensurePythonRuntime() {
@@ -286,9 +595,14 @@ class DesktopRuntimeManager extends EventEmitter {
           } catch {}
         }
 
-        if (!engineOk) {
-          updateSetup('creating-venv', 10, 'Đang kiểm tra Python & khởi tạo môi trường Engine…');
-          const sysPy = await this._findSystemPython();
+        const sysPy = engineOk ? null : await this.ensurePortablePython(updateSetup);
+        await this.ensureFfmpeg(updateSetup);
+
+        if (engineOk) {
+          const ver = await this._probePythonCommand(enginePy);
+          this.toolchain = { ...this.toolchain, pythonSource: 'venv', pythonVersion: ver || this.toolchain.pythonVersion };
+        } else {
+          updateSetup('creating-venv', 30, 'Đang khởi tạo môi trường ảo Python cho Engine…');
           fs.mkdirSync(path.dirname(targetEngineVenv), { recursive: true });
           if (!fs.existsSync(enginePy)) {
             await this._runLogged(sysPy.cmd, [...sysPy.prefix, '-m', 'venv', targetEngineVenv], 'setup');
@@ -419,7 +733,7 @@ class DesktopRuntimeManager extends EventEmitter {
     const { enginePy, vieneuPy } = await this.ensurePythonRuntime();
     if (this.stopping) return;
 
-    const pyEnv = {
+    const pyEnv = prependToPathEnv({
       ...env,
       PYTHONUTF8: '1',
       PYTHONIOENCODING: 'utf-8',
@@ -429,7 +743,7 @@ class DesktopRuntimeManager extends EventEmitter {
       OPENVOICE_WATERMARK: env.OPENVOICE_WATERMARK || '0',
       SILERO_VAD_BACKEND: env.SILERO_VAD_BACKEND || 'package',
       OPENVOICE_CHECKPOINT_DIR: env.OPENVOICE_CHECKPOINT_DIR || path.join(this.rootDir, 'engine', 'checkpoints', 'converter'),
-    };
+    }, [this.toolchain.ffmpegDir, path.dirname(enginePy)].filter(Boolean));
 
     if (!(await isPortOpen(8001))) {
       this._spawnManaged('vieneu', vieneuPy, ['-X', 'utf8', '-m', 'uvicorn', 'app:app', '--host', '127.0.0.1', '--port', '8001'], {
@@ -616,4 +930,11 @@ class DesktopRuntimeManager extends EventEmitter {
   }
 }
 
-module.exports = { DesktopRuntimeManager, parseNvidiaSmiOutput, parseEnvContent, isPortOpen };
+module.exports = {
+  DesktopRuntimeManager,
+  parseNvidiaSmiOutput,
+  parseEnvContent,
+  prependToPathEnv,
+  findFilesRecursive,
+  isPortOpen,
+};
