@@ -9,8 +9,10 @@ export const authLoading = ref(false);
 export const authError = ref('');
 export const identitySession = ref(false);
 export const cloudWakeState = ref({ waking: false, attempt: 0, message: '' });
-const keycloakUrl = import.meta.env.VITE_KEYCLOAK_URL || 'http://localhost:8080';
-const keycloakRealm = import.meta.env.VITE_KEYCLOAK_REALM || 'tts-local';
+const desktopConfig = typeof window !== 'undefined' ? window.desktopApp?.config : null;
+const isDesktopApp = typeof window !== 'undefined' && Boolean(window.desktopApp?.isDesktop);
+const keycloakUrl = desktopConfig?.keycloakUrl || import.meta.env.VITE_KEYCLOAK_URL || 'http://localhost:8080';
+const keycloakRealm = desktopConfig?.keycloakRealm || import.meta.env.VITE_KEYCLOAK_REALM || 'tts-local';
 const keycloak = new Keycloak({
   url: keycloakUrl,
   realm: keycloakRealm,
@@ -96,6 +98,28 @@ export async function refreshSession() {
     }
   }
 }
+async function waitForKeycloakReady(maxAttempts = 15) {
+  const endpoint = `${keycloakUrl.replace(/\/+$/, '')}/realms/${encodeURIComponent(keycloakRealm)}/.well-known/openid-configuration`;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      const resp = await fetch(endpoint, { mode: 'cors', cache: 'no-store', signal: AbortSignal.timeout(6000) });
+      if (resp.ok) {
+        cloudWakeState.value = { waking: false, attempt: 0, message: '' };
+        return true;
+      }
+    } catch {}
+    if (attempt < maxAttempts) {
+      cloudWakeState.value = {
+        waking: true,
+        attempt,
+        message: 'Đang đánh thức máy chủ đăng nhập (Render), vui lòng đợi trong giây lát…',
+      };
+      await new Promise((resolve) => setTimeout(resolve, 2500));
+    }
+  }
+  cloudWakeState.value = { waking: false, attempt: 0, message: '' };
+  return false;
+}
 export function initializeAuth() {
   if (!initialized) initialized = (async () => {
     authLoading.value = true;
@@ -111,7 +135,7 @@ export function initializeAuth() {
       });
       identitySession.value = authenticated;
       if (authenticated) await refreshSession();
-      if (!authenticated) {
+      if (!authenticated && !isDesktopApp) {
         // Start the browser flow before showing the welcome card so its forms
         // and the authentication cookies belong to the same Keycloak origin.
         const target = new URL(await keycloak.createLoginUrl({ locale: locale.value }));
@@ -133,6 +157,14 @@ async function redirect(action) {
   authLoading.value = true;
   authError.value = '';
   try {
+    if (isDesktopApp) {
+      const ready = await waitForKeycloakReady();
+      if (!ready) {
+        authError.value = 'Không thể kết nối dịch vụ đăng nhập. Hãy kiểm tra kết nối và thử lại.';
+        authLoading.value = false;
+        return;
+      }
+    }
     // The SDK still creates/saves state, nonce and the PKCE verifier. Only add
     // an explicit locale to its URL so an older Keycloak preference cannot win.
     const options = { redirectUri: redirectUri(), locale: locale.value };

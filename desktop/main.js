@@ -50,13 +50,30 @@ function createStaticSpaServer(port = 5173) {
   });
 }
 
+async function isHttpReady(url, timeoutMs = 800) {
+  try {
+    const resp = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) });
+    return resp.status >= 200 && resp.status < 500;
+  } catch {
+    return false;
+  }
+}
+
 async function resolveStartUrl() {
   if (process.env.DESKTOP_START_URL) return process.env.DESKTOP_START_URL;
   // Keycloak redirect URIs target http://localhost:5173/*. Reuse an active dev/Docker
-  // server on 5173 if present, otherwise serve frontend/dist cleanly at localhost:5173.
-  if (await isPortOpen(5173, '127.0.0.1', 600)) return 'http://localhost:5173';
-  staticServer = await createStaticSpaServer(5173);
-  return 'http://localhost:5173';
+  // server on 5173 if it responds over HTTP, otherwise serve frontend/dist cleanly.
+  if ((await isPortOpen(5173, '127.0.0.1', 400)) && (await isHttpReady('http://127.0.0.1:5173/', 800))) {
+    return 'http://localhost:5173';
+  }
+  try {
+    staticServer = await createStaticSpaServer(5173);
+    return 'http://localhost:5173';
+  } catch {
+    staticServer = await createStaticSpaServer(0);
+    const addr = staticServer.address();
+    return `http://localhost:${addr && typeof addr === 'object' ? addr.port : 5173}`;
+  }
 }
 
 function setupTray() {
@@ -92,11 +109,17 @@ async function createWindow() {
   });
   mainWindow.setMenuBarVisibility(false);
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    if (url.startsWith('http://localhost:') || url.startsWith(runtime.cloud.keycloakUrl || '')) {
+    if (url.startsWith('http://localhost:') || url.startsWith(runtime.cloud.keycloakUrl || '') || url.startsWith(runtime.activeKeycloakUrl || '')) {
       return { action: 'allow' };
     }
     shell.openExternal(url).catch(() => {});
     return { action: 'deny' };
+  });
+  mainWindow.webContents.on('did-fail-load', (_event, errorCode, _errorDesc, validatedURL, isMainFrame) => {
+    if (!isMainFrame || errorCode === -3) return;
+    if (validatedURL && !validatedURL.startsWith(startUrl)) {
+      mainWindow?.loadURL(startUrl).catch(() => {});
+    }
   });
   mainWindow.on('close', (event) => {
     if (!quitting && tray) {
@@ -113,6 +136,9 @@ runtime.on('status', (payload) => {
   }
 });
 
+ipcMain.on('desktop:get-config', (event) => {
+  event.returnValue = runtime.getClientConfig();
+});
 ipcMain.handle('desktop:get-status', () => runtime.getStatus());
 ipcMain.handle('desktop:warmup-cloud', () => runtime.warmupCloud());
 ipcMain.handle('desktop:setup-runtime', () => runtime.ensurePythonRuntime());
@@ -127,6 +153,7 @@ ipcMain.handle('desktop:synthesize-local', async (_event, payload) => {
 
 app.whenReady().then(async () => {
   setupTray();
+  await runtime.resolveActiveEndpoints();
   // Cách 1: đánh thức Cloud Backend & Keycloak song song ngay khi bật ứng dụng.
   runtime.warmupCloud().catch(() => {});
   runtime.startServices().catch((err) => runtime._appendLog('setup', err.message));

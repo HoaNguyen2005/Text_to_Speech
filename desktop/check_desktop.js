@@ -72,6 +72,14 @@ function execNodePath(envObj) {
   assert.equal(st.toolchain.ffmpegReady, true);
   assert.ok(['portable', 'venv', 'system'].includes(st.toolchain.ffmpegSource));
 
+  const endpoints = await mgr.resolveActiveEndpoints();
+  const clientCfg = mgr.getClientConfig();
+  assert.deepEqual(clientCfg, endpoints);
+  assert.equal(clientCfg.keycloakRealm, 'tts-local');
+  if (!(await require('./runtime-manager').isPortOpen(8080, '127.0.0.1', 300))) {
+    assert.equal(clientCfg.keycloakUrl, 'https://text2speech-keycloak.onrender.com');
+  }
+
   process.env.LOCAL_ENGINE_FIRST = 'true';
   process.env.ENGINE_URL = 'http://127.0.0.1:8000';
   process.env.BOOK_ENGINE_SECRET = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
@@ -92,6 +100,7 @@ function execNodePath(envObj) {
     gpuName: hw.gpuName,
     cpuThreads: hw.cpuThreads,
     toolchain: st.toolchain,
+    clientConfig: clientCfg,
     firstEngineCandidate: candidates[0],
   });
 })();

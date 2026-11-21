@@ -1,7 +1,16 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
+const config = (() => {
+  try {
+    return ipcRenderer.sendSync('desktop:get-config');
+  } catch {
+    return null;
+  }
+})();
+
 contextBridge.exposeInMainWorld('desktopApp', {
   isDesktop: true,
+  config,
   getStatus: () => ipcRenderer.invoke('desktop:get-status'),
   restartServices: () => ipcRenderer.invoke('desktop:restart-services'),
   setupRuntime: () => ipcRenderer.invoke('desktop:setup-runtime'),

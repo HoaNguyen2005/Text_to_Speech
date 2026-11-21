@@ -152,6 +152,9 @@ class DesktopRuntimeManager extends EventEmitter {
     this.hardware = { hasNvidiaGpu: false, gpuName: null, vramMb: null, preferredDevice: 'cpu', cpuModel: '', cpuThreads: 1 };
     this.toolchain = { pythonSource: 'unknown', pythonVersion: null, ffmpegReady: false, ffmpegSource: 'unknown', ffmpegDir: null };
     this.cloud = { backendUrl: '', keycloakUrl: '', realm: 'tts-local', backend: 'unknown', keycloak: 'unknown', lastCheck: null };
+    this.activeApiUrl = '';
+    this.activeKeycloakUrl = '';
+    this._lastLoadedEnv = null;
     this.services = {
       vieneu: { running: false, online: false, managed: false, device: 'cpu', pid: null },
       engine: { running: false, online: false, managed: false, device: 'cpu', gpuName: null, pid: null },
@@ -245,15 +248,53 @@ class DesktopRuntimeManager extends EventEmitter {
     if (!merged.BOOK_ARTIFACT_ROOT) merged.BOOK_ARTIFACT_ROOT = path.join(this.dataDir, 'book-audio');
     if (!merged.AUDIO_ROOT) merged.AUDIO_ROOT = path.join(this.dataDir, 'public-audio');
 
+    const cloudEnv = {};
+    const mainBackendEnvFile = path.join(this.rootDir, 'deploy', 'main-backend.env');
+    if (fs.existsSync(mainBackendEnvFile)) {
+      Object.assign(cloudEnv, parseEnvContent(fs.readFileSync(mainBackendEnvFile, 'utf8')));
+    }
+    const cloudBackendDefault = cloudEnv.PUBLIC_BACKEND_URL || 'https://text2speech-main-backend.onrender.com';
+    const cloudKeycloakDefault = cloudEnv.KEYCLOAK_URL || 'https://text2speech-keycloak.onrender.com';
+
     const feEnv = {};
     for (const f of [path.join(this.rootDir, 'frontend', '.env.production'), path.join(this.rootDir, 'frontend', '.env.local')]) {
       if (fs.existsSync(f)) Object.assign(feEnv, parseEnvContent(fs.readFileSync(f, 'utf8')));
     }
-    this.cloud.backendUrl = (merged.VITE_API_URL || feEnv.VITE_API_URL || merged.PUBLIC_BACKEND_URL || 'https://text2speech-backend.onrender.com').replace(/\/+$/, '');
-    this.cloud.keycloakUrl = (merged.VITE_KEYCLOAK_URL || feEnv.VITE_KEYCLOAK_URL || merged.KEYCLOAK_URL || 'https://text2speech-keycloak.onrender.com').replace(/\/+$/, '');
+    const candidateBackend = merged.VITE_API_URL || feEnv.VITE_API_URL || cloudEnv.PUBLIC_BACKEND_URL || merged.PUBLIC_BACKEND_URL || cloudBackendDefault;
+    const candidateKeycloak = merged.VITE_KEYCLOAK_URL || feEnv.VITE_KEYCLOAK_URL
+      || (merged.KEYCLOAK_URL && !/^https?:\/\/(127\.0\.0\.1|localhost)/i.test(merged.KEYCLOAK_URL) ? merged.KEYCLOAK_URL : cloudKeycloakDefault);
+
+    this.cloud.backendUrl = candidateBackend.replace(/\/+$/, '');
+    this.cloud.keycloakUrl = candidateKeycloak.replace(/\/+$/, '');
     this.cloud.realm = merged.VITE_KEYCLOAK_REALM || feEnv.VITE_KEYCLOAK_REALM || merged.KEYCLOAK_REALM || 'tts-local';
+    this._lastLoadedEnv = merged;
 
     return merged;
+  }
+
+  async resolveActiveEndpoints() {
+    const env = this._lastLoadedEnv || this.loadEnv();
+    const localKeycloakUp = await isPortOpen(8080, '127.0.0.1', 400);
+    const localBackendReady = Boolean(env.DATABASE_URL && env.KEYCLOAK_SERVICE_CLIENT_SECRET)
+      || (await isPortOpen(3000, '127.0.0.1', 400));
+
+    this.activeKeycloakUrl = localKeycloakUp
+      ? 'http://localhost:8080'
+      : (this.cloud.keycloakUrl || 'https://text2speech-keycloak.onrender.com');
+    this.activeApiUrl = localBackendReady
+      ? 'http://localhost:3000'
+      : (this.cloud.backendUrl || 'https://text2speech-main-backend.onrender.com');
+
+    return this.getClientConfig();
+  }
+
+  getClientConfig() {
+    if (!this.cloud.keycloakUrl) this.loadEnv();
+    return {
+      apiBaseUrl: this.activeApiUrl || this.cloud.backendUrl || 'https://text2speech-main-backend.onrender.com',
+      keycloakUrl: this.activeKeycloakUrl || this.cloud.keycloakUrl || 'https://text2speech-keycloak.onrender.com',
+      keycloakRealm: this.cloud.realm || 'tts-local',
+    };
   }
 
   async detectHardware() {
@@ -725,6 +766,7 @@ class DesktopRuntimeManager extends EventEmitter {
   async startServices() {
     this.stopping = false;
     const env = this.loadEnv();
+    await this.resolveActiveEndpoints();
     fs.mkdirSync(this.runtimeDir, { recursive: true });
     fs.mkdirSync(env.BOOK_ARTIFACT_ROOT, { recursive: true });
     fs.mkdirSync(path.join(env.AUDIO_ROOT, 'samples'), { recursive: true });
@@ -771,6 +813,9 @@ class DesktopRuntimeManager extends EventEmitter {
       ENGINE_URL: 'http://127.0.0.1:8000',
       BOOK_ENGINE_URL: 'http://127.0.0.1:8000',
       VIENEU_URL: 'http://127.0.0.1:8001',
+      KEYCLOAK_URL: this.activeKeycloakUrl || this.cloud.keycloakUrl,
+      KEYCLOAK_INTERNAL_URL: this.activeKeycloakUrl || this.cloud.keycloakUrl,
+      FRONTEND_ORIGINS: env.FRONTEND_ORIGINS || 'http://localhost:5173,http://127.0.0.1:5173,https://text2speech-main.pages.dev',
     };
 
     if (env.DATABASE_URL && env.KEYCLOAK_SERVICE_CLIENT_SECRET && !(await isPortOpen(3000))) {

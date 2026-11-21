@@ -918,5 +918,6 @@
   "Xem nhật ký Engine / Cài đặt": "View Engine / setup logs",
   "Đánh thức Cloud": "Wake Cloud",
   "Khởi động lại Engine": "Restart Engine",
-  "Đang kiểm tra": "Checking"
+  "Đang kiểm tra": "Checking",
+  "Đang đánh thức máy chủ đăng nhập (Render), vui lòng đợi trong giây lát…": "Waking up the sign-in server (Render), please wait a moment…"
 }
