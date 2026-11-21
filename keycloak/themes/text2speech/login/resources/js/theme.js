@@ -1,4 +1,4 @@
-// Preference only: no form fields or tokens; only the tts_theme cookie is used.
+// The app and Keycloak can have separate origins and separate theme cookies.
 (() => {
   const key = 'text2speech.theme';
   const system = window.matchMedia('(prefers-color-scheme: dark)');
@@ -31,6 +31,12 @@
   }
   try { const saved = localStorage.getItem(key); if (valid(saved)) preference = saved; } catch {}
   preference = sharedPreference() || preference;
+  const logoutTheme = /^#tts-signed-out:(light|dark)$/.exec(location.hash);
+  if (logoutTheme) {
+    preference = logoutTheme[1];
+    // Consume the handoff so reloading after a manual toggle keeps the new choice.
+    history.replaceState(history.state, '', '#tts-signed-out');
+  }
   if (preference) persist();
   apply(); // Loaded in the inherited template's head, before body is painted.
   system.addEventListener('change', () => { if (!preference) apply(); });

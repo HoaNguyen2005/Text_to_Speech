@@ -85,7 +85,9 @@ export function initializeAuth() {
         // and the authentication cookies belong to the same Keycloak origin.
         const target = new URL(await keycloak.createLoginUrl({ locale: locale.value }));
         target.searchParams.set('kc_locale', locale.value);
-        target.hash = saved(logoutKey) ? 'tts-signed-out' : 'tts-welcome';
+        const logoutTheme = saved(logoutKey);
+        target.hash = logoutTheme ? 'tts-signed-out' : 'tts-welcome';
+        if (logoutTheme === 'light' || logoutTheme === 'dark') target.hash += `:${logoutTheme}`;
         window.location.replace(target.href);
       }
       save(logoutKey, null);
@@ -122,7 +124,7 @@ export async function manageAccount(){
 export async function handleLogout() {
   session.value = null;
   clearLegacyStorage();
-  save(logoutKey, '1');
+  save(logoutKey, document.documentElement.dataset.theme);
   try { await keycloak.logout({ redirectUri: redirectUri() }); }
   catch { save(logoutKey, null); authError.value = 'Không thể đăng xuất khỏi dịch vụ đăng nhập. Hãy thử lại.'; }
 }
