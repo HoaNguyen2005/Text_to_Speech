@@ -11,6 +11,7 @@ import { confirmAction, useFeedback, notify } from '@/composables/useNotificatio
 
 const users = ref([]);
 const voices = ref([]);
+const ttsProviders = ref([]);
 const loading = ref(true);
 const hasLoaded = ref(false);
 const busy = ref('');
@@ -46,12 +47,14 @@ const isSelf = user => user._id === session.value?.user?._id;
 async function fetchData() {
   loading.value = true;
   try {
-    const [usersRes, voicesRes] = await Promise.all([
+    const [usersRes, voicesRes, providersRes] = await Promise.all([
       api.get('/api/auth/users'),
-      api.get('/api/voices', { params: { include_locked: true } })
+      api.get('/api/voices', { params: { include_locked: true } }),
+      api.get('/api/voices/providers', { params: { include_locked: true } }),
     ]);
     users.value = usersRes.data;
     voices.value = voicesRes.data;
+    ttsProviders.value = Array.isArray(providersRes.data) ? providersRes.data : [];
     hasLoaded.value = true;
     return true;
   } catch (error) {
@@ -143,6 +146,29 @@ async function toggleVoiceLock(voice) {
   } catch (error) { errorMessage.value = error.response?.data?.error || 'Không thể đổi trạng thái giọng đọc.'; }
   finally { busy.value = ''; }
 }
+async function toggleProviderLock(provider) {
+  if (busy.value) return;
+  const lock = provider.is_active;
+  if (!await confirmAction({
+    key: lock
+      ? 'Khóa bộ tạo giọng “{0}” để người dùng tạm thời không thể chọn hoặc tạo âm thanh bằng bộ này?'
+      : 'Mở khóa bộ tạo giọng “{0}” để người dùng có thể sử dụng lại?',
+    params: [provider.name]
+  }, {
+    title: lock ? 'Khóa bộ tạo giọng' : 'Mở khóa bộ tạo giọng',
+    confirmLabel: lock ? 'Khóa' : 'Mở khóa',
+    danger: lock
+  })) return;
+  busy.value = `provider:${provider.provider_id}`;
+  errorMessage.value = '';
+  successMessage.value = '';
+  try {
+    const { data } = await api.put(`/api/voices/providers/${provider._id || provider.provider_id}`, { is_active: !lock });
+    ttsProviders.value = ttsProviders.value.map(row => row.provider_id === provider.provider_id ? data.data : row);
+    successMessage.value = lock ? 'Đã khóa bộ tạo giọng.' : 'Đã mở khóa bộ tạo giọng.';
+  } catch (error) { errorMessage.value = error.response?.data?.error || 'Không thể đổi trạng thái bộ tạo giọng.'; }
+  finally { busy.value = ''; }
+}
 </script>
 
 <template>
@@ -156,6 +182,7 @@ async function toggleVoiceLock(voice) {
     <div class="section-tabs" :aria-label="$t('Danh mục quản trị')">
       <button type="button" :class="{ active: activeTab === 'users' }" :aria-pressed="activeTab === 'users'" @click="activeTab = 'users'"><UiIcon name="users" />{{ $t("Tài khoản") }}<span class="tab-count">{{ users.length }}</span></button>
       <button type="button" :class="{ active: activeTab === 'voices' }" :aria-pressed="activeTab === 'voices'" @click="activeTab = 'voices'"><UiIcon name="mic" />{{ $t("Giọng đọc") }}<span class="tab-count">{{ voices.length }}</span></button>
+      <button type="button" :class="{ active: activeTab === 'providers' }" :aria-pressed="activeTab === 'providers'" @click="activeTab = 'providers'"><UiIcon name="wave" />{{ $t('Bộ tạo giọng') }}<span class="tab-count">{{ ttsProviders.length }}</span></button>
       <button type="button" :class="{active:activeTab==='payments'}" :aria-pressed="activeTab==='payments'" @click="activeTab='payments'">{{ $t('Giao dịch nạp tiền') }}</button>
     </div>
     <PaymentHistory v-if="activeTab==='payments'" :users="users" admin />
@@ -210,9 +237,67 @@ async function toggleVoiceLock(voice) {
       </section>
       <section class="panel" aria-labelledby="voices-heading">
         <div class="panel-heading"><div><h2 id="voices-heading">{{ $t("Thư viện giọng đọc") }}</h2><p>{{ $t("Quản lý giọng mẫu chung và giọng cá nhân của bạn.") }}</p></div><button type="button" class="btn primary" :disabled="!!busy" @click="showVoiceForm = !showVoiceForm"><UiIcon name="plus" />{{ $t("Thêm giọng mẫu") }}</button></div>
+        <div v-if="ttsProviders.some(p => !p.is_active)" class="notice provider-lock-notice">
+          <span>{{ $t('Có bộ tạo giọng đang bị khóa.') }}</span>
+          <button type="button" class="text-button" @click="activeTab = 'providers'">{{ $t('Quản lý bộ tạo giọng') }}</button>
+        </div>
         <VoicePicker ref="voiceLibrary" v-model="librarySelected" :voices="voices" :loading="loading" :disabled="!!busy" manage admin inline @lock="toggleVoiceLock" @refresh="fetchData" />
       </section>
     </div>
+    <section v-else-if="activeTab==='providers'" class="panel flush" aria-labelledby="providers-heading">
+      <div class="panel-heading">
+        <div>
+          <h2 id="providers-heading">{{ $t('Quản lý bộ tạo giọng') }}</h2>
+          <p>{{ $t('Khóa hoặc mở khóa các bộ tạo giọng (Edge-TTS + OpenVoice, VieNeu-TTS) trên toàn hệ thống.') }}</p>
+        </div>
+        <span class="pill">{{ ttsProviders.length }} {{ $t('bộ tạo giọng') }}</span>
+      </div>
+      <div class="table-scroll" tabindex="0" role="region" :aria-label="$t('Quản lý bộ tạo giọng')">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th scope="col">{{ $t('Bộ tạo giọng') }}</th>
+              <th scope="col">{{ $t('Mã định danh') }}</th>
+              <th scope="col">{{ $t('Nhân xử lý') }}</th>
+              <th scope="col">{{ $t('Giọng tiêu chuẩn') }}</th>
+              <th scope="col">{{ $t('Trạng thái') }}</th>
+              <th scope="col" class="voice-actions-column">{{ $t('Thao tác') }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="provider in ttsProviders" :key="provider.provider_id">
+              <td>
+                <div class="provider-cell">
+                  <strong>{{ provider.name }}</strong>
+                  <small class="text-muted">{{ provider.description }}</small>
+                </div>
+              </td>
+              <td><code class="provider-code">{{ provider.provider_id }}</code></td>
+              <td class="text-muted">{{ provider.engine_label }}</td>
+              <td>{{ provider.standard_voice_count }} {{ $t('giọng') }}</td>
+              <td>
+                <span class="pill" :class="provider.is_active ? 'green' : 'amber'">
+                  {{ provider.is_active ? $t('Hoạt động') : $t('Đã khóa') }}
+                </span>
+              </td>
+              <td class="voice-actions-column">
+                <button
+                  type="button"
+                  class="btn small"
+                  :class="{ danger: provider.is_active, primary: !provider.is_active }"
+                  :disabled="!!busy"
+                  @click="toggleProviderLock(provider)"
+                >
+                  <span v-if="busy === `provider:${provider.provider_id}`" class="spinner" aria-hidden="true"></span>
+                  {{ provider.is_active ? $t('Khóa') : $t('Mở khóa') }}
+                </button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="table-footer">{{ $t('Hiển thị') }} {{ ttsProviders.filter(p => p.is_active).length }} / {{ ttsProviders.length }} {{ $t('bộ tạo giọng') }}</div>
+    </section>
   </template>
 </template>
 
@@ -226,6 +311,10 @@ async function toggleVoiceLock(voice) {
 .admin-tier-cell { display: grid; gap: 6px; min-width: 124px; }
 .admin-table-select { min-height: 38px; padding: 6px 28px 6px 10px; font-size: 12px; border-radius: 9px; }
 .voice-code { min-width: 12ch; max-width: 26ch; overflow-wrap: anywhere; }
+.provider-cell { display: grid; gap: 4px; max-width: 360px; }
+.provider-cell small { line-height: 1.5; }
+.provider-code { display: inline-block; padding: 3px 8px; border-radius: 6px; border: 1px solid var(--line); background: var(--surface-raised); font-size: 11px; color: var(--ink); }
+.provider-lock-notice { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
 .data-table .voice-actions-column { text-align: center; }
 .admin-voice-actions { display: inline-grid; grid-template-columns: repeat(2, 1fr); gap: 8px; white-space: nowrap; }
 .admin-feedback { margin-bottom: 18px; }

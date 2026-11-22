@@ -43,6 +43,8 @@ const pausePattern = () => /\[(?:nghỉ|pause)\s+(\d+(?:[.,]\d+)?)\s*(?:s|giây)
 function parse(markup) {
     if (typeof markup !== 'string' || markup.length > 300000 || /[\u0000-\u0008\u000b\u000c\u000e-\u001f]/u.test(markup)) fail('Văn bản đọc không hợp lệ.');
     markup = stripCues(markup.normalize('NFC').replace(/\r\n/g, '\n'));
+    // Normalize single line breaks (headings, bullet lines, wrapped PDF lines) so Edge-TTS pauses naturally.
+    markup = markup.replace(/([\p{L}\p{M}\p{N}])[ \t]*\n[ \t]*(?=[^\s\n])/gu, '$1. ');
     const atoms = []; let start = 0, totalPause = 0, markers = 0;
     for (const match of markup.matchAll(pausePattern())) {
         const milliseconds = Math.round(Number((match[1] || match[2]).replace(',', '.')) * 1000);
@@ -117,17 +119,35 @@ function speak(text, config) {
     spoken = spoken.replace(/(?<![\p{L}\p{N}.,/])\d{1,15}(?:[.,]\d+)*(?![\p{L}\p{N}.,/])/gu, numeric);
     return spoken.replace(/\uE000([A-Z]+)\uE001/gu, (original, token) => protectedValues.get(token) ?? original);
 }
-function split(text, maxLen = 600) {
-    const result = []; let remaining = text.trim();
+function splitChunks(text, maxLen = 600) {
+    const result = [];
+    let remaining = text.trim();
     while (remaining.length > maxLen) {
-        const head = remaining.slice(0, maxLen);
-        let cut = Math.max(head.lastIndexOf('. '), head.lastIndexOf('? '), head.lastIndexOf('! '), head.lastIndexOf('; '));
-        if (cut < 180) cut = Math.max(cut, head.lastIndexOf(', '));
-        if (cut < 180) cut = head.lastIndexOf(' ');
-        cut = cut < 1 ? maxLen : cut + 1;
-        result.push(remaining.slice(0, cut).trim()); remaining = remaining.slice(cut).trim();
+        const window = remaining.slice(0, Math.min(remaining.length, maxLen + 1));
+        const head = window.slice(0, maxLen);
+        let cut = Math.max(
+            head.lastIndexOf('. '), head.lastIndexOf('? '), head.lastIndexOf('! '), head.lastIndexOf('; '),
+            head.lastIndexOf('.\n'), head.lastIndexOf('?\n'), head.lastIndexOf('!\n'), head.lastIndexOf(';\n')
+        );
+        let sentenceEnd = true;
+        if (cut < 120) {
+            const clauseCut = head.lastIndexOf(', ');
+            if (clauseCut >= 120) {
+                cut = clauseCut;
+                sentenceEnd = false;
+            } else {
+                const spaceCut = head.lastIndexOf(' ');
+                cut = spaceCut >= 1 ? spaceCut : maxLen - 1;
+                sentenceEnd = false;
+            }
+        }
+        const sliceEnd = cut < maxLen && /[.?!;,]/.test(remaining[cut]) ? cut + 1 : cut;
+        const chunk = remaining.slice(0, sliceEnd).trim();
+        if (chunk) result.push({ text: chunk, sentenceEnd });
+        remaining = remaining.slice(sliceEnd).trim();
     }
-    if (remaining) result.push(remaining); return result;
+    if (remaining) result.push({ text: remaining, sentenceEnd: /[.?!;…]["'”’)\]]*$/u.test(remaining) });
+    return result;
 }
 function contour(text, baseRate, defaultPause, context = {}) {
     const trimmed = text.trim();
@@ -144,32 +164,29 @@ function contour(text, baseRate, defaultPause, context = {}) {
     let pause = defaultPause;
 
     if (isIntro) {
-        rateDelta = -2;
+        rateDelta = -3;
         pitch = 1;
         pause = Math.max(defaultPause, 700);
     } else if (question) {
         rateDelta = -1;
         pitch = 2;
         pause = Math.max(defaultPause, 600);
-    } else if (isLast && isFinalSection) {
-        rateDelta = -3;
-        pitch = -2;
-        pause = Math.min(2000, defaultPause + 150);
-    } else if (isLast) {
-        rateDelta = -2;
-        pitch = -1;
     } else if (reflective) {
         rateDelta = -2;
         pitch = -1;
         pause = Math.max(defaultPause, 520);
+    } else if (isLast) {
+        rateDelta = isFinalSection ? -2 : 0;
+        pitch = -1;
+        pause = defaultPause;
     } else if (exclaim) {
         rateDelta = 0;
         pitch = 1;
     } else if (isFirst) {
-        rateDelta = -1;
+        rateDelta = 0;
         pitch = 1;
     } else {
-        rateDelta = (context.paragraphIndex || 0) % 2 === 1 ? 1 : 0;
+        rateDelta = 0;
         pitch = (context.paragraphIndex || 0) % 2 === 1 ? 1 : 0;
     }
 
@@ -197,14 +214,15 @@ function plan({ introduction = '', sections, speech = {}, style = 'normal', unit
         parsed.atoms.forEach((atom, position) => {
             const source = atom.text.trim(), spoken = speak(source, config);
             if (source !== spoken && changes.length < 100) changes.push({ section: index, before: source, after: spoken });
-            const chunks = split(spoken);
+            const chunks = splitChunks(spoken);
             const last = position === parsed.atoms.length-1;
             const pause = atom.explicit ? atom.pause_ms : last && source ? shaped.pause : 0;
             if (!chunks.length) {
                 if (pause) parts.push({ text: '', rate_percent: shaped.rate, pitch_hz: 0, pause_ms: pause, speech_version: 'speech-v1' });
-            } else chunks.forEach((text,i) => {
-                const chunkPitch = chunks.length > 1 && i === chunks.length - 1 ? Math.max(-10, shaped.pitch - 1) : shaped.pitch;
-                parts.push({ text, rate_percent: shaped.rate, pitch_hz: chunkPitch, pause_ms: i===chunks.length-1 ? pause : 180, speech_version: 'speech-v1' });
+            } else chunks.forEach((chunk, i) => {
+                const isLastChunk = i === chunks.length - 1;
+                const chunkPause = isLastChunk ? pause : (chunk.sentenceEnd ? 120 : 0);
+                parts.push({ text: chunk.text, rate_percent: shaped.rate, pitch_hz: shaped.pitch, pause_ms: chunkPause, speech_version: 'speech-v1' });
             });
         });
         return parsed.plain;
@@ -250,4 +268,4 @@ function subtitles(parts, timings) {
     return cues.join('\n\n')+'\n';
 }
 const clipText = (text, limit) => text.split(/\s+/u).filter(Boolean).slice(0,limit).join(' ');
-module.exports = { options, delivery, parse, plan, subtitles, stripCues, clipText };
+module.exports = { options, delivery, parse, plan, splitChunks, subtitles, stripCues, clipText };

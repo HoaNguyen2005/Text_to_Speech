@@ -60,45 +60,19 @@ function evidence(section, chunks, notes, query = '', expanded = false) {
     }).join('\n\n');
 }
 
-// Moderate variation by paragraph/section; keep one selected speaker throughout.
+// Moderate variation by paragraph/section; share the unified speech planner.
 function narration(intro, sections, style) {
-    const parts = [];
-    const split = text => {
-        const result = [];
-        let remaining = text.trim();
-        while (remaining.length > 600) {
-            const head = remaining.slice(0, 600);
-            let cut = Math.max(head.lastIndexOf('. '), head.lastIndexOf('? '), head.lastIndexOf('! '), head.lastIndexOf('; '));
-            if (cut < 180) cut = Math.max(cut, head.lastIndexOf(', '));
-            if (cut < 180) cut = head.lastIndexOf(' ');
-            if (cut < 1) cut = 600; else cut++;
-            result.push(remaining.slice(0, cut).trim()); remaining = remaining.slice(cut).trim();
-        }
-        if (remaining) result.push(remaining);
-        return result;
-    };
-    const add = (text, rate, pitch, pause) => {
-        const chunks = split(speech.stripCues(text));
-        chunks.forEach((chunk, i) => {
-            const chunkPitch = chunks.length > 1 && i === chunks.length - 1 ? Math.max(-10, pitch - 1) : pitch;
-            parts.push({ text: chunk, rate_percent: rate, pitch_hz: chunkPitch, pause_ms: i === chunks.length - 1 ? pause : 180 });
-        });
-    };
-    if (intro && intro.trim()) add(intro, -3, 1, 700);
-    const base = style === 'news' ? 5 : style === 'story' ? -5 : 0;
-    sections.forEach((section, i) => {
-        const paragraphs = section.text.split(/\n\s*\n/u).map(text => text.trim()).filter(Boolean);
-        paragraphs.forEach((paragraph, j) => {
-            const reflective = /^(Tuy nhiên|Nhưng|Dù vậy|Thay vì|Điều quan trọng|Điểm cốt lõi|Tóm lại|Vì vậy|Do đó|Thực tế|Nói cách khác)(?=\s|[,:;.!?]|$)/iu.test(paragraph);
-            const question = /[?？]\s*$/u.test(paragraph);
-            const isLast = j === paragraphs.length - 1;
-            const isFirst = j === 0 && paragraphs.length > 1;
-            const pitch = question ? 2 : isLast ? -1 : reflective ? -1 : isFirst ? 1 : (j % 2 === 1 ? 1 : 0);
-            add(paragraph, Math.max(-10, Math.min(8, base + (i === sections.length - 1 || reflective ? -2 : question ? -1 : 0))),
-                pitch, isLast ? 700 : question ? 600 : reflective ? 520 : 420);
-        });
+    const planned = speech.plan({
+        introduction: intro || '',
+        sections,
+        style: style || 'normal',
+        speech: { profile: 'auto', normalize: false, dictionary: [] },
     });
-    if (parts.length > 300) throw new Error('Kịch bản có quá nhiều đoạn. Hãy rút gọn nội dung.');
-    return parts;
+    return planned.parts.map(({ text, rate_percent, pitch_hz, pause_ms }) => ({
+        text,
+        rate_percent,
+        pitch_hz,
+        pause_ms,
+    }));
 }
 module.exports = { units, hash, textHash, checkedText, editedDraft, estimate, evidence, narration };
