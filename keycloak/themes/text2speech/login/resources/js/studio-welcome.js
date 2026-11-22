@@ -3,18 +3,11 @@ document.addEventListener('DOMContentLoaded', () => {
   const template = document.querySelector('#studio-welcome');
   if (!template || window !== window.top) return;
   const nativeCard = document.querySelector('main.pf-v5-c-login__main');
-  const form = nativeCard?.querySelector('#kc-form-login, #kc-register-form');
-  if (!form) return;
+  if (!nativeCard) return;
 
-  const tab = new URL(form.action).searchParams.get('tab_id');
   const signedOut = location.hash === '#tts-signed-out';
-  const fresh = signedOut || location.hash === '#tts-welcome';
-  let returning = false;
-  try {
-    returning = !!tab && sessionStorage.getItem('tts.welcome-tab') === tab;
-    if (fresh && tab) sessionStorage.setItem('tts.welcome-tab', tab);
-  } catch { /* The first visit still works without session storage. */ }
-  if (!fresh && !returning) return;
+  const fresh = Boolean(nativeCard.querySelector('#kc-form-login')) &&
+    (signedOut || location.hash === '#tts-welcome');
 
   const shell = document.createElement('div');
   shell.className = 'studio-welcome';
@@ -109,7 +102,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const link = event.target.closest('a[href]');
     if (!link || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
     const url = new URL(link.href);
-    if (url.origin === location.origin && /\/login-actions\/(registration|authenticate)$/.test(url.pathname)) {
+    if (url.origin === location.origin && /\/login-actions\/(registration|authenticate|reset-credentials)$/.test(url.pathname)) {
       event.preventDefault();
       openLinkedForm(link);
     }

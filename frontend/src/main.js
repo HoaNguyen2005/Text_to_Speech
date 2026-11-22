@@ -12,6 +12,7 @@ initializeTheme();
 initializeLocale();
 
 // Process OIDC callback before Vue Router reads the current URL.
+document.querySelector('#app [role="status"]').textContent = translate('Đang kết nối dịch vụ đăng nhập…');
 await initializeAuth();
 const { default: router } = await import('./router');
 const app = createApp(App);

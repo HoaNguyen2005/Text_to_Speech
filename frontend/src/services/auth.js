@@ -8,9 +8,11 @@ export const session = ref(null);
 export const authLoading = ref(false);
 export const authError = ref('');
 export const identitySession = ref(false);
+const identityUrl = (import.meta.env.VITE_KEYCLOAK_URL || 'http://localhost:8080').replace(/\/+$/, '');
+const realm = import.meta.env.VITE_KEYCLOAK_REALM || 'tts-local';
 const keycloak = new Keycloak({
-  url: import.meta.env.VITE_KEYCLOAK_URL || 'http://localhost:8080',
-  realm: import.meta.env.VITE_KEYCLOAK_REALM || 'tts-local',
+  url: identityUrl,
+  realm,
   clientId: import.meta.env.VITE_KEYCLOAK_CLIENT_ID || 'tts-frontend',
 });
 let initialized, refreshing;
@@ -31,6 +33,29 @@ function welcomeUser(user, accountCreated) {
   });
 }
 const redirectUri = () => new URL('/', window.location.origin).href;
+async function waitForService(url, ready) {
+  const signal = AbortSignal.timeout(90000);
+  while (!signal.aborted) {
+    try {
+      const response = await fetch(url, { cache: 'no-store', signal });
+      if (response.ok && ready(await response.json())) return true;
+    } catch { /* A sleeping service can return HTML or be temporarily unreachable. */ }
+    if (!signal.aborted) await new Promise(resolve => setTimeout(resolve, 1500));
+  }
+  return false;
+}
+const backendReady = () => waitForService(`${API_BASE_URL}/api/health`, data => data?.status === 'ok');
+const keycloakReady = () => waitForService(
+  `${identityUrl}/realms/${encodeURIComponent(realm)}/.well-known/openid-configuration`,
+  data => Boolean(data?.issuer && data?.authorization_endpoint)
+);
+async function loadSignedInProfile(readiness = backendReady()) {
+  if (!await readiness) {
+    authError.value = 'Không thể tải hồ sơ tài khoản. Vui lòng thử lại.';
+    return;
+  }
+  await refreshSession();
+}
 function clearLegacyStorage() {
   localStorage.removeItem('token');
   localStorage.removeItem('user');
@@ -74,12 +99,15 @@ export function initializeAuth() {
     keycloak.onAuthSuccess = () => { identitySession.value = true; };
     keycloak.onTokenExpired = () => { getAccessToken().catch(() => {}); };
     try {
+      // Wake both services before the browser submits credentials or exchanges an authorization code.
+      const backend = backendReady();
+      if (!await keycloakReady()) throw new Error('Keycloak is unavailable');
       const authenticated = await keycloak.init({
         pkceMethod: 'S256', flow: 'standard',
         responseMode: 'query', checkLoginIframe: false, messageReceiveTimeout: 10000, locale: locale.value,
       });
       identitySession.value = authenticated;
-      if (authenticated) await refreshSession();
+      if (authenticated) await loadSignedInProfile(backend);
       if (!authenticated) {
         // Start the browser flow before showing the welcome card so its forms
         // and the authentication cookies belong to the same Keycloak origin.
@@ -99,6 +127,7 @@ export function initializeAuth() {
   return initialized;
 }
 async function redirect(action) {
+  if (!keycloak.didInitialize || (action === 'login' && keycloak.authenticated)) return retryAuth();
   authLoading.value = true;
   authError.value = '';
   try {
@@ -128,4 +157,11 @@ export async function handleLogout() {
   try { await keycloak.logout({ redirectUri: redirectUri() }); }
   catch { save(logoutKey, null); authError.value = 'Không thể đăng xuất khỏi dịch vụ đăng nhập. Hãy thử lại.'; }
 }
-export const retryAuth = () => window.location.reload();
+export async function retryAuth() {
+  if (!keycloak.authenticated) return window.location.reload();
+  authLoading.value = true;
+  authError.value = '';
+  try { await loadSignedInProfile(); }
+  catch { authError.value ||= 'Không thể tải hồ sơ tài khoản. Vui lòng thử lại.'; }
+  finally { authLoading.value = false; }
+}
