@@ -377,16 +377,15 @@ onBeforeUnmount(() => {
                   <span v-if="!manage && keyOf(voice) === modelValue" class="voice-selected-mark" :title="$t('Đã chọn')">
                     <UiIcon name="check" />
                   </span>
+                  <span v-if="admin && voice.is_active === false" class="pill amber voice-locked-pill">{{ $t('Đã khóa') }}</span>
                 </div>
                 <p class="voice-row-desc" :title="voice.description">{{ voice.description || $t('Nghe mẫu để chọn giọng phù hợp.') }}</p>
               </div>
 
-              <div class="voice-row-meta">
+              <div class="voice-row-meta" :class="{ 'is-admin': admin }">
                 <span class="voice-lang-tag"><span class="voice-flag-vn" aria-hidden="true">★</span>{{ $t('Tiếng Việt') }}</span>
                 <span class="voice-gender-tag" :class="voice.gender === 'female' ? 'is-female' : 'is-male'">{{ voice.gender === 'female' ? '♀' : '♂' }} {{ $t(voice.gender === 'female' ? 'Nữ' : 'Nam') }}</span>
-                <span class="voice-class" :class="tierOf(voice)">{{ tierLabels[tierOf(voice)] }}</span>
-                <code v-if="admin && voice.voice_id" class="voice-code-tag">{{ voice.voice_id }}</code>
-                <span v-if="admin && voice.is_active === false" class="pill amber">{{ $t('Đã khóa') }}</span>
+                <code v-if="admin && voice.voice_id" class="voice-code-tag" :title="voice.voice_id">{{ voice.voice_id }}</code>
               </div>
 
               <div v-if="!manage || voice.can_edit" class="voice-row-actions">
@@ -813,7 +812,7 @@ onBeforeUnmount(() => {
 }
 .voice-row {
   display: grid;
-  grid-template-columns: 42px minmax(190px, 1.3fr) minmax(240px, 1.15fr) auto;
+  grid-template-columns: 42px minmax(180px, 1fr) auto auto;
   align-items: center;
   gap: 16px;
   padding: 11px 14px;
@@ -938,20 +937,32 @@ onBeforeUnmount(() => {
   height: 11px;
 }
 
+.voice-locked-pill {
+  padding: 2px 8px;
+  font-size: 10.5px;
+  line-height: 1.3;
+  flex-shrink: 0;
+}
+
 .voice-row-meta {
-  display: flex;
+  display: grid;
+  grid-template-columns: 112px 82px;
   align-items: center;
-  flex-wrap: wrap;
-  column-gap: 12px;
-  row-gap: 6px;
+  gap: 10px;
   min-width: 0;
+}
+.voice-row-meta.is-admin {
+  grid-template-columns: 112px 82px 132px;
 }
 .voice-lang-tag,
 .voice-gender-tag {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 6px;
-  padding: 3px 10px;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 4px 10px;
   border-radius: 999px;
   font-size: 11.5px;
   line-height: 1.3;
@@ -991,36 +1002,16 @@ onBeforeUnmount(() => {
   border-color: rgb(236 72 153 / 32%);
   color: var(--ink);
 }
-.voice-class {
-  font-size: 11.5px;
-  font-weight: 700;
-  padding: 3px 11px;
-  border-radius: 999px;
-  display: inline-flex;
-  align-items: center;
-  background: var(--surface-raised);
-  border: 1px solid var(--line);
-  color: var(--text-body);
-  line-height: 1.3;
-}
-.voice-class.gold {
-  color: var(--gold-ink);
-  background: var(--gold-bg);
-  border-color: var(--gold-border);
-}
-.voice-class.diamond {
-  color: var(--diamond-ink);
-  background: var(--diamond-bg);
-  border-color: var(--diamond-border);
-}
 .voice-code-tag {
-  font-size: 10px;
-  padding: 2px 6px;
-  border-radius: 6px;
+  width: 100%;
+  box-sizing: border-box;
+  text-align: center;
+  font-size: 10.5px;
+  padding: 4px 8px;
+  border-radius: 7px;
   background: var(--surface-raised);
   border: 1px solid var(--line);
   color: var(--muted);
-  max-width: 16ch;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1080,6 +1071,13 @@ onBeforeUnmount(() => {
   font-size: 12px;
   font-weight: 600;
   white-space: nowrap;
+  justify-content: center;
+}
+.voice-manage-btn:first-child {
+  min-width: 96px;
+}
+.voice-manage-btn:last-child {
+  min-width: 86px;
 }
 .voice-manage-btn.is-restore {
   color: var(--success);
@@ -1205,8 +1203,17 @@ onBeforeUnmount(() => {
     grid-template-columns: 40px minmax(0, 1fr) auto;
     gap: 10px 12px;
   }
-  .voice-row-meta {
+  .voice-row-meta,
+  .voice-row-meta.is-admin {
     grid-column: 2 / 4;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .voice-lang-tag,
+  .voice-gender-tag,
+  .voice-code-tag {
+    width: auto;
   }
 }
 @media (max-width: 600px) {
