@@ -147,11 +147,18 @@ async function redirect(action) {
 export const handleLogin = () => redirect('login');
 export const handleRegister = () => redirect('register');
 export async function handleLogout() {
-  session.value = null;
-  clearLegacyStorage();
-  save(logoutKey, document.documentElement.dataset.theme);
-  try { await keycloak.logout({ redirectUri: redirectUri() }); }
-  catch { save(logoutKey, null); authError.value = 'Không thể đăng xuất khỏi dịch vụ đăng nhập. Hãy thử lại.'; }
+  if (authLoading.value) return;
+  authLoading.value = true;
+  try {
+    clearLegacyStorage();
+    save(logoutKey, document.documentElement.dataset.theme);
+    // Keep the workspace mounted until Keycloak takes over the navigation.
+    await keycloak.logout({ redirectUri: redirectUri() });
+  } catch {
+    save(logoutKey, null);
+    authLoading.value = false;
+    authError.value = 'Không thể đăng xuất khỏi dịch vụ đăng nhập. Hãy thử lại.';
+  }
 }
 export async function retryAuth() {
   if (!keycloak.authenticated) return window.location.reload();
