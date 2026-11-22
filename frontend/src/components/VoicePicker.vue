@@ -326,7 +326,7 @@ onBeforeUnmount(() => {
                 <UiIcon name="search" />
                 <input v-model="search" class="input" type="search" :aria-label="$t('Tìm giọng đọc')" :placeholder="$t('Tìm tên giọng đọc…')" />
               </div>
-              <button v-if="session" type="button" class="btn primary small voice-picker-add" :disabled="disabled" @click="edit(null)">
+              <button v-if="session && !admin" type="button" class="btn primary small voice-picker-add" :disabled="disabled" @click="edit(null)">
                 <UiIcon name="plus" />{{ $t('Thêm giọng mới') }}
               </button>
             </div>
@@ -346,7 +346,7 @@ onBeforeUnmount(() => {
               class="voice-row"
               :class="[
                 {
-                  selected: keyOf(voice) === modelValue,
+                  selected: !manage && keyOf(voice) === modelValue,
                   playing: playing === keyOf(voice) || preparing === keyOf(voice),
                   locked: voice.usable === false
                 },
@@ -374,7 +374,7 @@ onBeforeUnmount(() => {
                       {{ voice.name }}
                     </strong>
                   </span>
-                  <span v-if="keyOf(voice) === modelValue" class="voice-selected-mark" :title="$t('Đã chọn')">
+                  <span v-if="!manage && keyOf(voice) === modelValue" class="voice-selected-mark" :title="$t('Đã chọn')">
                     <UiIcon name="check" />
                   </span>
                 </div>
@@ -389,8 +389,9 @@ onBeforeUnmount(() => {
                 <span v-if="admin && voice.is_active === false" class="pill amber">{{ $t('Đã khóa') }}</span>
               </div>
 
-              <div class="voice-row-actions">
+              <div v-if="!manage || voice.can_edit" class="voice-row-actions">
                 <button
+                  v-if="!manage"
                   type="button"
                   class="btn small voice-use-btn"
                   :class="{ 'is-selected': keyOf(voice) === modelValue, 'is-upgrade': voice.usable === false }"
@@ -402,10 +403,16 @@ onBeforeUnmount(() => {
                   <span>{{ $t('Chọn') }}</span>
                 </button>
                 <div v-if="voice.can_edit" class="voice-row-manage">
-                  <button type="button" class="text-button" :disabled="disabled" @click.stop="edit(voice)">
+                  <button type="button" class="btn small voice-manage-btn" :disabled="disabled" @click.stop="edit(voice)">
                     <UiIcon name="edit" />{{ $t('Chỉnh sửa') }}
                   </button>
-                  <button type="button" class="text-button" :disabled="disabled || hiding === voice.voice_id" @click.stop="hide(voice)">
+                  <button
+                    type="button"
+                    class="btn small voice-manage-btn"
+                    :class="admin && voice.is_active === false ? 'is-restore' : 'danger'"
+                    :disabled="disabled || hiding === voice.voice_id"
+                    @click.stop="hide(voice)"
+                  >
                     {{ $t(admin ? (voice.is_active === false ? 'Mở khóa' : 'Khóa') : 'Ẩn giọng') }}
                   </button>
                 </div>
@@ -1064,16 +1071,28 @@ onBeforeUnmount(() => {
 .voice-row-manage {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
 }
-.voice-row-manage .text-button {
-  font-size: 11px;
-  min-height: 28px;
-  padding: 2px 6px;
+.voice-manage-btn {
+  min-height: 32px;
+  padding: 5px 11px;
+  border-radius: 9px;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
 }
-.voice-row-manage .ui-icon {
-  width: 12px;
-  height: 12px;
+.voice-manage-btn.is-restore {
+  color: var(--success);
+  background: var(--success-bg);
+  border-color: var(--success-line);
+}
+.voice-manage-btn.is-restore:hover:not(:disabled) {
+  border-color: var(--success);
+  background: color-mix(in srgb, var(--success) 16%, transparent);
+}
+.voice-manage-btn .ui-icon {
+  width: 13px;
+  height: 13px;
 }
 
 .voice-picker-footer {
