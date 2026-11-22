@@ -919,5 +919,22 @@
   "Đánh thức Cloud": "Wake Cloud",
   "Khởi động lại Engine": "Restart Engine",
   "Đang kiểm tra": "Checking",
-  "Đang đánh thức máy chủ đăng nhập (Render), vui lòng đợi trong giây lát…": "Waking up the sign-in server (Render), please wait a moment…"
+  "Đang đánh thức máy chủ đăng nhập (Render), vui lòng đợi trong giây lát…": "Waking up the sign-in server (Render), please wait a moment…",
+  "Quản lý bộ tạo giọng": "Voice generator management",
+  "Khóa hoặc mở khóa các bộ tạo giọng (Edge-TTS + OpenVoice, VieNeu-TTS) trên toàn hệ thống.": "Lock or unlock voice generators (Edge-TTS + OpenVoice, VieNeu-TTS) across the system.",
+  "bộ tạo giọng": "voice generators",
+  "Mã định danh": "Identifier",
+  "Nhân xử lý": "Engine backend",
+  "Giọng tiêu chuẩn": "Standard voices",
+  "giọng": "voices",
+  "Khóa bộ tạo giọng": "Lock voice generator",
+  "Mở khóa bộ tạo giọng": "Unlock voice generator",
+  "Khóa bộ tạo giọng “{0}” để người dùng tạm thời không thể chọn hoặc tạo âm thanh bằng bộ này?": "Lock voice generator “{0}” so users temporarily cannot select or generate audio with it?",
+  "Mở khóa bộ tạo giọng “{0}” để người dùng có thể sử dụng lại?": "Unlock voice generator “{0}” so users can use it again?",
+  "Đã khóa bộ tạo giọng.": "Voice generator locked.",
+  "Đã mở khóa bộ tạo giọng.": "Voice generator unlocked.",
+  "Không thể đổi trạng thái bộ tạo giọng.": "Unable to update the voice generator status.",
+  "Tất cả bộ tạo giọng đang tạm khóa": "All voice generators are temporarily locked",
+  "Tất cả bộ tạo giọng đang tạm khóa bởi quản trị viên.": "All voice generators are temporarily locked by an administrator.",
+  "Có bộ tạo giọng đang bị khóa.": "A voice generator is currently locked."
 }

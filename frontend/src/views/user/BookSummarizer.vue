@@ -30,6 +30,11 @@ const ratePercent = ref(0);
 const durationInput = ref(null), sourceInput = ref(null), sourceDurationIssue = ref(null);
 const validDuration = computed(() => Number.isInteger(targetMinutes.value) && targetMinutes.value >= 1 && targetMinutes.value <= limits.value.bookMinutes);
 const ttsProvider = ref('edge');
+const availableProviders = ref([
+  { provider_id: 'edge', name: 'Edge-TTS + OpenVoice', is_active: true },
+  { provider_id: 'vieneu', name: 'VieNeu-TTS', is_active: true },
+]);
+const providersLockedOut = computed(() => availableProviders.value.length === 0);
 const providerNames = { edge: 'Edge + OpenVoice', vieneu: 'VieNeu-TTS' };
 const selectedVoiceId = ref('');
 const voiceChoices = ref({ standard: [], clone: [] });
@@ -87,7 +92,7 @@ async function startNewSummary(minutes = 10) {
   selected.value = null;
   sourceName.value = ''; bookTitle.value = ''; bookAuthor.value = ''; sourceCitation.value = ''; fullText.value = '';
   targetMinutes.value = Number.isInteger(minutes) && minutes >= 1 && minutes <= limits.value.bookMinutes ? minutes : 10;
-  ratePercent.value = 0; selectedVoiceId.value = ''; ttsProvider.value = 'edge';
+  ratePercent.value = 0; selectedVoiceId.value = ''; ttsProvider.value = availableProviders.value[0]?.provider_id || 'edge';
   requestId = null; requestSignature = null;
   sourceDurationIssue.value = null; fileStatus.value = ''; fileError.value = ''; errorMessage.value = ''; statusMessage.value = '';
   await nextTick();
@@ -126,8 +131,17 @@ async function fetchVoiceChoices() {
   try {
     const { data } = await api.get('/api/book-jobs/voices', { params:{provider:ttsProvider.value}, timeout: 20000 });
     if (disposed) return;
+    if (Array.isArray(data.providers)) {
+      availableProviders.value = data.providers;
+      if (availableProviders.value.length && !availableProviders.value.some((p) => p.provider_id === ttsProvider.value)) {
+        loadingVoices.value = false;
+        ttsProvider.value = availableProviders.value[0].provider_id;
+        return;
+      }
+    }
     voiceChoices.value = data;
     if (!chosenVoice.value) selectedVoiceId.value = '';
+    if (!availableProviders.value.length) voiceError.value = 'Tất cả bộ tạo giọng đang tạm khóa bởi quản trị viên.';
   } catch (error) {
     voiceError.value = error.response?.data?.error || 'Chưa tải được danh sách giọng. Hãy thử tải lại.';
   } finally { loadingVoices.value = false; }
@@ -421,18 +435,24 @@ onBeforeUnmount(() => { disposed = true; ++selectionVersion; clearTimeout(timer)
         </div>
         <div v-if="sourceDurationIssue" class="book-source-duration" role="alert"><small>{{ sourceDurationIssue.max_minutes ? $t('Nguồn hiện tại gợi ý tối đa khoảng {0} phút.',[sourceDurationIssue.max_minutes]) : $t('Hãy bổ sung nội dung nguồn để tạo bản tóm tắt từ 1 phút.') }}</small><small>{{ $t('Sau khi điều chỉnh, bấm Tạo bản tóm tắt để gửi yêu cầu mới.') }}</small><button v-if="sourceDurationIssue.max_minutes" type="button" class="btn small" :disabled="busy" @click="useSuggestedDuration">{{ $t('Chọn {0} phút',[sourceDurationIssue.max_minutes]) }}</button><button v-else type="button" class="btn small" :disabled="busy" @click="focusSource">{{ $t('Bổ sung nội dung') }}</button></div>
         <div class="book-voice-settings">
-          <div class="field"><label for="book-tts-provider">{{ $t('Bộ tạo giọng') }}</label><select id="book-tts-provider" v-model="ttsProvider" class="input" :disabled="busy || loadingVoices"><option value="vieneu">VieNeu-TTS</option><option value="edge">Edge-TTS + OpenVoice</option></select></div>
+          <div class="field">
+            <label for="book-tts-provider">{{ $t('Bộ tạo giọng') }}</label>
+            <select id="book-tts-provider" v-model="ttsProvider" class="input" :disabled="busy || loadingVoices || providersLockedOut">
+              <option v-if="providersLockedOut" value="" disabled>{{ $t('Tất cả bộ tạo giọng đang tạm khóa') }}</option>
+              <option v-for="item in availableProviders" :key="item.provider_id" :value="item.provider_id">{{ item.name }}</option>
+            </select>
+          </div>
           <div class="field book-voice-choice">
             <label>{{ $t('Chọn giọng đọc') }} <span aria-hidden="true">*</span></label>
-            <VoicePicker v-model="selectedVoiceId" :voices="availableVoices" :provider="ttsProvider" :loading="loadingVoices" :disabled="busy||!!voiceError" @refresh="fetchVoiceChoices" />
-            <p v-if="voiceError" class="text-muted">{{ $t('Chưa tải được danh sách giọng. Hãy thử tải lại.') }}</p>
+            <VoicePicker v-model="selectedVoiceId" :voices="availableVoices" :provider="ttsProvider" :loading="loadingVoices" :disabled="busy||!!voiceError||providersLockedOut" @refresh="fetchVoiceChoices" />
+            <p v-if="voiceError" class="text-muted">{{ $t(voiceError) }}</p>
             <small v-else-if="!loadingVoices && !availableVoices.length">{{ $t("Chưa có giọng mẫu được phép dùng. Hãy thêm giọng hoặc chọn loại giọng tiêu chuẩn.") }}</small>
             <button type="button" class="text-button book-refresh-voices" :disabled="busy || loadingVoices" :aria-label="$t('Tải lại danh sách giọng')" @click="fetchVoiceChoices"><UiIcon name="refresh" />{{ $t("Tải lại") }}</button>
           </div>
         </div>
         <SpeechRateControl v-model="ratePercent" :disabled="busy" :hint="$t('Có thể đổi tốc độ sau khi có bản tóm tắt, trước khi tạo âm thanh.')" class="book-new-rate" />
         <details class="book-settings-help"><summary>{{ $t('Lưu ý khi tạo') }}</summary><p>{{ $t('Xem lại bản tóm tắt trước khi tạo âm thanh. Nguồn ngắn có thể cho thời lượng ngắn hơn.') }}</p><p>{{ $t('Để đổi giọng đã gửi, hãy tạo yêu cầu mới.') }}</p></details>
-        <div class="settings-actions"><button type="button" class="btn primary full" :disabled="busy || !validDuration || !chosenVoice || loadingVoices || !!voiceError || !fullText.trim()" @click="processBook"><span v-if="submitting" class="spinner" aria-hidden="true"></span><UiIcon v-else name="spark" />{{ submitting ? $t("Đang gửi…") : $t('Tạo bản tóm tắt') }}</button></div>
+        <div class="settings-actions"><button type="button" class="btn primary full" :disabled="busy || !validDuration || !chosenVoice || loadingVoices || !!voiceError || providersLockedOut || !fullText.trim()" @click="processBook"><span v-if="submitting" class="spinner" aria-hidden="true"></span><UiIcon v-else name="spark" />{{ submitting ? $t("Đang gửi…") : $t('Tạo bản tóm tắt') }}</button></div>
         <p v-if="workerOnline === false" class="notice">{{ $t("Worker đang tắt. Yêu cầu sẽ chờ xử lý.") }}</p>
 
       </section>

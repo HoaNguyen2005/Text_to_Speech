@@ -8,7 +8,14 @@ const snapshot = ({ voice_id, name, gender, file_path, provider = 'edge', preset
 });
 
 async function choices(user, requested) {
-    const provider = providers.validate(requested);
+    const allProviders = await providers.list({ includeLocked: true });
+    const activeProviders = allProviders.filter((item) => item.is_active !== false);
+    const requestedId = requested === undefined ? (activeProviders[0]?.provider_id || providers.defaultProvider) : requested;
+    const provider = providers.validate(requestedId);
+    const isProviderActive = activeProviders.some((item) => item.provider_id === provider);
+    if (!isProviderActive) {
+        return { provider, provider_locked: true, providers: activeProviders, standard: [], clone: [], voices: [] };
+    }
     const voices = await Voice.find({ is_active: true, ...access.filter(user) }).sort({ name: 1 }).lean();
     const standard = config.standardVoices
         .filter(voice => (voice.provider || 'edge') === provider)
@@ -24,10 +31,10 @@ async function choices(user, requested) {
         choice_id: `sample:${voice._id}`,
     }));
     // Keep the old groups for existing clients; the unified catalogue drives the UI.
-    return { provider, standard, clone, voices: [...standard, ...clone] };
+    return { provider, provider_locked: false, providers: activeProviders, standard, clone, voices: [...standard, ...clone] };
 }
 async function resolve(mode, id, user, requested) {
-    const provider = providers.validate(requested);
+    const provider = await providers.ensureActive(requested);
     if (typeof id !== 'string' || !/^[a-zA-Z0-9_-]{1,80}$/.test(id)) throw problem('Vui lòng chọn giọng đọc cụ thể trước khi tạo sách nói.');
     if (mode === 'standard') {
         const voice = config.standardVoices.find(entry => entry.voice_id === id && (entry.provider || 'edge') === provider);

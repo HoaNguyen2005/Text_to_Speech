@@ -20,8 +20,13 @@ const sourceName = ref('');
 const wordCount = computed(() => text.value.trim() ? text.value.trim().split(/\s+/).length : 0);
 const teacherId = ref('');
 const ttsProvider=ref('edge');
+const availableProviders=ref([
+  {provider_id:'edge',name:'Edge-TTS + OpenVoice',is_active:true},
+  {provider_id:'vieneu',name:'VieNeu-TTS',is_active:true},
+]);
+const providersLockedOut=computed(()=>availableProviders.value.length===0);
 const styleId = ref('normal');
-const speechOptions=ref({version:'speech-v1',profile:'teaching',normalize:false,dictionary:[],rate_percent:0});
+const speechOptions=ref({version:'speech-v1',profile:'auto',normalize:false,dictionary:[],rate_percent:0});
 const deliveries=ref([{profile:'auto',paragraph_profiles:[]}]),speechTools=ref(null);
 const previewLoading=ref(false),previewUrl=ref(''),subtitleUrl=ref('');
 const resultHistoryId=ref('');
@@ -50,8 +55,16 @@ const fetchVoices = async () => {
   try {
     const res = await api.get('/api/book-jobs/voices',{params:{provider}});
     if(disposed||version!==voiceRequest)return;
-    teachers.value = res.data.voices;
+    if(Array.isArray(res.data.providers)){
+      availableProviders.value=res.data.providers;
+      if(availableProviders.value.length && !availableProviders.value.some(p=>p.provider_id===provider)){
+        ttsProvider.value=availableProviders.value[0].provider_id;
+        return;
+      }
+    }
+    teachers.value = res.data.voices || [];
     if (!chosenTeacher.value)teacherId.value=teachers.value.find(voice=>voice.usable!==false)?.choice_id||'';
+    if(!availableProviders.value.length)errorMessage.value='Tất cả bộ tạo giọng đang tạm khóa bởi quản trị viên.';
   } catch (error) {
     if(disposed||version!==voiceRequest)return;
     teachers.value=[];teacherId.value='';
@@ -218,10 +231,16 @@ const handleFileUpload = (event) => {
       <section class="panel">
         <div class="panel-heading"><h2><UiIcon name="mic" />{{ $t("Thiết lập giọng đọc") }}</h2></div>
         <div class="settings-fields">
-          <div class="field"><label for="lecture-tts-provider">{{ $t('Bộ tạo giọng') }}</label><select id="lecture-tts-provider" v-model="ttsProvider" class="input" :disabled="speechBusy"><option value="vieneu">VieNeu-TTS</option><option value="edge">Edge-TTS + OpenVoice</option></select></div>
-          <div class="field"><label>{{ $t("Giọng đọc") }}</label><VoicePicker ref="voicePicker" v-model="teacherId" :voices="teachers" :provider="ttsProvider" :loading="loadingVoices" :disabled="speechBusy" @refresh="fetchVoices" /></div>
+          <div class="field">
+            <label for="lecture-tts-provider">{{ $t('Bộ tạo giọng') }}</label>
+            <select id="lecture-tts-provider" v-model="ttsProvider" class="input" :disabled="speechBusy || providersLockedOut">
+              <option v-if="providersLockedOut" value="" disabled>{{ $t('Tất cả bộ tạo giọng đang tạm khóa') }}</option>
+              <option v-for="item in availableProviders" :key="item.provider_id" :value="item.provider_id">{{ item.name }}</option>
+            </select>
+          </div>
+          <div class="field"><label>{{ $t("Giọng đọc") }}</label><VoicePicker ref="voicePicker" v-model="teacherId" :voices="teachers" :provider="ttsProvider" :loading="loadingVoices" :disabled="speechBusy || providersLockedOut" @refresh="fetchVoices" /></div>
         </div>
-        <div class="settings-actions"><button type="button" class="btn full" :disabled="speechBusy || loadingVoices || !text.trim() || text.length>limits.lectureChars || !chosenTeacher || chosenTeacher.usable===false" @click="previewLecture"><UiIcon name="headphones" />{{ $t('Nghe thử tối đa 30 giây') }}</button><button type="button" class="btn primary full" @click="generateLecture" :disabled="speechBusy || loadingVoices || !text.trim() || text.length>limits.lectureChars || !chosenTeacher || chosenTeacher.usable===false"><span v-if="loading" class="spinner" aria-hidden="true"></span><UiIcon v-else name="wave" />{{ loading ? $t("Đang tạo âm thanh…") : $t("Tạo âm thanh") }}</button><p class="settings-hint">{{ $t("Kết quả được lưu trong lịch sử của bạn.") }}</p></div>
+        <div class="settings-actions"><button type="button" class="btn full" :disabled="speechBusy || loadingVoices || providersLockedOut || !text.trim() || text.length>limits.lectureChars || !chosenTeacher || chosenTeacher.usable===false" @click="previewLecture"><UiIcon name="headphones" />{{ $t('Nghe thử tối đa 30 giây') }}</button><button type="button" class="btn primary full" @click="generateLecture" :disabled="speechBusy || loadingVoices || providersLockedOut || !text.trim() || text.length>limits.lectureChars || !chosenTeacher || chosenTeacher.usable===false"><span v-if="loading" class="spinner" aria-hidden="true"></span><UiIcon v-else name="wave" />{{ loading ? $t("Đang tạo âm thanh…") : $t("Tạo âm thanh") }}</button><p class="settings-hint">{{ $t("Kết quả được lưu trong lịch sử của bạn.") }}</p></div>
       </section>
       <section class="panel helper-panel"><UiIcon name="mic" /><h3>{{ $t("Mang âm sắc của riêng bạn") }}</h3><p>{{ $t("Thêm bản ghi âm mẫu để tạo giọng đọc phù hợp với nội dung của bạn.") }}</p><button type="button" class="text-button" :disabled="speechBusy" @click="voicePicker.add()"><UiIcon name="plus" />{{ $t('Thêm giọng mới') }}</button></section>
     </aside>

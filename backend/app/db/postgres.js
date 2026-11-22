@@ -6,6 +6,7 @@ require('../config/env');
 const context = new AsyncLocalStorage();
 let pool;
 let directPool;
+let connected = false;
 const MIGRATIONS = [
     { version: '001-app-postgres', file: 'schema.sql' },
     { version: '002-book-custom-duration', file: 'migrations/002-book-custom-duration.sql' },
@@ -20,6 +21,7 @@ const MIGRATIONS = [
     { version: '011-split-book-job-storage', file: 'migrations/20261112030932_split_book_job_storage.sql' },
     { version: '012-account-subscriptions-billing', file: 'migrations/20261118103750_account_subscriptions_billing.sql' },
     { version: '013-main-book-queue', file: 'migrations/20261119090100_main_book_queue.sql' },
+    { version: '014-tts-providers', file: 'migrations/20261122115000_tts_providers.sql' },
 ];
 const SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;
 function createPool(connectionString, direct) {
@@ -101,6 +103,7 @@ async function connect() {
     if (!migrated.rowCount && process.env.PG_ALLOW_EMPTY_DATABASE !== 'true') {
         throw new Error('Chưa chuyển dữ liệu MongoDB. Chạy npm run db:import trước khi bật Backend/worker.');
     }
+    connected = true;
 }
 let lastPrune = 0;
 async function pruneExpired() {
@@ -111,9 +114,11 @@ async function pruneExpired() {
     lastPrune = Date.now();
 }
 async function close() {
+    connected = false;
     const current = [pool, directPool].filter(Boolean);
     pool = directPool = undefined;
     await Promise.all(current.map(value => value.end()));
 }
 const isValidId = (value) => typeof value === 'string' && /^[a-f0-9]{24}$/i.test(value);
-module.exports = { query, transaction, getPool, migrateSchema, connect, close, pruneExpired, isValidId };
+const isConnected = () => connected;
+module.exports = { query, transaction, getPool, migrateSchema, connect, close, pruneExpired, isValidId, isConnected };

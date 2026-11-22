@@ -28,6 +28,8 @@ function receiveAudio(req, res, next) {
 
 // CRUD Routes cho Giọng đọc mẫu
 // GET dùng optionalAuth: khách thấy giọng global, user đăng nhập thấy thêm giọng riêng
+router.get('/providers', optionalAuth, voiceController.getProviders);
+router.put('/providers/:id', verifyToken, voiceController.updateProvider);
 router.get('/', optionalAuth, voiceController.getAllVoices);
 router.post('/', verifyToken, receiveAudio, voiceController.createVoice);
 router.get('/presets/:provider/:voiceId/preview',verifyToken,async(req,res)=>{

@@ -4,6 +4,7 @@ const fs = require('fs');
 const crypto = require('crypto');
 const storage = require('../services/storage.service');
 const access = require('../services/voice_access');
+const providers = require('../services/tts_provider.service');
 const {isValidId}=require('../db/postgres');
 
 // Lấy danh sách giọng mẫu
@@ -207,4 +208,39 @@ exports.preview=async(req,res)=>{
         if(path.dirname(file)!==directory || !fs.existsSync(file))return res.status(404).json({error:'Không tìm thấy file giọng mẫu.'});
         res.sendFile(file);
     }catch(error){if(!res.headersSent&&!res.destroyed)res.status(503).json({error:'Không tải được giọng nghe mẫu. Hãy thử lại.'});else res.destroy();}
+};
+
+exports.getProviders = async (req, res) => {
+    try {
+        const includeLocked = req.query.include_locked === 'true';
+        if (includeLocked && req.user?.role !== 'admin') {
+            return res.status(403).json({ error: 'Chỉ quản trị viên được xem danh sách bộ tạo giọng đã khóa.' });
+        }
+        res.setHeader('Cache-Control', 'private, no-store');
+        res.json(await providers.list({ includeLocked }));
+    } catch (error) {
+        res.status(error.status || 500).json({ error: error.status ? error.message : 'Lỗi khi tải danh sách bộ tạo giọng.' });
+    }
+};
+
+exports.updateProvider = async (req, res) => {
+    try {
+        if (req.user?.role !== 'admin') {
+            return res.status(403).json({ error: 'Bạn không có quyền quản trị.' });
+        }
+        const updates = req.body || {};
+        if (typeof updates.is_active !== 'boolean') {
+            return res.status(400).json({ error: 'Trạng thái bộ tạo giọng không hợp lệ.' });
+        }
+        const updated = await providers.updateStatus(req.params.id, {
+            is_active: updates.is_active,
+            ...(updates.description !== undefined ? { description: updates.description } : {}),
+        });
+        res.json({
+            message: updates.is_active ? 'Đã mở khóa bộ tạo giọng.' : 'Đã khóa bộ tạo giọng.',
+            data: updated,
+        });
+    } catch (error) {
+        res.status(error.status || 500).json({ error: error.status ? error.message : 'Không thể đổi trạng thái bộ tạo giọng.' });
+    }
 };
