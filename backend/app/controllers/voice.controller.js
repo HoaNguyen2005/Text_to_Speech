@@ -36,8 +36,10 @@ exports.createVoice = async (req, res) => {
         const voice_id = typeof input.voice_id === 'string' ? input.voice_id.trim() : '';
         const name = typeof input.name === 'string' ? input.name.trim() : '';
         const gender = input.gender === undefined ? 'male' : input.gender;
+        const nation = input.nation === undefined || input.nation === '' ? 'vi' : (typeof input.nation === 'string' ? input.nation.trim() : '');
         const voiceClass=req.user.role==='admin'?(input.class||'free'):'free';
         const description=typeof input.description==='string'?input.description.trim():'';
+        if(!/^[a-z]{2}(?:-[A-Z]{2})?$/.test(nation))return res.status(400).json({error:'Ngôn ngữ / quốc gia giọng đọc không hợp lệ.'});
         if(!['free','gold','diamond'].includes(voiceClass) || description.length>500 || (input.class && req.user.role!=='admin' && input.class!=='free'))return res.status(400).json({error:'Phân hạng hoặc mô tả giọng không hợp lệ.'});
 
         if (!voice_id || !name || !req.file) {
@@ -80,6 +82,7 @@ exports.createVoice = async (req, res) => {
             voice_id,
             name,
             gender,
+            nation,
             class:voiceClass,description,
             file_path,
             user_id: req.user._id,
@@ -119,7 +122,7 @@ exports.createVoice = async (req, res) => {
 exports.updateVoice = async (req, res) => {
     try {
         const { id } = req.params;
-        const allowedFields = new Set(['name', 'gender', 'is_active','description','class']);
+        const allowedFields = new Set(['name', 'gender', 'nation', 'is_active','description','class']);
         const updates = req.body || {};
 
         if (!Object.keys(updates).length || Object.keys(updates).some((key) => !allowedFields.has(key))) {
@@ -147,6 +150,11 @@ exports.updateVoice = async (req, res) => {
         }
 
         const restoring=!voice.is_global&&!voice.is_active&&updates.is_active===true;
+        if (updates.nation !== undefined) {
+            const nation = typeof updates.nation === 'string' ? updates.nation.trim() : '';
+            if (!/^[a-z]{2}(?:-[A-Z]{2})?$/.test(nation)) return res.status(400).json({ error: 'Ngôn ngữ / quốc gia giọng đọc không hợp lệ.' });
+            voice.nation = nation;
+        }
         if (updates.name !== undefined) voice.name = updates.name.trim();
         if (updates.gender !== undefined) voice.gender = updates.gender;
         if (updates.is_active !== undefined) voice.is_active = updates.is_active;

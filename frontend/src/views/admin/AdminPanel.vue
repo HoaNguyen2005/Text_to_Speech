@@ -5,6 +5,7 @@ import api from '@/services/api';
 import { session } from '@/services/auth';
 import UiIcon from '@/components/UiIcon.vue';
 import StudioBanner from '@/components/StudioBanner.vue';
+import { VOICE_NATIONS } from '@/constants/voiceNations';
 import VoicePicker from '@/components/VoicePicker.vue';
 import PaymentHistory from '@/components/PaymentHistory.vue';
 import { confirmAction, useFeedback, notify } from '@/composables/useNotifications';
@@ -24,7 +25,7 @@ const roleFilter = ref('');
 const tierFilter=ref(''),grantDays=ref(30);
 const showVoiceForm = ref(false);
 const voiceFormError = useFeedback('error');
-const newVoice = ref({ name: '', gender: 'male',class:'free',description:'' });
+const newVoice = ref({ name: '', gender: 'male', nation: 'vi', class:'free',description:'' });
 let voiceCode;
 const voiceLibrary=ref(null),librarySelected=ref('');
 const audioFile = ref(null);
@@ -108,6 +109,7 @@ async function addVoice() {
   const body = new FormData();
   body.append('name', newVoice.value.name.trim());
   body.append('gender', newVoice.value.gender);
+  body.append('nation', newVoice.value.nation || 'vi');
   body.append('class',newVoice.value.class);body.append('description',newVoice.value.description);
   body.append('audio_file', audioFile.value);
   try {
@@ -115,7 +117,7 @@ async function addVoice() {
     body.append('voice_id', voiceCode);
     await api.post('/api/voices', body);
     voiceCode = undefined;
-    newVoice.value = { name: '', gender: 'male',class:'free',description:'' };
+    newVoice.value = { name: '', gender: 'male', nation: 'vi', class:'free',description:'' };
     audioFile.value = null;
     if (audioInput.value) audioInput.value.value = '';
     showVoiceForm.value = false;
@@ -229,6 +231,7 @@ async function toggleProviderLock(provider) {
         <form class="inline-form" @submit.prevent="addVoice">
           <div class="field"><label for="voice-name">{{ $t("Tên hiển thị") }}</label><input id="voice-name" v-model="newVoice.name" class="input" :placeholder="$t('VD: Giọng Nam Hà Nội')" maxlength="200" required :disabled="!!busy" /></div>
           <div class="field"><label for="voice-gender">{{ $t("Giới tính giọng đọc") }}</label><select id="voice-gender" v-model="newVoice.gender" class="input" :disabled="!!busy"><option value="male">{{ $t("Nam") }}</option><option value="female">{{ $t("Nữ") }}</option></select></div>
+          <div class="field"><label for="voice-nation">{{ $t('Ngôn ngữ / Quốc gia') }}</label><select id="voice-nation" v-model="newVoice.nation" class="input" :disabled="!!busy"><option v-for="n in VOICE_NATIONS" :key="n.code" :value="n.code">{{ $t(n.label) }}</option></select></div>
           <div class="field"><label for="voice-class">{{ $t('Phân hạng giọng') }}</label><select id="voice-class" v-model="newVoice.class" class="input" :disabled="!!busy"><option value="free">Free</option><option value="gold">Gold</option><option value="diamond">Diamond</option></select></div>
           <div class="field form-wide"><label for="voice-description">{{ $t('Mô tả') }}</label><textarea id="voice-description" v-model="newVoice.description" class="input" maxlength="500" rows="2" :disabled="!!busy" /></div>
           <div class="field"><label for="voice-audio">{{ $t("File âm thanh mẫu") }}</label><input id="voice-audio" ref="audioInput" class="input" type="file" accept="audio/*" @change="handleFileUpload" required :disabled="!!busy" /></div>

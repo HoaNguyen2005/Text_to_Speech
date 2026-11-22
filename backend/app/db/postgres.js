@@ -22,6 +22,7 @@ const MIGRATIONS = [
     { version: '012-account-subscriptions-billing', file: 'migrations/20261118103750_account_subscriptions_billing.sql' },
     { version: '013-main-book-queue', file: 'migrations/20261119090100_main_book_queue.sql' },
     { version: '014-tts-providers', file: 'migrations/20261122115000_tts_providers.sql' },
+    { version: '015-voice-nation', file: 'migrations/20261122161000_voice_nation.sql' },
 ];
 const SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;
 function createPool(connectionString, direct) {

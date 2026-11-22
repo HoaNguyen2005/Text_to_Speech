@@ -936,5 +936,14 @@
   "Không thể đổi trạng thái bộ tạo giọng.": "Unable to update the voice generator status.",
   "Tất cả bộ tạo giọng đang tạm khóa": "All voice generators are temporarily locked",
   "Tất cả bộ tạo giọng đang tạm khóa bởi quản trị viên.": "All voice generators are temporarily locked by an administrator.",
-  "Có bộ tạo giọng đang bị khóa.": "A voice generator is currently locked."
+  "Có bộ tạo giọng đang bị khóa.": "A voice generator is currently locked.",
+  "Ngôn ngữ / Quốc gia": "Language / Country",
+  "Ngôn ngữ / quốc gia giọng đọc không hợp lệ.": "Invalid voice language or country.",
+  "Tiếng Anh": "English",
+  "Tiếng Nhật": "Japanese",
+  "Tiếng Hàn": "Korean",
+  "Tiếng Trung": "Chinese",
+  "Tiếng Pháp": "French",
+  "Tiếng Đức": "German",
+  "Tiếng Tây Ban Nha": "Spanish"
 }

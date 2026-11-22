@@ -6,6 +6,7 @@ import { notify, confirmAction } from '@/composables/useNotifications';
 import UiIcon from './UiIcon.vue';
 import VoiceEditorDialog from './VoiceEditorDialog.vue';
 import { openUpgrade } from '@/composables/useAccountTier';
+import { getVoiceNation } from '@/constants/voiceNations';
 
 const props = defineProps({
   modelValue: String,
@@ -42,6 +43,7 @@ const keyOf = voice => voice.choice_id || voice.voice_id;
 const originOf = voice => voice.origin || (!voice._id || voice.is_global ? 'system' : 'user');
 const tierLabels = { free: 'Free', gold: 'Gold', diamond: 'Diamond' };
 const tierOf = voice => (voice?.class === 'gold' || voice?.class === 'diamond') ? voice.class : 'free';
+const nationOf = voice => getVoiceNation(voice?.nation);
 const chosen = computed(() => props.voices.find(v => keyOf(v) === props.modelValue));
 const chosenTier = computed(() => tierOf(chosen.value));
 const hasOwnVoices = computed(() => props.voices.some(voice => originOf(voice) === 'user'));
@@ -59,7 +61,7 @@ const filtered = computed(() => {
     originOf(v) === (tab.value === 'mine' ? 'user' : 'system') &&
     (gender.value === 'all' || v.gender === gender.value) &&
     (!selectedTiers.value.length || selectedTiers.value.includes(tierOf(v))) &&
-    (!query || [v.name, v.voice_id, v.description].join(' ').toLocaleLowerCase('vi').includes(query))
+    (!query || [v.name, v.voice_id, v.description, nationOf(v).label, nationOf(v).code].join(' ').toLocaleLowerCase('vi').includes(query))
   );
 });
 
@@ -383,7 +385,62 @@ onBeforeUnmount(() => {
               </div>
 
               <div class="voice-row-meta" :class="{ 'is-admin': admin }">
-                <span class="voice-lang-tag"><span class="voice-flag-vn" aria-hidden="true">★</span>{{ $t('Tiếng Việt') }}</span>
+                <span class="voice-lang-tag">
+                  <svg class="voice-flag-svg" viewBox="0 0 24 24" aria-hidden="true">
+                    <template v-if="nationOf(voice).flag === 'vi'">
+                      <rect width="24" height="24" fill="#da251d" />
+                      <polygon fill="#ffdf00" points="12,5 13.7,9.8 18.8,9.8 14.7,12.8 16.2,17.6 12,14.6 7.8,17.6 9.3,12.8 5.2,9.8 10.3,9.8" />
+                    </template>
+                    <template v-else-if="nationOf(voice).flag === 'en'">
+                      <rect width="24" height="24" fill="#012169" />
+                      <path d="M0 0L24 24M24 0L0 24" stroke="#fff" stroke-width="4.5" />
+                      <path d="M0 0L24 24M24 0L0 24" stroke="#c8102e" stroke-width="2" />
+                      <path d="M12 0V24M0 12H24" stroke="#fff" stroke-width="6" />
+                      <path d="M12 0V24M0 12H24" stroke="#c8102e" stroke-width="3.6" />
+                    </template>
+                    <template v-else-if="nationOf(voice).flag === 'ja'">
+                      <rect width="24" height="24" fill="#fff" />
+                      <circle cx="12" cy="12" r="5.5" fill="#bc002d" />
+                    </template>
+                    <template v-else-if="nationOf(voice).flag === 'ko'">
+                      <rect width="24" height="24" fill="#fff" />
+                      <path d="M6.5 12a5.5 5.5 0 0 1 11 0a2.75 2.75 0 0 1 -5.5 0a2.75 2.75 0 0 0 -5.5 0z" fill="#cd2e3a" />
+                      <path d="M17.5 12a5.5 5.5 0 0 1 -11 0a2.75 2.75 0 0 1 5.5 0a2.75 2.75 0 0 0 5.5 0z" fill="#0047a0" />
+                      <path d="M4.2 6.8l2.6-2.6M17.2 4.2l2.6 2.6M4.2 17.2l2.6 2.6M17.2 19.8l2.6-2.6" stroke="#111827" stroke-width="1.4" stroke-linecap="round" />
+                    </template>
+                    <template v-else-if="nationOf(voice).flag === 'zh'">
+                      <rect width="24" height="24" fill="#de2910" />
+                      <polygon fill="#ffde00" points="6.5,4.2 7.4,6.9 10.2,6.9 7.9,8.5 8.8,11.2 6.5,9.6 4.2,11.2 5.1,8.5 2.8,6.9 5.6,6.9" />
+                      <circle cx="12.2" cy="4.8" r="0.9" fill="#ffde00" />
+                      <circle cx="13.7" cy="7.2" r="0.9" fill="#ffde00" />
+                      <circle cx="13.7" cy="10" r="0.9" fill="#ffde00" />
+                      <circle cx="12" cy="12.1" r="0.9" fill="#ffde00" />
+                    </template>
+                    <template v-else-if="nationOf(voice).flag === 'fr'">
+                      <rect width="8" height="24" fill="#0055a4" />
+                      <rect x="8" width="8" height="24" fill="#fff" />
+                      <rect x="16" width="8" height="24" fill="#ef4135" />
+                    </template>
+                    <template v-else-if="nationOf(voice).flag === 'de'">
+                      <rect width="24" height="8" fill="#111" />
+                      <rect y="8" width="24" height="8" fill="#d00" />
+                      <rect y="16" width="24" height="8" fill="#ffce00" />
+                    </template>
+                    <template v-else-if="nationOf(voice).flag === 'es'">
+                      <rect width="24" height="6" fill="#aa151b" />
+                      <rect y="6" width="24" height="12" fill="#f1bf00" />
+                      <rect y="18" width="24" height="6" fill="#aa151b" />
+                      <rect x="6" y="9.2" width="3.2" height="5.6" rx="1" fill="#aa151b" />
+                    </template>
+                    <template v-else>
+                      <circle cx="12" cy="12" r="10.2" fill="none" stroke="currentColor" stroke-width="1.6" />
+                      <ellipse cx="12" cy="12" rx="4.4" ry="10.2" fill="none" stroke="currentColor" stroke-width="1.4" />
+                      <path d="M2.2 12h19.6M4.5 7.5h15M4.5 16.5h15" fill="none" stroke="currentColor" stroke-width="1.3" />
+                    </template>
+                    <circle cx="12" cy="12" r="11.5" fill="none" stroke="currentColor" stroke-opacity="0.16" stroke-width="1" />
+                  </svg>
+                  <span>{{ $t(nationOf(voice).label) }}</span>
+                </span>
                 <span class="voice-gender-tag" :class="voice.gender === 'female' ? 'is-female' : 'is-male'">{{ voice.gender === 'female' ? '♀' : '♂' }} {{ $t(voice.gender === 'female' ? 'Nữ' : 'Nam') }}</span>
                 <code v-if="admin && voice.voice_id" class="voice-code-tag" :title="voice.voice_id">{{ voice.voice_id }}</code>
               </div>
@@ -946,13 +1003,13 @@ onBeforeUnmount(() => {
 
 .voice-row-meta {
   display: grid;
-  grid-template-columns: 112px 82px;
+  grid-template-columns: minmax(118px, max-content) 82px;
   align-items: center;
   gap: 10px;
   min-width: 0;
 }
 .voice-row-meta.is-admin {
-  grid-template-columns: 112px 82px 132px;
+  grid-template-columns: minmax(118px, max-content) 82px 132px;
 }
 .voice-lang-tag,
 .voice-gender-tag {
@@ -974,16 +1031,12 @@ onBeforeUnmount(() => {
   color: var(--text-body);
   font-weight: 550;
 }
-.voice-flag-vn {
-  display: inline-grid;
-  place-items: center;
+.voice-flag-svg {
+  display: block;
   width: 15px;
   height: 15px;
   border-radius: 50%;
-  background: #da251d;
-  color: #ffdf00;
-  font-size: 8.5px;
-  line-height: 1;
+  overflow: hidden;
   flex-shrink: 0;
 }
 .voice-gender-tag {

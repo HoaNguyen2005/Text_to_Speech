@@ -3,8 +3,8 @@ const config = require('../config/book');
 const providers = require('./tts_provider.service');
 const access = require('./voice_access');
 const problem = (message, status = 400) => Object.assign(new Error(message), { status });
-const snapshot = ({ voice_id, name, gender, file_path, provider = 'edge', preset, origin, class:voiceClass='free' }) => ({
-    voice_id, name, gender, file_path, origin, class:voiceClass, ...providers.settings(provider, preset),
+const snapshot = ({ voice_id, name, gender, nation = 'vi', file_path, provider = 'edge', preset, origin, class:voiceClass='free' }) => ({
+    voice_id, name, gender, nation, file_path, origin, class:voiceClass, ...providers.settings(provider, preset),
 });
 
 async function choices(user, requested) {
@@ -19,8 +19,8 @@ async function choices(user, requested) {
     const voices = await Voice.find({ is_active: true, ...access.filter(user) }).sort({ name: 1 }).lean();
     const standard = config.standardVoices
         .filter(voice => (voice.provider || 'edge') === provider)
-        .map(({ voice_id, name, gender }) => ({
-            voice_id, name, gender, class: 'free', required_class:'free', usable:true, provider, preset_voice: true,
+        .map(({ voice_id, name, gender, nation = 'vi' }) => ({
+            voice_id, name, gender, nation, class: 'free', required_class:'free', usable:true, provider, preset_voice: true,
             voice_mode: 'standard', origin: 'system', choice_id: `preset:${provider}:${voice_id}`,
         }));
     const clone = voices.map(voice => ({

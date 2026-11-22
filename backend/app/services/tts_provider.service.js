@@ -18,7 +18,7 @@ const voices = [
     {voice_id:'vieneu-truc-ly',name:'Trúc Ly',gender:'female',preset:'Trúc Ly'},
     {voice_id:'vieneu-thien-minh',name:'Thiện Minh · Kể chuyện',gender:'male',preset:'Thiện Minh'},
     {voice_id:'vieneu-mai-anh',name:'Mai Anh · Bản tin',gender:'female',preset:'Mai Anh'},
-].map(voice=>({...voice,file_path:'',provider:'vieneu',model_revision:revision}));
+].map(voice=>({...voice,nation:'vi',file_path:'',provider:'vieneu',model_revision:revision}));
 
 const defaultRecords = [
     {
