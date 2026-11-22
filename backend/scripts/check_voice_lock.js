@@ -44,15 +44,21 @@ async function check() {
     assert.equal((await update(admin, { is_active: false })).data.data.usable, false);
     assert.deepEqual((await list(admin)).data, []);
     const adminRows = (await list(admin, includeLocked)).data;
-    assert.deepEqual(adminRows.map(row => [row.voice_id, row.is_active, row.can_edit]), [[sample.voice_id, false, true]]);
+    assert.deepEqual(adminRows.map(row => [row.voice_id, row.is_active, row.can_edit, row.nation]), [[sample.voice_id, false, true, 'vi']]);
+    assert.equal((await update(admin, { nation: 'INVALID' })).statusCode, 400);
+    assert.equal((await update(admin, { nation: 'vietnam' })).statusCode, 400);
+    assert.equal((await update(admin, { nation: 'en' })).data.data.nation, 'en');
     assert.equal((await list(user, includeLocked)).statusCode, 403);
     assert.equal((await list(undefined, includeLocked)).statusCode, 403);
     assert.deepEqual((await list(user)).data, []);
     assert.equal((await call(controller.preview, { user })).statusCode, 404);
     assert.equal((await bookVoices.choices(user, 'edge')).clone.length, 0);
+    assert.equal((await bookVoices.choices(user, 'edge')).standard[0].nation, 'vi');
     await assert.rejects(bookVoices.resolve('clone', sample.voice_id, user, 'edge'), { status: 403 });
     assert.equal((await update(admin, { is_active: true })).data.data.is_active, true);
     assert.equal((await list(user)).data[0].voice_id, sample.voice_id);
+    assert.equal((await bookVoices.resolve('clone', sample.voice_id, user, 'edge')).nation, 'en');
+    assert.equal((await update(admin, { nation: 'vi' })).data.data.nation, 'vi');
     assert.equal((await bookVoices.resolve('clone', sample.voice_id, user, 'edge')).voice_id, sample.voice_id);
     console.log('PASS: admin can lock and unlock a voice; locked samples stay private and cannot be selected, played or used');
 }

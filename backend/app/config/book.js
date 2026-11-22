@@ -21,8 +21,8 @@ module.exports = {
     geminiMaxTotalRetries: 20,
     standardVoices: [
         ...require('../services/tts_provider.service').voices,
-        { voice_id: 'standard-female', name: 'Hoài My', gender: 'female', file_path: '' },
-        { voice_id: 'standard-male', name: 'Nam Minh', gender: 'male', file_path: '' },
+        { voice_id: 'standard-female', name: 'Hoài My', gender: 'female', nation: 'vi', file_path: '' },
+        { voice_id: 'standard-male', name: 'Nam Minh', gender: 'male', nation: 'vi', file_path: '' },
     ],
     engineUrl: runtime.engineUrl,
     engineFallbackUrl: runtime.engineFallbackUrl,

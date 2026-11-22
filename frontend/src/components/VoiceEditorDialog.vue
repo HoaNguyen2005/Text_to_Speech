@@ -2,8 +2,9 @@
 import {nextTick,onBeforeUnmount,ref,watch} from 'vue';
 import api from '@/services/api';
 import {session} from '@/services/auth';
-import {refreshSession} from '@/services/auth';
-import {notify} from '@/composables/useNotifications';
+import { refreshSession } from '@/services/auth';
+import { notify } from '@/composables/useNotifications';
+import { VOICE_NATIONS } from '@/constants/voiceNations';
 import UiIcon from './UiIcon.vue';
 const props=defineProps({open:Boolean,voice:{type:Object,default:null}});
 const emit=defineEmits(['update:open','saved']);
@@ -12,14 +13,14 @@ const isAdmin=()=>session.value?.user?.role==='admin';
 let voiceCode='';
 watch(()=>props.open,async open=>{
   await nextTick();
-  if(open){form.value={name:props.voice?.name||'',gender:props.voice?.gender||'male',description:props.voice?.description||'',class:props.voice?.class||'free'};file.value=null;uploadKey.value++;voiceCode=`voice_${crypto.randomUUID().replaceAll('-','')}`;message.value='';dialog.value?.showModal();}
+  if(open){form.value={name:props.voice?.name||'',gender:props.voice?.gender||'male',nation:props.voice?.nation||'vi',description:props.voice?.description||'',class:props.voice?.class||'free'};file.value=null;uploadKey.value++;voiceCode=`voice_${crypto.randomUUID().replaceAll('-','')}`;message.value='';dialog.value?.showModal();}
   else dialog.value?.close();
 });
 function close(){if(!saving.value)emit('update:open',false);}
 async function save(){
   if(saving.value)return;saving.value=true;message.value='';
   try{
-    const body={name:form.value.name.trim(),gender:form.value.gender,description:form.value.description.trim()};
+    const body={name:form.value.name.trim(),gender:form.value.gender,nation:form.value.nation||'vi',description:form.value.description.trim()};
     if(isAdmin())body.class=form.value.class;
     let saved;
     if(props.voice){saved=(await api.put(`/api/voices/${props.voice._id}`,body)).data.data;}
@@ -47,6 +48,7 @@ onBeforeUnmount(()=>dialog.value?.close());
         </div>
         <div class="field"><label for="voice-edit-name">{{ $t('Tên hiển thị') }}</label><input id="voice-edit-name" v-model="form.name" class="input" maxlength="200" required autofocus /></div>
         <div class="field"><label for="voice-edit-gender">{{ $t('Giới tính giọng đọc') }}</label><select id="voice-edit-gender" v-model="form.gender" class="input"><option value="male">{{ $t('Nam') }}</option><option value="female">{{ $t('Nữ') }}</option></select></div>
+        <div class="field"><label for="voice-edit-nation">{{ $t('Ngôn ngữ / Quốc gia') }}</label><select id="voice-edit-nation" v-model="form.nation" class="input"><option v-for="n in VOICE_NATIONS" :key="n.code" :value="n.code">{{ $t(n.label) }}</option><option v-if="form.nation && !VOICE_NATIONS.some(n => n.code === form.nation)" :value="form.nation">{{ form.nation }}</option></select></div>
         <div v-if="isAdmin()" class="field"><label for="voice-edit-class">{{ $t('Phân hạng giọng') }}</label><select id="voice-edit-class" v-model="form.class" class="input"><option value="free">Free</option><option value="gold">Gold</option><option value="diamond">Diamond</option></select></div>
         <div class="field"><label for="voice-edit-description">{{ $t('Mô tả') }}</label><textarea id="voice-edit-description" v-model="form.description" class="input" rows="3" maxlength="500" /></div>
         <div v-if="!voice" class="field"><label for="voice-edit-file">{{ $t('File âm thanh mẫu') }}</label><input id="voice-edit-file" :key="uploadKey" class="input" type="file" accept=".wav,.mp3,.m4a,.flac,.ogg,.webm" required @change="file=$event.target.files[0]||null" /><small>{{ $t('Tối đa 50 MB. Bản ghi rõ tiếng, ít tiếng ồn.') }}</small></div>
