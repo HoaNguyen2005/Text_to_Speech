@@ -2,7 +2,7 @@ import { ref } from 'vue';
 import Keycloak from 'keycloak-js';
 import { API_BASE_URL } from '@/config';
 import { locale } from '@/composables/useLocale';
-import { notify, showWelcome } from '@/composables/useNotifications';
+import { showWelcome } from '@/composables/useNotifications';
 
 export const session = ref(null);
 export const authLoading = ref(false);
@@ -146,10 +146,6 @@ async function redirect(action) {
 }
 export const handleLogin = () => redirect('login');
 export const handleRegister = () => redirect('register');
-export async function manageAccount(){
-  try{window.location.assign(keycloak.createAccountUrl({redirectUri:new URL('/profile',window.location.origin).href}));}
-  catch{notify('Không mở được trang quản lý tài khoản. Hãy thử lại.',{kind:'error'});}
-}
 export async function handleLogout() {
   session.value = null;
   clearLegacyStorage();

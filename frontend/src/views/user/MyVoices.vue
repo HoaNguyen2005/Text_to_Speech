@@ -15,8 +15,8 @@ const mine = computed(() => voices.value.filter(voice =>
 async function load() {
   loading.value = true;
   try {
-    const { data } = await api.get('/api/book-jobs/voices', { params: { provider: 'edge' } });
-    voices.value = data.voices;
+    const { data } = await api.get('/api/voices', { params: { include_presets: true } });
+    voices.value = data;
   } catch (error) {
     notify(error.response?.data?.error || 'Không tải được danh sách giọng.', { kind: 'error' });
   } finally {

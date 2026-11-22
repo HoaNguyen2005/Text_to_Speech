@@ -5,6 +5,7 @@ const crypto = require('crypto');
 const storage = require('../services/storage.service');
 const access = require('../services/voice_access');
 const providers = require('../services/tts_provider.service');
+const { standardChoices } = require('../services/book_voice.service');
 const {isValidId}=require('../db/postgres');
 
 // Lấy danh sách giọng mẫu
@@ -14,14 +15,17 @@ const {isValidId}=require('../db/postgres');
 exports.getAllVoices = async (req, res) => {
     try {
         const includeLocked = req.query.include_locked === 'true';
+        const includePresets = req.query.include_presets === 'true';
         if (includeLocked && req.user?.role !== 'admin') {
             return res.status(403).json({ error: 'Chỉ quản trị viên được xem danh sách giọng đã khóa.' });
         }
+        if (includePresets && !req.user) return res.sendStatus(401);
         const query = access.filter(req.user);
         if (!includeLocked) query.is_active = true;
         const voices = await Voice.find(query).sort({ createdAt: -1 });
         res.setHeader('Cache-Control', 'private, no-store');
-        res.json(voices.map(voice=>access.present(voice,req.user)));
+        const samples = voices.map(voice => access.present(voice, req.user));
+        res.json(includePresets ? [...standardChoices(), ...samples] : samples);
     } catch (error) {
         res.status(500).json({ error: "Lỗi khi tải danh sách giọng mẫu" });
     }

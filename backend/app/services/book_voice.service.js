@@ -7,6 +7,15 @@ const snapshot = ({ voice_id, name, gender, file_path, provider = 'edge', preset
     voice_id, name, gender, file_path, origin, class:voiceClass, ...providers.settings(provider, preset),
 });
 
+function standardChoices(provider) {
+    return config.standardVoices
+        .filter(voice => !provider || (voice.provider || 'edge') === provider)
+        .map(({ voice_id, name, gender, provider: engine = 'edge' }) => ({
+            voice_id, name, gender, class: 'free', required_class: 'free', usable: true, provider: engine, preset_voice: true,
+            voice_mode: 'standard', origin: 'system', choice_id: `preset:${engine}:${voice_id}`,
+        }));
+}
+
 async function choices(user, requested) {
     const allProviders = await providers.list({ includeLocked: true });
     const activeProviders = allProviders.filter((item) => item.is_active !== false);
@@ -17,12 +26,7 @@ async function choices(user, requested) {
         return { provider, provider_locked: true, providers: activeProviders, standard: [], clone: [], voices: [] };
     }
     const voices = await Voice.find({ is_active: true, ...access.filter(user) }).sort({ name: 1 }).lean();
-    const standard = config.standardVoices
-        .filter(voice => (voice.provider || 'edge') === provider)
-        .map(({ voice_id, name, gender }) => ({
-            voice_id, name, gender, class: 'free', required_class:'free', usable:true, provider, preset_voice: true,
-            voice_mode: 'standard', origin: 'system', choice_id: `preset:${provider}:${voice_id}`,
-        }));
+    const standard = standardChoices(provider);
     const clone = voices.map(voice => ({
         ...access.present(voice, user, provider),
         provider,
@@ -49,4 +53,4 @@ async function resolve(mode, id, user, requested) {
     require('./account_tier.service').assertVoiceAccessAllowed(user,voice,provider,mode);
     return snapshot({ ...voice, class:voice.class, provider, origin: voice.is_global ? 'system' : 'user' });
 }
-module.exports = { choices, resolve };
+module.exports = { choices, resolve, standardChoices };

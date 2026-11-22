@@ -1,7 +1,7 @@
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue';
 import api from '@/services/api';
-import { session, manageAccount, refreshSession } from '@/services/auth';
+import { session, refreshSession } from '@/services/auth';
 import {useAccountTier} from '@/composables/useAccountTier';
 import AccountUsage from '@/components/AccountUsage.vue';
 import PaymentHistory from '@/components/PaymentHistory.vue';
@@ -100,8 +100,7 @@ onMounted(load);
         <div class="field"><label for="profile-email">Email</label><input id="profile-email" :value="session.user.email" class="input" readonly type="email" /></div>
       </fieldset><button type="submit" class="btn primary" :disabled="saving||!form.fullName.trim()"><span v-if="saving" class="spinner" /><UiIcon v-else name="check" />{{ $t(saving?'Đang lưu…':'Lưu thay đổi') }}</button></form>
     </section>
-    <div class="studio-stack">
-      <section class="panel" :class="'tier-panel-' + tierClass">
+    <section class="panel" :class="'tier-panel-' + tierClass">
         <h2>{{ $t('Tài khoản của bạn') }}</h2>
         <div class="profile-plan-wrap">
           <span class="tier-sparkle-wrap" :class="tierClass !== 'free' ? 'is-' + tierClass : ''">
@@ -112,15 +111,13 @@ onMounted(load);
         <p v-else-if="tierClass!=='free'" class="text-muted">{{ $t('Không giới hạn thời hạn') }}</p>
         <button type="button" class="btn primary full profile-upgrade" @click="openUpgrade()"><UiIcon name="spark" />{{ $t('Nâng cấp / Gia hạn gói') }}</button>
         <AccountUsage :show-upgrade="false" />
-      </section>
-      <section class="panel"><h2>{{ $t('Bảo mật tài khoản') }}</h2><p class="text-muted">{{ $t('Quản lý email, mật khẩu và các phiên đăng nhập.') }}</p><button class="btn" type="button" @click="manageAccount"><UiIcon name="shield" />{{ $t('Quản lý tài khoản') }}</button></section>
-    </div>
+    </section>
   </div>
-  <section v-if="tier" class="panel plan-comparison"><h2>{{ $t('So sánh quyền lợi') }}</h2><div class="table-scroll"><table class="data-table"><thead><tr><th>{{ $t('Gói tài khoản') }}</th><th>{{ $t('Bài giảng / ngày') }}</th><th>{{ $t('Ký tự / bài') }}</th><th>{{ $t('Sách / ngày') }}</th><th>{{ $t('Phút / sách') }}</th><th>{{ $t('Giọng riêng') }}</th><th>{{ $t('AI chỉnh sửa / sách') }}</th></tr></thead><tbody><tr v-for="(item,key) in tier.catalog" :key="key" :class="{ 'is-current-plan': key === tierClass }"><td><span class="pill" :class="key !== 'free' ? key : ''">{{ ({free:'Free',gold:'Gold',diamond:'Diamond'})[key] }}</span></td><td>{{ item.lecturesPerDay }}</td><td>{{ item.lectureChars.toLocaleString($locale) }}</td><td>{{ item.booksPerDay }}</td><td>{{ item.bookMinutes }}</td><td>{{ item.maxVoices }}</td><td>{{ item.maxRevisions??$t('Không giới hạn') }}</td></tr></tbody></table></div><button class="btn primary" type="button" @click="openUpgrade()">{{ $t('Xem bảng giá và nâng cấp') }}</button></section>
-  <PaymentHistory v-if="!loading&&!failed" />
+  <PaymentHistory v-if="!loading && !failed && session?.user?.role !== 'admin'" />
 </template>
 <style scoped>
-.profile-grid{display:grid;grid-template-columns:minmax(0,1.7fr) minmax(240px,1fr);gap:24px}
+.profile-grid{display:grid;grid-template-columns:minmax(0,1.7fr) minmax(240px,1fr);align-items:start;gap:24px}
+.profile-grid + .panel{margin-top:24px}
 .profile-hero{display:flex;align-items:center;gap:16px;padding:16px 18px;margin-bottom:22px;border:1px solid var(--line);border-radius:14px;background:var(--surface-raised)}
 .profile-hero.hero-gold{border-color:var(--gold-border);background:linear-gradient(135deg,var(--gold-surface),var(--surface-raised) 70%)}
 .profile-hero.hero-diamond{border-color:var(--diamond-border);background:linear-gradient(135deg,var(--diamond-surface),var(--surface-raised) 70%)}
@@ -136,9 +133,5 @@ onMounted(load);
 .profile-plan-wrap{margin:10px 0 8px}
 .profile-plan{display:inline-block;font-size:32px;font-weight:800;line-height:1.2;letter-spacing:-.5px;color:var(--accent)}
 .profile-upgrade{margin:12px 0 22px}
-.plan-comparison{margin:24px 0}
-.plan-comparison h2{margin:0 0 16px}
-.plan-comparison tr.is-current-plan{background:var(--accent-soft)}
-.plan-comparison>.btn{margin-top:18px}
 @media(max-width:760px){.profile-grid{grid-template-columns:1fr}}
 </style>

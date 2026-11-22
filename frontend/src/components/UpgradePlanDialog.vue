@@ -9,7 +9,12 @@ import UiIcon from './UiIcon.vue';
 const dialog=ref(null),catalog=ref(null),order=ref(null),plan=ref('gold'),cycle=ref('monthly'),busy=ref(false),error=ref(''),now=ref(Date.now());
 let timer,closed=false,inFlight=false,version=0;
 const selected=computed(()=>catalog.value?.plans.find(p=>p.plan_class===plan.value&&p.billing_cycle===cycle.value));
-const choices=computed(()=>['gold','diamond'].map(key=>catalog.value?.plans.find(p=>p.plan_class===key&&p.billing_cycle===cycle.value)).filter(Boolean));
+const planLabels={ free:'Free', gold:'Gold', diamond:'Diamond' };
+const choices=computed(()=>{
+  const paid = catalog.value?.plans.filter(item=>item.billing_cycle===cycle.value) || [];
+  const free = session.value?.tier_info?.catalog?.free;
+  return free ? [{plan_class:'free',limits:free}, ...paid] : paid;
+});
 const currentPlan=computed(()=>session.value?.tier_info?.effective_class||session.value?.user?.account_class||'free');
 function savingFor(key){
   const monthly=catalog.value?.plans.find(p=>p.plan_class===key&&p.billing_cycle==='monthly');
@@ -88,7 +93,7 @@ onBeforeUnmount(()=>{closed=true;++version;clearTimeout(timer);document.removeEv
             <span class="current-plan">
               {{ $t('Gói hiện tại') }}
               <span class="voice-name-frame" :class="currentPlan !== 'free' ? `is-${currentPlan}` : ''">
-                <strong :class="currentPlan !== 'free' ? `tier-text-${currentPlan}` : 'plan-free-pill'">{{ ({free:'Free',gold:'Gold',diamond:'Diamond'})[currentPlan] }}</strong>
+                <strong :class="currentPlan !== 'free' ? `tier-text-${currentPlan}` : 'plan-free-pill'">{{ planLabels[currentPlan] }}</strong>
               </span>
             </span>
             <fieldset class="billing-switch" :disabled="busy"><legend class="sr-only">{{ $t('Chu kỳ') }}</legend>
@@ -99,33 +104,40 @@ onBeforeUnmount(()=>{closed=true;++version;clearTimeout(timer);document.removeEv
           <p v-if="catalog.demo_prices" class="upgrade-notice upgrade-demo"><UiIcon name="clock" />{{ $t('Giá demo · Vẫn chuyển tiền thật qua ngân hàng.') }}</p>
 
           <fieldset class="upgrade-plans" :disabled="busy"><legend class="sr-only">{{ $t('Gói tài khoản') }}</legend>
-            <label v-for="item in choices" :key="item.plan_class" class="plan-card" :class="[item.plan_class, { selected: plan === item.plan_class }]">
-              <input v-model="plan" class="upgrade-radio" type="radio" name="upgrade-plan" :value="item.plan_class" :aria-label="item.plan_class==='gold'?'Gold':'Diamond'" />
+            <component :is="item.plan_class === 'free' ? 'article' : 'label'" v-for="item in choices" :key="item.plan_class" class="plan-card" :class="[item.plan_class, { selected: plan === item.plan_class }]">
+              <input v-if="item.plan_class !== 'free'" v-model="plan" class="upgrade-radio" type="radio" name="upgrade-plan" :value="item.plan_class" :aria-label="planLabels[item.plan_class]" />
               <span class="plan-card-top">
                 <span class="plan-icon" :class="`avatar-tier-${item.plan_class}`">
-                  <UiIcon :name="item.plan_class==='gold'?'wave':'spark'" />
-                  <span class="avatar-tier-spark" aria-hidden="true">✦</span>
+                  <UiIcon :name="item.plan_class==='diamond'?'spark':'wave'" />
+                  <span v-if="item.plan_class !== 'free'" class="avatar-tier-spark" aria-hidden="true">✦</span>
                 </span>
                 <span v-if="currentPlan===item.plan_class" class="plan-tag" :class="item.plan_class">{{ $t('Gói hiện tại') }}</span>
-                <span v-else class="plan-tag" :class="item.plan_class">{{ $t(item.plan_class==='gold'?'Sáng tạo mỗi ngày':'Cho nhu cầu chuyên sâu') }}</span>
+                <span v-else-if="item.plan_class !== 'free'" class="plan-tag" :class="item.plan_class">{{ $t(item.plan_class==='gold'?'Sáng tạo mỗi ngày':'Cho nhu cầu chuyên sâu') }}</span>
               </span>
               <span class="plan-name-wrap">
                 <span class="voice-name-frame" :class="`is-${item.plan_class}`">
-                  <span class="plan-name" :class="`tier-text-${item.plan_class}`">{{ item.plan_class==='gold'?'Gold':'Diamond' }}</span>
+                  <span class="plan-name" :class="`tier-text-${item.plan_class}`">{{ planLabels[item.plan_class] }}</span>
                 </span>
               </span>
-              <span class="plan-description">{{ $t(item.plan_class==='gold'?'Thêm lượt tạo, thêm giọng đọc của riêng bạn.':'Nhiều nội dung hơn, thời lượng dài hơn.') }}</span>
-              <span class="plan-price"><strong :class="`tier-text-${item.plan_class}`">{{ money(item.amount_vnd) }}</strong><span>/ {{ $t(cycle==='yearly'?'năm':'tháng') }}</span></span>
-              <span class="plan-term"><span>{{ $t('Thanh toán một lần · {0} ngày',[item.duration_days]) }}</span><span v-if="cycle==='yearly'&&savingFor(item.plan_class)>0" class="plan-saving">{{ $t('Tiết kiệm {0}%',[savingFor(item.plan_class)]) }}</span></span>
+              <span v-if="item.plan_class === 'free'" class="plan-price"><strong>{{ $t('Miễn phí') }}</strong></span>
+              <template v-else>
+                <span class="plan-description">{{ $t(item.plan_class==='gold'?'Thêm lượt tạo, thêm giọng đọc của riêng bạn.':'Nhiều nội dung hơn, thời lượng dài hơn.') }}</span>
+                <span class="plan-price"><strong :class="`tier-text-${item.plan_class}`">{{ money(item.amount_vnd) }}</strong><span>/ {{ $t(cycle==='yearly'?'năm':'tháng') }}</span></span>
+                <span class="plan-term"><span>{{ $t('Thanh toán một lần · {0} ngày',[item.duration_days]) }}</span><span v-if="cycle==='yearly'&&savingFor(item.plan_class)>0" class="plan-saving">{{ $t('Tiết kiệm {0}%',[savingFor(item.plan_class)]) }}</span></span>
+              </template>
               <span class="plan-features" role="list">
                 <span role="listitem"><UiIcon name="check" /><span>{{ $t('{0} bài giảng mỗi ngày',[item.limits.lecturesPerDay]) }}<small>{{ $t('Tối đa {0} ký tự / bài',[item.limits.lectureChars]) }}</small></span></span>
                 <span role="listitem"><UiIcon name="check" /><span>{{ $t('{0} sách nói mỗi ngày',[item.limits.booksPerDay]) }}<small>{{ $t('Tối đa {0} phút / sách',[item.limits.bookMinutes]) }}</small></span></span>
                 <span role="listitem"><UiIcon name="check" /><span>{{ $t('{0} giọng đọc riêng',[item.limits.maxVoices]) }}</span></span>
                 <span role="listitem"><UiIcon name="check" /><span>{{ item.limits.maxRevisions==null?$t('AI chỉnh sửa không giới hạn'):$t('{0} lượt AI chỉnh sửa / sách',[item.limits.maxRevisions]) }}</span></span>
-                <span role="listitem"><UiIcon name="check" /><span>{{ $t('Clone giọng với OpenVoice V2 và VieNeu') }}</span></span>
+                <span role="listitem"><UiIcon name="check" /><span>{{ $t(item.limits.cloneProviders.includes('vieneu') ? 'Clone giọng với OpenVoice V2 và VieNeu' : 'Clone giọng với OpenVoice V2') }}</span></span>
+                <template v-if="item.plan_class === 'free'">
+                  <span role="listitem"><UiIcon name="check" /><span>{{ $t('{0} lượt nghe thử mỗi ngày',[item.limits.previewsPerDay]) }}</span></span>
+                  <span role="listitem"><UiIcon name="check" /><span>{{ $t('{0} yêu cầu sách nói cùng lúc',[item.limits.maxActiveBookJobs]) }}<small>{{ $t('Tối đa {0} ký tự nguồn / sách',[item.limits.bookChars]) }}</small></span></span>
+                </template>
               </span>
-              <span class="plan-selection"><span class="plan-radio-mark"><UiIcon v-if="plan===item.plan_class" name="check" /></span>{{ $t(plan===item.plan_class?'Đã chọn gói này':'Chọn gói này') }}</span>
-            </label>
+              <span v-if="item.plan_class !== 'free'" class="plan-selection"><span class="plan-radio-mark"><UiIcon v-if="plan===item.plan_class" name="check" /></span>{{ $t(plan===item.plan_class?'Đã chọn gói này':'Chọn gói này') }}</span>
+            </component>
           </fieldset>
           <p class="upgrade-renewal"><UiIcon name="clock" /><span>{{ $t('Gia hạn cùng gói được cộng ngày còn lại. Nâng lên Diamond bắt đầu thời hạn mới; không quy đổi ngày Gold.') }}</span></p>
         </template>
@@ -160,7 +172,8 @@ onBeforeUnmount(()=>{closed=true;++version;clearTimeout(timer);document.removeEv
 .upgrade-content{padding:24px 32px}.upgrade-toolbar{display:flex;justify-content:space-between;align-items:center;gap:16px;margin-bottom:22px}.current-plan{display:flex;gap:9px;align-items:center;color:var(--muted);font-size:12px}.current-plan strong{font-size:12px;font-weight:700;color:var(--ink)}.current-plan .plan-free-pill{padding:4px 9px;background:var(--surface-raised);border:1px solid var(--line);border-radius:7px}
 .billing-switch{display:flex;gap:3px;margin:0;padding:4px;border:1px solid var(--line);border-radius:10px;background:var(--surface-raised)}.billing-switch label{position:relative;padding:7px 15px;border-radius:7px;font-size:12px;font-weight:600;color:var(--muted);cursor:pointer;transition:background .18s,color .18s,box-shadow .18s}.billing-switch label.active{background:var(--surface);color:var(--ink);box-shadow:0 1px 4px rgb(0 0 0 / 10%)}
 .upgrade-radio{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip-path:inset(50%);white-space:nowrap}.billing-switch label:has(.upgrade-radio:focus-visible),.plan-card:has(.upgrade-radio:focus-visible){outline:2px solid var(--focus);outline-offset:3px}
-.upgrade-plans{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));align-items:stretch;gap:18px;min-width:0;margin:0;padding:0;border:0}.plan-card{position:relative;display:flex;flex-direction:column;min-width:0;padding:22px;border:1.5px solid var(--line-strong);border-radius:16px;background:var(--surface);cursor:pointer;transition:border-color .18s,box-shadow .18s,background .18s}
+.upgrade-plans{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));align-items:stretch;gap:18px;min-width:0;margin:0;padding:0;border:0}.plan-card{position:relative;display:flex;flex-direction:column;min-width:0;padding:22px;border:1.5px solid var(--line-strong);border-radius:16px;background:var(--surface);cursor:pointer;transition:border-color .18s,box-shadow .18s,background .18s}
+.plan-card.free{background:var(--surface-raised);cursor:default}
 .plan-card.gold{border-color:var(--gold-border);background:linear-gradient(155deg,color-mix(in srgb,var(--gold-bg) 55%,var(--surface)),var(--surface) 65%)}
 .plan-card.gold:hover,.plan-card.gold.selected{border-color:var(--gold-border);background:linear-gradient(155deg,color-mix(in srgb,var(--gold-bg) 78%,var(--surface)),var(--surface) 78%);box-shadow:0 0 0 1.5px var(--gold-border),0 8px 24px -6px var(--gold-glow)}
 .plan-card.diamond{border-color:var(--diamond-border);background:linear-gradient(155deg,color-mix(in srgb,var(--diamond-bg) 55%,var(--surface)),var(--surface) 65%)}
@@ -177,4 +190,5 @@ onBeforeUnmount(()=>{closed=true;++version;clearTimeout(timer);document.removeEv
 @media(max-width:700px){.upgrade-dialog{width:calc(100vw - 24px);max-height:calc(100dvh - 24px);border-radius:20px}.upgrade-header{padding:22px 20px 18px;gap:14px}.upgrade-heading h2{font-size:23px}.upgrade-content{padding:20px}.upgrade-footer{padding:16px 20px 20px}.upgrade-plans{gap:12px}.plan-card{padding:17px}.plan-price strong{font-size:28px}.plan-description{min-height:40px}.plan-card-top{flex-wrap:wrap;gap:8px}.checkout-total{gap:14px}.upgrade-checkout{gap:14px}.upgrade-checkout .checkout-button{padding:11px 13px}.qr-layout{grid-template-columns:230px minmax(0,1fr);gap:18px}}
 @media(max-width:520px){.upgrade-heading h2{font-size:21px}.upgrade-heading>p{font-size:12px}.upgrade-brand{font-size:9px;margin-bottom:12px}.upgrade-toolbar{align-items:flex-start;gap:12px;flex-direction:column}.billing-switch{align-self:stretch}.billing-switch label{flex:1;text-align:center}.upgrade-plans{grid-template-columns:1fr}.plan-card{padding:20px}.plan-card-top{flex-wrap:nowrap}.plan-description{min-height:0}.plan-price strong{font-size:31px}.plan-features{gap:11px}.plan-selection{padding-top:18px}.upgrade-renewal{font-size:10px}.upgrade-checkout{align-items:stretch;flex-direction:column;gap:16px}.checkout-total{justify-content:space-between}.checkout-total>strong{font-size:23px}.upgrade-checkout .checkout-button{width:100%}.qr-layout{grid-template-columns:1fr}.qr-card{max-width:280px;width:100%;margin:auto}.payment-state{align-items:flex-start;flex-direction:column}.payment-state strong{font-size:25px}.payment-actions{align-items:stretch;flex-direction:column}.payment-actions>.text-button{justify-content:center}}
 @media(prefers-reduced-motion:reduce){.billing-switch label,.plan-card{transition:none}}
+@media(max-width:700px){.upgrade-plans{grid-template-columns:1fr}}
 </style>

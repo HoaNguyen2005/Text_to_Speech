@@ -31,6 +31,7 @@ async function sample(provider,id) {
     const hash=crypto.createHash('sha256').update(JSON.stringify(['voice-demo-1',text,voice,options])).digest('hex');
     const output=path.join(directory,`voice-demo-${hash}.mp3`);
     try {await fs.access(output);return output;}catch{}
+    await providers.ensureActive(provider);
     const owner=crypto.randomUUID(),jobId=crypto.randomBytes(12).toString('hex');
     let claimed,lost=false;
     try {claimed=await WorkerLease.findOneAndUpdate({_id:'voice-preset-demo',until:{$lte:new Date()}},{$set:{owner,until:new Date(Date.now()+90000)}},{upsert:true});}
