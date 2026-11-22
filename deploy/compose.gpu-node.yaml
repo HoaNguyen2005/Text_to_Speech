@@ -43,7 +43,7 @@ services:
       OPENVOICE_WATERMARK: '0'
       ENGINE_NODE_ROLE: gpu
       TUNNEL_METRICS_URL: http://tunnel:2000/metrics
-      REMOTE_BACKEND_URLS: https://text2speech-backend.onrender.com
+      REMOTE_BACKEND_URLS: ${TTS_GPU_BACKEND_URLS:-https://text2speech-main-backend.onrender.com,https://text2speech-backend.onrender.com}
     ports:
       - "8000:8000"
     volumes:

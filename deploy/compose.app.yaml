@@ -63,7 +63,7 @@ services:
       VIENEU_URL: http://vieneu:8001
       ENGINE_NODE_ROLE: cpu
       TUNNEL_METRICS_URL: http://engine-tunnel:2000/metrics
-      REMOTE_BACKEND_URLS: https://text2speech-backend.onrender.com,http://backend:3000
+      REMOTE_BACKEND_URLS: https://text2speech-main-backend.onrender.com,https://text2speech-backend.onrender.com,http://backend:3000
     ports:
       - "127.0.0.1:8000:8000"
     volumes:

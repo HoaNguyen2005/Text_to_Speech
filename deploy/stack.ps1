@@ -3,7 +3,7 @@ param(
     [string]$Action = 'up',
     [ValidateSet('frontend', 'backend', 'worker', 'engine', 'vieneu', 'postgres', 'keycloak', 'mailpit', 'tunnel', 'engine-tunnel')]
     [string]$Service,
-    [string]$BackendUrl = 'https://text2speech-backend.onrender.com'
+    [string]$BackendUrl = 'https://text2speech-main-backend.onrender.com'
 )
 $ErrorActionPreference = 'Stop'
 $taskRoot = Split-Path $PSScriptRoot -Parent
@@ -42,8 +42,9 @@ function Register-CpuFallbackNode {
     $tunnelUrl = $null
     for ($i = 0; $i -lt 12; $i++) {
         $logs = & $taskDockerPath @taskCompose logs --tail 100 engine-tunnel 2>&1 | Out-String
-        if ($logs -match '(https://[a-z0-9-]+\.trycloudflare\.com)') {
-            $tunnelUrl = $Matches[1]
+        $urls = [regex]::Matches($logs, 'https://[a-z0-9-]+\.trycloudflare\.com')
+        if ($urls.Count -gt 0) {
+            $tunnelUrl = $urls[$urls.Count - 1].Value
             break
         }
         Start-Sleep -Seconds 2
@@ -62,6 +63,7 @@ function Register-CpuFallbackNode {
         $resp = Invoke-RestMethod -Uri "$($BackendUrl.TrimEnd('/'))/api/speech/engine-register" -Method Post `
             -Headers @{ 'X-Book-Engine-Secret' = $secret; 'Content-Type' = 'application/json' } `
             -Body $body -TimeoutSec 20
+        if ($resp.online -ne $true) { throw 'Backend chưa kết nối được với tunnel Engine.' }
         Write-Host "[AUTO-REGISTER CPU] Đã đăng ký Engine CPU dự phòng lên Cloud: $($resp.engine_url)" -ForegroundColor Green
     } catch {
         Write-Warning "[AUTO-REGISTER CPU] Chưa đăng ký được với $BackendUrl (có thể Render đang cập nhật): $($_.Exception.Message)"

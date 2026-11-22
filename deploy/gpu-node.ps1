@@ -4,12 +4,17 @@ param(
     [ValidateSet('engine', 'vieneu', 'tunnel', 'worker')]
     [string]$Service,
     [string]$Secret = '',
-    [string]$BackendUrl = 'https://text2speech-backend.onrender.com'
+    [string]$BackendUrl = 'https://text2speech-main-backend.onrender.com'
 )
 $ErrorActionPreference = 'Stop'
 $taskRoot = Split-Path $PSScriptRoot -Parent
 $envFile = Join-Path $PSScriptRoot 'engine.gpu.env'
 $composeFile = Join-Path $PSScriptRoot 'compose.gpu-node.yaml'
+$cloudBackends = if ($PSBoundParameters.ContainsKey('BackendUrl')) {
+    $BackendUrl.TrimEnd('/')
+} else {
+    "$BackendUrl,https://text2speech-backend.onrender.com"
+}
 $runtimeDir = Join-Path $taskRoot 'backend/data/gpu-node'
 New-Item -ItemType Directory -Force -Path $runtimeDir | Out-Null
 
@@ -100,6 +105,7 @@ function Register-EngineNode {
             $resp = Invoke-RestMethod -Uri "$target/api/speech/engine-register" -Method Post `
                 -Headers @{ 'X-Book-Engine-Secret' = $EngineSecret; 'Content-Type' = 'application/json' } `
                 -Body $body -TimeoutSec 25
+            if ($resp.online -ne $true) { throw 'Backend chưa kết nối được với tunnel Engine.' }
             Write-Host "[AUTO-REGISTER] Da dang ky node GPU voi $target -> $($resp.engine_url) (device=$($resp.device))" -ForegroundColor Green
         } catch {
             if ($target -notmatch '127\.0\.0\.1') {
@@ -311,7 +317,7 @@ function Invoke-NativeGpuNode {
                 ENGINE_NODE_ROLE         = 'gpu'
                 TUNNEL_METRICS_URL       = 'http://127.0.0.1:2000/metrics'
                 TUNNEL_LOG_FILE          = (Join-Path $runtimeDir 'tunnel.err.log')
-                REMOTE_BACKEND_URLS      = $BackendUrl
+                REMOTE_BACKEND_URLS      = $cloudBackends
             }
 
             if (-not (Get-ListenerPid -Port 8001)) {
@@ -464,6 +470,7 @@ if (-not (Test-DockerAvailable)) {
 }
 
 $taskDockerPath = (Get-Command docker).Source
+$env:TTS_GPU_BACKEND_URLS = $cloudBackends
 $baseCompose = @('compose', '-f', $composeFile)
 
 function Start-TunnelAndPrint {
@@ -475,8 +482,9 @@ function Start-TunnelAndPrint {
     for ($i = 0; $i -lt 15; $i++) {
         Start-Sleep -Seconds 2
         $logs = & $taskDockerPath @baseCompose logs --tail 100 tunnel 2>&1 | Out-String
-        if ($logs -match '(https://[a-z0-9-]+\.trycloudflare\.com)') {
-            $tunnelUrl = $Matches[1]
+        $urls = [regex]::Matches($logs, 'https://[a-z0-9-]+\.trycloudflare\.com')
+        if ($urls.Count -gt 0) {
+            $tunnelUrl = $urls[$urls.Count - 1].Value
             break
         }
     }

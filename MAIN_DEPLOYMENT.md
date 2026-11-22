@@ -88,6 +88,12 @@ build lại khi API và worker đã sẵn sàng.
 
 ## Chạy main trên CPU hoặc GPU
 
+Engine Docker trên laptop tự đăng ký với backend main dưới vai trò `cpu`.
+Engine Docker hoặc Windows native trên máy bàn tự đăng ký dưới vai trò `gpu`.
+Hai máy cần dùng cùng `BOOK_ENGINE_SECRET` với backend main. Khi Cloudflare
+cấp lại URL tunnel, tiến trình Engine tự gửi URL mới. Backend ưu tiên GPU
+đang sẵn sàng và chuyển sang CPU khi GPU mất kết nối.
+
 Trước khi chuyển nhánh trên máy đang chạy dịch vụ, dừng dịch vụ bằng script của
 nhánh cũ. Không xóa volume hoặc thư mục dữ liệu/model.
 
