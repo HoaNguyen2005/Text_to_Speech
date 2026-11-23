@@ -11,24 +11,33 @@ const tiers = require('./account_tier.service');
 const problem = (status,message) => Object.assign(new Error(message),{status});
 let running = 0;
 async function engine(endpoint,payload) {
-    const { response } = await artifact.fetchWithFailover(
-        `/book/${endpoint}`,
-        () => ({
-            method:'POST',
-            headers:{'Content-Type':'application/json','X-Book-Engine-Secret':config.engineSecret},
-            body:JSON.stringify(payload),
-            signal:AbortSignal.timeout(config.engineTimeout),
-        }),
-        { jobId: payload?.job_id, provider: payload?.provider }
-    );
+    const route = `/book/${endpoint}`;
+    const request = () => ({
+        method:'POST',
+        headers:{'Content-Type':'application/json','X-Book-Engine-Secret':config.engineSecret},
+        body:JSON.stringify(payload),
+        signal:AbortSignal.timeout(config.engineTimeout),
+    });
+    const started = Date.now();
+    let { response, engineUrl } = await artifact.fetchWithFailover(route, request, { jobId: payload.job_id });
+    if (response.status === 524 && (endpoint === 'part' || endpoint === 'merge')) {
+        // Cloudflare can time out while the engine is still writing the artifact. Only that node can reuse it.
+        await response.body?.cancel().catch(() => {});
+        console.warn(`[SPEECH ENGINE] ${endpoint} HTTP 524 after ${Date.now()-started}ms; retrying same node`);
+        response = await fetch(`${engineUrl}${route}`, request());
+    }
     const result=await response.json().catch(()=>({}));
-    if (!response.ok) throw problem(503,typeof result.detail==='string'?result.detail:result.detail?.message||'Engine chưa sẵn sàng.');
+    if (!response.ok) {
+        console.warn(`[SPEECH ENGINE] ${endpoint} HTTP ${response.status} after ${Date.now()-started}ms`);
+        if (response.status === 524) throw problem(503,'Engine mất quá nhiều thời gian để xử lý đoạn âm thanh. Hãy thử với nội dung ngắn hơn.');
+        throw problem(503,typeof result.detail==='string'?result.detail:result.detail?.message||'Engine chưa sẵn sàng.');
+    }
     return result;
 }
 function localFile(id,file) {
     return artifact.localPath(id, file, 'Đường dẫn âm thanh không hợp lệ.');
 }
-async function render(user,body,preview=false) {
+async function render(user,body,preview=false,onProgress) {
     if(running>=1)throw problem(429,'Một bài giảng đang được tạo. Hãy chờ hoàn tất rồi thử lại.');
     if(typeof body.text!=='string'||!body.text.trim()||body.text.length>20000)throw problem(400,'Bài giảng cần từ 1 đến 20.000 ký tự.');
     if(!config.engineSecret)throw problem(503,'Chưa cấu hình kết nối Engine.');
@@ -66,6 +75,8 @@ async function render(user,body,preview=false) {
             tiers.assertLectureAllowed(current,body.text.length);
             tiers.assertVoiceAccessAllowed(current,voice,provider,mode);
         });
+        const total = planned.parts.length;
+        onProgress?.({stage:'synthesizing',completed:0,total});
         if(!preview)prefetch=await require('./edge_prefetch.service')({jobId,provider,parts:planned.parts,payload,guard});
         let previewBudget=30;
         for(const [index,part] of planned.parts.entries()) {
@@ -84,7 +95,9 @@ async function render(user,body,preview=false) {
             if(!Number.isFinite(audio.duration_seconds)||audio.duration_seconds<=0)throw problem(503,'Đoạn âm thanh thiếu thời lượng.');
             parts.push({...current,part_id:partId});timings.push(audio);previewBudget-=audio.duration_seconds;
             if(timings.reduce((sum,t)=>sum+t.duration_seconds,0)>=3600)throw problem(400,'Âm thanh đạt 1 giờ. Hãy rút gọn nội dung.');
+            onProgress?.({stage:'synthesizing',completed:parts.length,total});
         }
+        onProgress?.({stage:'merging'});
         const merged=await engine('merge',{job_id:jobId,part_ids:parts.map(part=>part.part_id)});
         let file=localFile(jobId,merged.output_path);
         if(preview) {
@@ -94,6 +107,7 @@ async function render(user,body,preview=false) {
             const clipFile=await artifact.materialize(jobId,clip.output_path,'Đường dẫn âm thanh không hợp lệ.');
             return {buffer:await fs.readFile(clipFile),duration_seconds:clip.duration_seconds};
         }
+        onProgress?.({stage:'saving'});
         file=await artifact.materialize(jobId,merged.output_path,'Đường dẫn âm thanh không hợp lệ.');
         if(!Number.isFinite(merged.duration_seconds)||merged.duration_seconds>=3600)throw problem(400,'Âm thanh đạt 1 giờ. Hãy rút gọn nội dung.');
         async function publish(source,type) {

@@ -55,8 +55,38 @@ app.get('/api/health', async (req, res) => {
 });
 app.post('/api/generate-lecture', verifyToken, async (req, res) => {
     if (req.body?.speech) {
-        try { return res.json(await require('./app/services/speech_lecture.service').render(req.user,req.body)); }
-        catch(error) { console.warn('[SPEECH LECTURE]',error.status||error.name);return res.status(error.status||503).json({error:error.status?error.message:'Không tạo được bài giảng. Kiểm tra Engine rồi thử lại.'}); }
+        const wantsProgress = req.get('Accept') === 'application/x-ndjson';
+        let heartbeat;
+        const send = event => {
+            if (!res.destroyed && !res.writableEnded) res.write(`${JSON.stringify(event)}\n`);
+        };
+        const report = progress => {
+            if (res.destroyed) return;
+            if (!res.headersSent) {
+                res.set('Content-Type', 'application/x-ndjson; charset=utf-8');
+                res.set('Cache-Control', 'no-store, no-transform');
+                res.set('X-Accel-Buffering', 'no');
+                heartbeat = setInterval(() => res.write('\n'), 15000);
+                res.once('close', () => clearInterval(heartbeat));
+            }
+            send({type:'progress',progress});
+        };
+        try {
+            const result = await require('./app/services/speech_lecture.service').render(req.user,req.body,false,wantsProgress ? report : undefined);
+            if (res.destroyed) return;
+            if (!res.headersSent) return res.json(result);
+            send({type:'result',result});
+        } catch (error) {
+            console.warn('[SPEECH LECTURE]',error.status||error.name);
+            if (res.destroyed) return;
+            const message = error.status ? error.message : 'Không tạo được bài giảng. Kiểm tra Engine rồi thử lại.';
+            if (!res.headersSent) return res.status(error.status||503).json({error:message});
+            send({type:'error',error:message});
+        } finally {
+            clearInterval(heartbeat);
+            if (res.headersSent && !res.destroyed && !res.writableEnded) res.end();
+        }
+        return;
     }
     const startTime = Date.now();
     

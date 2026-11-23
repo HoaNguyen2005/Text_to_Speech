@@ -30,13 +30,28 @@ const deliveries=ref([{profile:'auto',paragraph_profiles:[]}]),speechTools=ref(n
 const previewLoading=ref(false),previewUrl=ref(''),subtitleUrl=ref('');
 const resultHistoryId=ref('');
 let disposed=false;
+let generationConnection;
 const speechBusy=computed(()=>loading.value||previewLoading.value);
 function clearPreview(){if(previewUrl.value)URL.revokeObjectURL(previewUrl.value);previewUrl.value='';}
 watch(()=>JSON.stringify([text.value,teacherId.value,ttsProvider.value,speechOptions.value,deliveries.value]),clearPreview);
-onBeforeUnmount(()=>{disposed=true;clearPreview();});
+onBeforeUnmount(()=>{disposed=true;generationConnection?.abort();clearPreview();});
 const loading = ref(false);
 const resultAudioUrl = ref(null);
 const errorMessage = useFeedback('error');
+const generationProgress = ref(null);
+const generationError = ref('');
+const stageLabels = {
+  preparing: 'Đang chuẩn bị cách đọc…',
+  synthesizing: 'Đã xử lý {0}/{1} đoạn âm thanh.',
+  merging: 'Đang ghép các đoạn âm thanh…',
+  saving: 'Đang lưu âm thanh và lịch sử.',
+  complete: 'Đã hoàn thành',
+};
+const generationPercent = computed(() => {
+  const progress = generationProgress.value;
+  if (progress?.stage === 'synthesizing') return Math.round(5 + 80 * progress.completed / progress.total);
+  return { merging: 90, saving: 96, complete: 100 }[progress?.stage] ?? 0;
+});
 
 const teachers = ref([]);
 const loadingVoices=ref(false),voicePicker=ref(null);
@@ -82,29 +97,69 @@ const generateLecture = async () => {
   loading.value = true;
   errorMessage.value = '';
   resultAudioUrl.value = null;
+  generationProgress.value = { stage: 'preparing' };
+  generationError.value = '';
+  generationConnection = new AbortController();
+
+  let unread = 0;
+  let finalEvent;
+  function readEvents(data) {
+    let end;
+    while ((end = data.indexOf('\n', unread)) !== -1) {
+      const line = data.slice(unread, end);
+      if (line.trim()) {
+        const event = JSON.parse(line);
+        if (event.type === 'progress') generationProgress.value = event.progress;
+        else if (event.type === 'result' || event.type === 'error') finalEvent = event;
+      }
+      unread = end + 1;
+    }
+  }
 
   try {
     const planned=await speechTools.value.ensurePlan();
+    if (disposed) return;
     const response = await api.post('/api/generate-lecture', {
       text: text.value,
       teacher_id: chosenTeacher.value.voice_id,voice_mode:chosenTeacher.value.voice_mode,
       tts_provider:ttsProvider.value,
       style_id: styleId.value,speech:speechOptions.value,delivery:deliveries.value[0],speech_plan_hash:planned.hash
+    }, {
+      adapter: 'xhr',
+      signal: generationConnection.signal,
+      headers: { Accept: 'application/x-ndjson' },
+      onDownloadProgress({ event }) {
+        const request = event?.target;
+        if (disposed || !request?.getResponseHeader('Content-Type')?.startsWith('application/x-ndjson')) return;
+        try { readEvents(request.responseText); } catch { /* The final response handles a malformed event. */ }
+      },
     });
+    if (disposed) return;
+    let result = response.data;
+    if (response.headers['content-type']?.startsWith('application/x-ndjson')) {
+      readEvents(response.data);
+      if (finalEvent?.type === 'error') {
+        generationError.value = finalEvent.error;
+        return;
+      }
+      result = finalEvent?.result;
+    }
 
-    if (response.data.status === 'success') {
-      resultAudioUrl.value = response.data.audio_url;
-      subtitleUrl.value=response.data.subtitle_url||'';
-      resultHistoryId.value=response.data.history_id||'';
+    if (result?.status === 'success') {
+      resultAudioUrl.value = result.audio_url;
+      subtitleUrl.value=result.subtitle_url||'';
+      resultHistoryId.value=result.history_id||'';
+      generationProgress.value = { stage: 'complete' };
       notify('Bản âm thanh đã được tạo và lưu vào thư viện.', { kind: 'success' });
     } else {
-      errorMessage.value = 'Có lỗi xảy ra từ máy chủ.';
+      generationError.value = 'Không nhận được kết quả tạo âm thanh.';
     }
   } catch (error) {
-    errorMessage.value = error.response?.data?.error || 'Không thể kết nối đến máy chủ!';
+    if (!disposed) generationError.value = error.response?.data?.error || 'Không thể kết nối đến máy chủ!';
   } finally {
     loading.value = false;
-    refreshTier().catch(()=>{});
+    generationConnection = undefined;
+    if (!disposed) refreshTier().catch(()=>{});
   }
 };
 async function previewLecture(){
@@ -195,7 +250,6 @@ const handleFileUpload = (event) => {
       <SpeechTools ref="speechTools" v-model="speechOptions" v-model:deliveries="deliveries" :sections="[{text,title:sourceName}]" :style="styleId" :provider="ttsProvider" :busy="speechBusy" lecture auto-review />
       <div v-if="previewLoading" class="notice" role="status"><span class="spinner" />{{ $t('Đang tạo đoạn nghe thử bằng giọng đã chọn…') }}</div>
       <section v-if="previewUrl" class="panel"><h2>{{ $t('Nghe thử tối đa 30 giây') }}</h2><audio controls :src="previewUrl" class="audio-player" /></section>
-      <div v-if="loading" class="notice" role="status"><span class="spinner" aria-hidden="true"></span>{{ $t("Đang tạo âm thanh. Nội dung dài có thể cần thêm thời gian.") }}</div>
       <section v-if="resultAudioUrl" class="panel" aria-labelledby="result-title">
         <div class="panel-heading"><h2 id="result-title"><UiIcon name="headphones" />{{ $t("Bản âm thanh của bạn") }}</h2><span class="pill green">{{ $t("Đã hoàn thành") }}</span></div>
         <audio controls :src="resultAudioUrl" class="audio-player" :aria-label="$t('Bản âm thanh vừa tạo')"></audio>
@@ -219,8 +273,32 @@ const handleFileUpload = (event) => {
           <div class="field"><label>{{ $t("Giọng đọc") }}</label><VoicePicker ref="voicePicker" v-model="teacherId" :voices="teachers" :provider="ttsProvider" :loading="loadingVoices" :disabled="speechBusy || providersLockedOut" @refresh="fetchVoices" /></div>
         </div>
         <div class="settings-actions"><button type="button" class="btn full" :disabled="speechBusy || loadingVoices || providersLockedOut || !text.trim() || text.length>limits.lectureChars || !chosenTeacher || chosenTeacher.usable===false" @click="previewLecture"><UiIcon name="headphones" />{{ $t('Nghe thử tối đa 30 giây') }}</button><button type="button" class="btn primary full" @click="generateLecture" :disabled="speechBusy || loadingVoices || providersLockedOut || !text.trim() || text.length>limits.lectureChars || !chosenTeacher || chosenTeacher.usable===false"><span v-if="loading" class="spinner" aria-hidden="true"></span><UiIcon v-else name="wave" />{{ loading ? $t("Đang tạo âm thanh…") : $t("Tạo âm thanh") }}</button><p class="settings-hint">{{ $t("Kết quả được lưu trong lịch sử của bạn.") }}</p></div>
+        <section v-if="generationProgress" class="lecture-progress" aria-labelledby="lecture-progress-title">
+          <div class="lecture-progress-heading">
+            <h3 id="lecture-progress-title">{{ $t('Tiến trình tạo âm thanh') }}</h3>
+            <strong aria-hidden="true">{{ generationPercent }}%</strong>
+          </div>
+          <div class="lecture-progress-track" role="progressbar" aria-labelledby="lecture-progress-title" :aria-valuenow="generationPercent" aria-valuemin="0" aria-valuemax="100">
+            <span :style="{ transform: `scaleX(${generationPercent / 100})` }" />
+          </div>
+          <p class="lecture-progress-status" :class="{ failed: generationError }" role="status">
+            {{ generationError ? $t(generationError) : $t(stageLabels[generationProgress.stage], [generationProgress.completed, generationProgress.total]) }}
+          </p>
+        </section>
       </section>
       <section class="panel helper-panel"><UiIcon name="mic" /><h3>{{ $t("Mang âm sắc của riêng bạn") }}</h3><p>{{ $t("Thêm bản ghi âm mẫu để tạo giọng đọc phù hợp với nội dung của bạn.") }}</p><button type="button" class="text-button" :disabled="speechBusy" @click="voicePicker.add()"><UiIcon name="plus" />{{ $t('Thêm giọng mới') }}</button></section>
     </aside>
   </div>
 </template>
+
+<style scoped>
+.lecture-progress { display: grid; gap: 10px; margin-top: 18px; padding: 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-raised); }
+.lecture-progress-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.lecture-progress-heading h3 { margin: 0; font-size: 14px; }
+.lecture-progress-heading strong { color: var(--accent); font-size: 14px; font-variant-numeric: tabular-nums; }
+.lecture-progress-track { height: 8px; overflow: hidden; border-radius: 8px; background: var(--accent-soft); }
+.lecture-progress-track span { display: block; height: 100%; transform-origin: left; background: var(--accent); border-radius: inherit; transition: transform 220ms ease-out; }
+.lecture-progress-status { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
+.lecture-progress-status.failed { color: var(--danger); }
+@media (prefers-reduced-motion: reduce) { .lecture-progress-track span { transition: none; } }
+</style>
