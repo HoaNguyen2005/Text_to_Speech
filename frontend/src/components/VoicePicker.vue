@@ -348,6 +348,7 @@ onBeforeUnmount(() => {
               class="voice-row"
               :class="[
                 {
+                  'is-admin': admin,
                   selected: !manage && keyOf(voice) === modelValue,
                   playing: playing === keyOf(voice) || preparing === keyOf(voice),
                   locked: voice.usable === false
@@ -682,21 +683,21 @@ onBeforeUnmount(() => {
 
 .voice-picker-body {
   display: grid;
-  grid-template-columns: 220px minmax(0, 1fr);
+  grid-template-columns: 158px minmax(0, 1fr);
   flex: 1;
   min-height: 0;
 }
 .voice-picker-sidebar {
   display: flex;
   flex-direction: column;
-  gap: 18px;
-  padding: 18px 16px;
+  gap: 16px;
+  padding: 16px 12px;
   border-right: 1px solid var(--line);
   background: var(--surface-raised);
 }
 .voice-filter-group {
   display: grid;
-  gap: 10px;
+  gap: 8px;
 }
 .voice-filter-label {
   margin: 0;
@@ -706,15 +707,18 @@ onBeforeUnmount(() => {
 }
 .voice-filter-pills {
   display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
+  flex-direction: column;
+  gap: 6px;
 }
 .voice-filter-pill {
   display: inline-flex;
   align-items: center;
+  justify-content: flex-start;
+  width: 100%;
   gap: 6px;
-  min-height: 36px;
-  padding: 6px 12px;
+  min-height: 34px;
+  padding: 6px 11px;
+  white-space: nowrap;
   border: 1.5px solid var(--btn-border);
   border-radius: 999px;
   background: var(--btn-bg);
@@ -743,6 +747,7 @@ onBeforeUnmount(() => {
 }
 
 .voice-picker-main {
+  container-type: inline-size;
   display: flex;
   flex-direction: column;
   min-width: 0;
@@ -869,10 +874,10 @@ onBeforeUnmount(() => {
 }
 .voice-row {
   display: grid;
-  grid-template-columns: 42px minmax(180px, 1fr) auto auto;
+  grid-template-columns: 40px minmax(150px, 1fr) auto auto;
   align-items: center;
-  gap: 16px;
-  padding: 11px 14px;
+  gap: 12px;
+  padding: 10px 12px;
   border: 1px solid transparent;
   border-radius: 14px;
   background: var(--surface);
@@ -1003,13 +1008,13 @@ onBeforeUnmount(() => {
 
 .voice-row-meta {
   display: grid;
-  grid-template-columns: minmax(118px, max-content) 82px;
+  grid-template-columns: minmax(108px, max-content) 74px;
   align-items: center;
-  gap: 10px;
-  min-width: 0;
+  gap: 8px;
+  flex-shrink: 0;
 }
 .voice-row-meta.is-admin {
-  grid-template-columns: minmax(118px, max-content) 82px 132px;
+  grid-template-columns: minmax(108px, max-content) 74px minmax(88px, 114px);
 }
 .voice-lang-tag,
 .voice-gender-tag {
@@ -1057,6 +1062,8 @@ onBeforeUnmount(() => {
 }
 .voice-code-tag {
   width: 100%;
+  min-width: 0;
+  max-width: 100%;
   box-sizing: border-box;
   text-align: center;
   font-size: 10.5px;
@@ -1115,11 +1122,11 @@ onBeforeUnmount(() => {
 .voice-row-manage {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
 }
 .voice-manage-btn {
   min-height: 32px;
-  padding: 5px 11px;
+  padding: 5px 10px;
   border-radius: 9px;
   font-size: 12px;
   font-weight: 600;
@@ -1127,10 +1134,10 @@ onBeforeUnmount(() => {
   justify-content: center;
 }
 .voice-manage-btn:first-child {
-  min-width: 96px;
+  min-width: 92px;
 }
 .voice-manage-btn:last-child {
-  min-width: 86px;
+  min-width: 78px;
 }
 .voice-manage-btn.is-restore {
   color: var(--success);
@@ -1233,6 +1240,26 @@ onBeforeUnmount(() => {
     transform: none;
   }
 }
+@container (max-width: 720px) {
+  .voice-row.is-admin {
+    grid-template-columns: 40px minmax(0, 1fr) auto;
+    gap: 10px 12px;
+  }
+  .voice-row.is-admin .voice-row-meta.is-admin {
+    grid-column: 2 / 4;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .voice-row.is-admin .voice-lang-tag,
+  .voice-row.is-admin .voice-gender-tag,
+  .voice-row.is-admin .voice-code-tag {
+    width: auto;
+  }
+  .voice-row.is-admin .voice-code-tag {
+    max-width: 180px;
+  }
+}
 @media (max-width: 960px) {
   .voice-picker-body {
     grid-template-columns: 1fr;
@@ -1251,6 +1278,14 @@ onBeforeUnmount(() => {
     align-items: center;
     flex-wrap: wrap;
     gap: 8px;
+  }
+  .voice-filter-pills {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+  .voice-filter-pill {
+    width: auto;
+    justify-content: center;
   }
   .voice-row {
     grid-template-columns: 40px minmax(0, 1fr) auto;
