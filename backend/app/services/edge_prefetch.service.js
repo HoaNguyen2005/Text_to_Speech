@@ -3,7 +3,7 @@ const crypto = require('crypto');
 const config = require('../config/book');
 const artifact = require('./engine_artifact.service');
 
-module.exports = async function edgePrefetch({ jobId, provider, parts, payload, guard = async () => {}, skip = () => false,
+module.exports = async function edgePrefetch({ jobId, provider, parts, payload, signal, guard = async () => {}, skip = () => false,
     timed = async (stage, operation) => operation() }) {
     if (provider !== 'edge' || config.edgePrefetchConcurrency === 1) {
         return { ready: async () => {}, advance: () => {}, close: async () => {} };
@@ -32,9 +32,10 @@ module.exports = async function edgePrefetch({ jobId, provider, parts, payload, 
     await guard();
     // Open is idempotent for the client-generated session ID.
     let opened;
-    try { opened = await request('prefetch/open', session); }
+    try { opened = await request('prefetch/open', session, signal); }
     catch (error) {
-        await request('prefetch/close', session).catch(() => {});
+        const close = request('prefetch/close', session).catch(() => {});
+        if (!signal?.aborted) await close;
         throw error;
     }
     const width = Math.min(config.edgePrefetchConcurrency, opened.concurrency || 1);

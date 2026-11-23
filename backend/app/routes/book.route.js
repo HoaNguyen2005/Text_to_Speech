@@ -11,6 +11,7 @@ const bookVoices = require('../services/book_voice.service');
 const content = require('../services/book_content.service');
 const duration = require('../services/book_duration.service');
 const speech = require('../services/speech.service');
+const artifact = require('../services/engine_artifact.service');
 const reliability = require('../services/gemini_reliability');
 const previews = require('../services/book_preview.service');
 const tiers = require('../services/account_tier.service');
@@ -239,9 +240,13 @@ router.post('/:id/cancel', async (req, res) => {
     // Cancel queued first: if a worker claims it concurrently, the processing update catches it.
     await Job.updateOne({ _id: req.bookJob._id, user_id: req.user._id, status: { $in: ['queued', 'review'] } }, { $set: { status: 'cancelled', cancel_requested: true, next_attempt_at: null,
         progress: { phase: 'cancelled', percent: 0, message: 'Đã hủy.' } } });
-    const cancelled = await Job.updateOne({ _id: req.bookJob._id, user_id: req.user._id, status: 'processing', 'progress.phase': { $ne: 'publishing' } }, { $set: { cancel_requested: true } });
-    if (!cancelled.matchedCount && await Job.exists({ _id: req.bookJob._id, status: 'processing', 'progress.phase': 'publishing' })) {
+    const running = await Job.findOneAndUpdate({ _id: req.bookJob._id, user_id: req.user._id, status: 'processing', cancel_requested: false,
+        'progress.phase': { $ne: 'publishing' } }, { $set: { cancel_requested: true } }, { returnDocument: 'after' });
+    if (!running && await Job.exists({ _id: req.bookJob._id, status: 'processing', 'progress.phase': 'publishing' })) {
         return res.status(409).json({ error: 'Sách nói đang được lưu vào lịch sử. Hãy chờ hoàn tất.' });
+    }
+    if (running && ['calibration', 'preview', 'audio', 'merge'].includes(running.progress?.phase)) {
+        void artifact.cancelRemoteJob(String(running._id)).catch(() => console.warn('[BOOK CANCEL] Chưa gửi được tín hiệu dừng tới Engine.'));
     }
     res.json(await present(await Job.findById(req.bookJob._id)));
 });

@@ -41,8 +41,12 @@ const tierClass = computed(() => session.value?.tier_info?.effective_class || se
       @retry="retryAuth"
     />
 
-    <AppShell v-else :user="session.user" :tier="tierClass" @logout="handleLogout">
-      <router-view />
+    <AppShell v-else :key="session.user._id" :user="session.user" :tier="tierClass" @logout="handleLogout">
+      <router-view v-slot="{ Component }">
+        <KeepAlive include="LectureCreator,BookSummarizer">
+          <component :is="Component" />
+        </KeepAlive>
+      </router-view>
     </AppShell>
   </div>
   <NotificationCenter />

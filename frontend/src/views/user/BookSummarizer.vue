@@ -1,6 +1,5 @@
 <script setup>
 import { ref, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue';
-import { onBeforeRouteLeave } from 'vue-router';
 import UiIcon from '@/components/UiIcon.vue';
 import StudioBanner from '@/components/StudioBanner.vue';
 import { getLocaleTag } from '@/composables/useLocale';
@@ -227,13 +226,14 @@ async function selectJob(job) {
   }
 }
 async function refreshJobs() {
+  const version = selectionVersion;
   const response = await api.get('/api/book-jobs', { timeout: 20000 });
   if (disposed) return;
   jobs.value = response.data.jobs.filter((job) => !removedIds.has(job._id));
   workerOnline.value = response.data.worker_online;
   connectionMessage.value = '';
   // Poll updates the list but never leaves the new-summary form on its own.
-  if (!selected.value) return;
+  if (!selected.value || version !== selectionVersion) return;
   if (active(selected.value) || !jobs.value.some((job) => job._id === selected.value._id)) {
     const fresh = jobs.value.find((job) => job._id === selected.value._id);
     if (fresh && !['completed', 'review'].includes(fresh.status)) selected.value = fresh;
@@ -307,13 +307,17 @@ async function processBook() {
 }
 async function jobAction(action) {
   if (!selected.value || submitting.value) return;
+  const id = selected.value._id;
   submitting.value = true;
   errorMessage.value = '';
   try {
-    const response = await api.post(`/api/book-jobs/${selected.value._id}/${action}`, { revision: selected.value.draft_revision }, { timeout: 20000 });
-    ++selectionVersion;
-    selected.value = response.data;
-    notify(action === 'retry' ? 'Đã gửi yêu cầu tiếp tục từ phần đã lưu.' : 'Đã mở lại bản tóm tắt để chỉnh sửa.', { kind: 'success' });
+    const response = await api.post(`/api/book-jobs/${id}/${action}`, { revision: selected.value.draft_revision }, { timeout: 20000 });
+    if (disposed) return;
+    if (selected.value?._id === id) {
+      ++selectionVersion;
+      selected.value = response.data;
+    }
+    if (action !== 'cancel') notify(action === 'retry' ? 'Đã gửi yêu cầu tiếp tục từ phần đã lưu.' : 'Đã mở lại bản tóm tắt để chỉnh sửa.', { kind: 'success' });
     await refreshJobs();
   } catch (error) { errorMessage.value = error.response?.data?.error || 'Không thực hiện được thao tác.'; }
   finally { submitting.value = false; }
@@ -347,7 +351,6 @@ function protectDraft(event) {
   if (!draftEditor.value?.dirty) return;
   event.preventDefault(); event.returnValue = '';
 }
-onBeforeRouteLeave(() => !draftEditor.value?.dirty || confirmAction('Bạn có chỉnh sửa chưa lưu. Chuyển yêu cầu sẽ bỏ các chỉnh sửa này.', { title: 'Bỏ chỉnh sửa chưa lưu?', confirmLabel: 'Bỏ chỉnh sửa', danger: true }));
 watch(() => [selected.value?._id, selected.value?.status, selected.value?.error, selected.value?.draft?.preview?.audio_url, selected.value?.work_action], ([id, status, error, preview, action], previous) => {
   if (!id) return;
   if (status === 'failed' && error && (previous?.[0] !== id || previous?.[1] !== status || previous?.[2] !== error)) notify(error, { kind: 'error', key: `book-failed-${id}` });
@@ -395,7 +398,8 @@ onBeforeUnmount(() => { disposed = true; ++selectionVersion; clearTimeout(timer)
           </div>
           <ol class="book-stages"><li v-for="(step, i) in steps" :key="step.label" :class="{ done: phaseIndex > i, current: phaseIndex === i }"><span>{{ phaseIndex > i ? '✓' : i + 1 }}</span>{{ $t(step.label) }}</li></ol>
           <p class="text-muted">{{ $t("Tiến độ được lưu theo từng phần. Tải lại hoặc rời trang không hủy yêu cầu.") }}</p>
-          <p v-if="selected.cancel_requested" class="notice">{{ $t("Đang chờ bước hiện tại kết thúc để hủy.") }}</p>
+          <p v-if="selected.cancel_requested" class="notice" role="status">{{ $t('Đang dừng yêu cầu. Tiến trình có thể cần chờ lượt xử lý hiện tại kết thúc.') }}</p>
+          <button v-else-if="selected.progress?.phase !== 'publishing'" type="button" class="btn small danger" :disabled="submitting" @click="jobAction('cancel')"><UiIcon name="close" />{{ $t('Hủy yêu cầu') }}</button>
         </template>
         <BookDraftEditor v-if="selected.status === 'review' && selected.draft?.sections" ref="draftEditor" :key="selected._id" :job="selected" :busy="submitting" simple-controls speech-target="#book-speech-settings" @updated="updateReviewedJob" @reload="selectJob(selected)" @duration-issue="handleDraftDurationIssue" />
         <div v-if="selected.status === 'review' && sourceDurationIssue" class="notice book-source-duration"><span>{{ $t('Nguồn quá ngắn cho thời lượng đã chọn. Hãy chọn lại thời lượng hoặc thêm nội dung nguồn rồi gửi yêu cầu mới.') }}</span><button type="button" class="btn small" :disabled="navigationLocked" @click="startNewSummary(sourceDurationIssue.max_minutes)">{{ $t('Tạo tóm tắt mới') }}</button></div>

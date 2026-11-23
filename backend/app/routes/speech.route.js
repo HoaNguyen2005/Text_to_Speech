@@ -41,6 +41,10 @@ router.post('/lecture-preview',async(req,res)=>{
     const result=await lecture.render(req.user,req.body||{},true);
     res.set('Content-Type','audio/mpeg').set('Cache-Control','no-store').send(result.buffer);
 });
+router.post('/lectures/:id/cancel', (req,res) => {
+    lecture.cancel(req.user, req.params.id);
+    res.status(202).json({ status:'cancelling' });
+});
 router.use((error,req,res,next)=>{
     console.warn('[SPEECH API]',error.status||error.name);
     res.status(error.status||503).json({error:error.status?error.message:'Không xử lý được cấu hình đọc hoặc kết nối Engine. Hãy thử lại.'});

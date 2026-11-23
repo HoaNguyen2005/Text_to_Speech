@@ -77,6 +77,10 @@ app.post('/api/generate-lecture', verifyToken, async (req, res) => {
             if (!res.headersSent) return res.json(result);
             send({type:'result',result});
         } catch (error) {
+            if (error.code === 'LECTURE_CANCELLED' && res.headersSent) {
+                send({type:'cancelled'});
+                return;
+            }
             console.warn('[SPEECH LECTURE]',error.status||error.name);
             if (res.destroyed) return;
             const message = error.status ? error.message : 'Không tạo được bài giảng. Kiểm tra Engine rồi thử lại.';

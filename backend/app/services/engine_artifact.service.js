@@ -339,6 +339,18 @@ async function cleanupLocal(jobId) {
     await fs.rm(directory, { recursive: true, force: true }).catch(() => {});
 }
 
+async function cancelRemoteJob(jobId) {
+    if (!/^[a-f0-9]{24}$/.test(jobId) || !config.engineSecret) return;
+    // The audiobook worker pins its engine in a different process.
+    const candidates = await getCandidates(true);
+    await Promise.allSettled(candidates.map(({ url }) => fetch(`${url}/book/cleanup`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Book-Engine-Secret': config.engineSecret },
+        body: JSON.stringify({job_id:jobId}),
+        signal: AbortSignal.timeout(15000),
+    }).then(response => response.body?.cancel())));
+}
+
 async function status() {
     const candidates = await getCandidates(true);
     const nodes = await Promise.all(
@@ -373,6 +385,7 @@ module.exports = {
     materialize,
     pushToEngine,
     cleanupLocal,
+    cancelRemoteJob,
     status,
     resolveEngineUrl,
     fetchWithFailover,

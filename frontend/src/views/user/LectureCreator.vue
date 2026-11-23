@@ -40,12 +40,16 @@ const resultAudioUrl = ref(null);
 const errorMessage = useFeedback('error');
 const generationProgress = ref(null);
 const generationError = ref('');
+const generationJobId = ref('');
+const cancelling = ref(false);
+const canCancelGeneration = computed(() => loading.value && generationJobId.value && ['synthesizing', 'merging'].includes(generationProgress.value?.stage));
 const stageLabels = {
   preparing: 'Đang chuẩn bị cách đọc…',
   synthesizing: 'Đã xử lý {0}/{1} đoạn âm thanh.',
   merging: 'Đang ghép các đoạn âm thanh…',
   saving: 'Đang lưu âm thanh và lịch sử.',
   complete: 'Đã hoàn thành',
+  cancelled: 'Đã hủy tạo âm thanh.',
 };
 const generationPercent = computed(() => {
   const progress = generationProgress.value;
@@ -86,6 +90,20 @@ const fetchVoices = async () => {
   }finally{if(version===voiceRequest)loadingVoices.value=false;}
 };
 
+async function cancelGeneration() {
+  if (!canCancelGeneration.value || cancelling.value) return;
+  const id = generationJobId.value;
+  cancelling.value = true;
+  try {
+    await api.post(`/api/speech/lectures/${id}/cancel`, {}, { timeout: 15000 });
+  } catch (error) {
+    if (!disposed && generationJobId.value === id && loading.value) {
+      cancelling.value = false;
+      errorMessage.value = error.response?.data?.error || 'Chưa hủy được yêu cầu. Hãy thử lại.';
+    }
+  }
+}
+
 const generateLecture = async () => {
   if(speechBusy.value)return;
   if(!chosenTeacher.value||loadingVoices.value)return;
@@ -99,6 +117,8 @@ const generateLecture = async () => {
   resultAudioUrl.value = null;
   generationProgress.value = { stage: 'preparing' };
   generationError.value = '';
+  generationJobId.value = '';
+  cancelling.value = false;
   generationConnection = new AbortController();
 
   let unread = 0;
@@ -109,8 +129,10 @@ const generateLecture = async () => {
       const line = data.slice(unread, end);
       if (line.trim()) {
         const event = JSON.parse(line);
-        if (event.type === 'progress') generationProgress.value = event.progress;
-        else if (event.type === 'result' || event.type === 'error') finalEvent = event;
+        if (event.type === 'progress') {
+          generationProgress.value = event.progress;
+          if (event.progress.job_id) generationJobId.value = event.progress.job_id;
+        } else if (['result', 'error', 'cancelled'].includes(event.type)) finalEvent = event;
       }
       unread = end + 1;
     }
@@ -138,6 +160,10 @@ const generateLecture = async () => {
     let result = response.data;
     if (response.headers['content-type']?.startsWith('application/x-ndjson')) {
       readEvents(response.data);
+      if (finalEvent?.type === 'cancelled') {
+        generationProgress.value = { stage: 'cancelled' };
+        return;
+      }
       if (finalEvent?.type === 'error') {
         generationError.value = finalEvent.error;
         return;
@@ -158,6 +184,7 @@ const generateLecture = async () => {
     if (!disposed) generationError.value = error.response?.data?.error || 'Không thể kết nối đến máy chủ!';
   } finally {
     loading.value = false;
+    cancelling.value = false;
     generationConnection = undefined;
     if (!disposed) refreshTier().catch(()=>{});
   }
@@ -282,8 +309,9 @@ const handleFileUpload = (event) => {
             <span :style="{ transform: `scaleX(${generationPercent / 100})` }" />
           </div>
           <p class="lecture-progress-status" :class="{ failed: generationError }" role="status">
-            {{ generationError ? $t(generationError) : $t(stageLabels[generationProgress.stage], [generationProgress.completed, generationProgress.total]) }}
+            {{ generationError ? $t(generationError) : cancelling ? $t('Đang dừng tạo âm thanh…') : $t(stageLabels[generationProgress.stage], [generationProgress.completed, generationProgress.total]) }}
           </p>
+          <button v-if="canCancelGeneration" type="button" class="btn small danger" :disabled="cancelling" @click="cancelGeneration"><UiIcon name="close" />{{ $t('Hủy yêu cầu') }}</button>
         </section>
       </section>
       <section class="panel helper-panel"><UiIcon name="mic" /><h3>{{ $t("Mang âm sắc của riêng bạn") }}</h3><p>{{ $t("Thêm bản ghi âm mẫu để tạo giọng đọc phù hợp với nội dung của bạn.") }}</p><button type="button" class="text-button" :disabled="speechBusy" @click="voicePicker.add()"><UiIcon name="plus" />{{ $t('Thêm giọng mới') }}</button></section>
