@@ -40,11 +40,11 @@ function delivery(value = {}, paragraphs = 0) {
     return { profile, paragraph_profiles };
 }
 const pausePattern = () => /\[(?:nghỉ|pause)\s+(\d+(?:[.,]\d+)?)\s*(?:s|giây)\s*\]|<break\s+time=["'](\d+(?:\.\d+)?)s["']\s*\/>/giu;
-function parse(markup) {
+function parse(markup, { lecture = false } = {}) {
     if (typeof markup !== 'string' || markup.length > 300000 || /[\u0000-\u0008\u000b\u000c\u000e-\u001f]/u.test(markup)) fail('Văn bản đọc không hợp lệ.');
     markup = stripCues(markup.normalize('NFC').replace(/\r\n/g, '\n'));
-    // Normalize single line breaks (headings, bullet lines, wrapped PDF lines) so Edge-TTS pauses naturally.
-    markup = markup.replace(/([\p{L}\p{M}\p{N}])[ \t]*\n[ \t]*(?=[^\s\n])/gu, '$1. ');
+    // Audiobook markup keeps its existing pauses for headings and list lines.
+    if (!lecture) markup = markup.replace(/([\p{L}\p{M}\p{N}])[ \t]*\n[ \t]*(?=[^\s\n])/gu, '$1. ');
     const atoms = []; let start = 0, totalPause = 0, markers = 0;
     for (const match of markup.matchAll(pausePattern())) {
         const milliseconds = Math.round(Number((match[1] || match[2]).replace(',', '.')) * 1000);
@@ -149,6 +149,56 @@ function splitChunks(text, maxLen = 600) {
     if (remaining) result.push({ text: remaining, sentenceEnd: /[.?!;…]["'”’)\]]*$/u.test(remaining) });
     return result;
 }
+const vietnameseSentences = new Intl.Segmenter('vi', { granularity: 'sentence' });
+const abbreviationAtEnd = /(?:^|[^\p{L}\p{M}])(?:PGS|GS|TS|ThS|BS|KS|TP|Q|P|H|TX|Mr|Ms|Mrs|Dr|Prof|\p{Lu})\.$/u;
+const sentenceEnd = /[.!?…]["'”’»\)\]]*$/u;
+
+function stripEmoji(text) {
+    const cleaned = text.replace(/\p{RGI_Emoji}+/gv, ' ');
+    if (cleaned === text) return text;
+    if (!/[^\s\p{P}]/u.test(cleaned)) return '';
+    return cleaned.replace(/\s+([,.;:!?…)\]”’])/gu, '$1');
+}
+
+function splitLectureChunks(text) {
+    if (!text) return [];
+    // Leave room for punctuation normalization before Edge-TTS's 1500-character split.
+    const maxLength = 1200;
+    if (text.length <= maxLength) return [{ text }];
+    const minimum = maxLength / 2;
+    const chunks = [];
+    const sentenceCuts = [...vietnameseSentences.segment(text)]
+        .map(({ index, segment }) => ({ index, segment: segment.trimEnd() }))
+        .filter(({ segment }) => sentenceEnd.test(segment) && !abbreviationAtEnd.test(segment))
+        .map(({ index, segment }) => index + segment.length);
+    let start = 0;
+    while (text.length - start > maxLength) {
+        const end = start + maxLength;
+        const sentenceCut = sentenceCuts.findLast(cut => cut >= start + minimum && cut <= end);
+        const window = text.slice(start, end + 1);
+        const phraseCuts = [...window.matchAll(/[,;:—–][”’»\)\]]*(?= )| (?=(?:tuy nhiên|thế nhưng|mặc dù|nhưng|bởi vì|trong khi|vì vậy|cho nên) )/giu)];
+        const phrase = phraseCuts.findLast(match => match.index >= minimum && match.index + match[0].length <= maxLength);
+        let cut = sentenceCut ?? (phrase && start + phrase.index + phrase[0].trimEnd().length);
+        if (!cut) {
+            const spaces = [...window.matchAll(/ /g)];
+            // Keep adjacent capitalized words and abbreviated titles together when a sentence must be split.
+            const wordBoundary = spaces.findLast(({ index }) => {
+                if (index < minimum) return false;
+                if (!/^\p{Lu}/u.test(text.slice(start + index + 1))) return true;
+                const before = window.slice(0, index);
+                return !abbreviationAtEnd.test(before) && !/(?:^|[^\p{L}\p{M}])\p{Lu}[\p{L}\p{M}-]*$/u.test(before);
+            });
+            cut = start + (wordBoundary?.index || spaces.at(-1)?.index || maxLength);
+            // The hard limit may fall inside a surrogate pair in pasted text.
+            if (/[\uDC00-\uDFFF]/u.test(text[cut])) cut--;
+        }
+        chunks.push({ text: text.slice(start, cut) });
+        start = text[cut] === ' ' ? cut + 1 : cut;
+    }
+    if (start < text.length) chunks.push({ text: text.slice(start) });
+    return chunks;
+}
+
 function contour(text, baseRate, defaultPause, context = {}) {
     const trimmed = text.trim();
     const isIntro = context.sectionIndex < 0;
@@ -196,7 +246,7 @@ function contour(text, baseRate, defaultPause, context = {}) {
         pause,
     };
 }
-function plan({ introduction = '', sections, speech = {}, style = 'normal', units_per_minute = 300 }) {
+function plan({ introduction = '', sections, speech = {}, style = 'normal', units_per_minute = 300, lecture = false }) {
     if (!Number.isFinite(units_per_minute) || units_per_minute < 80 || units_per_minute > 600) fail('Tốc độ giọng đọc đo được không hợp lệ.');
     const config = options(speech);
     if (typeof introduction !== 'string' || introduction.length>2000 || !Array.isArray(sections) || !sections.length || sections.length > 100
@@ -204,24 +254,26 @@ function plan({ introduction = '', sections, speech = {}, style = 'normal', unit
     const parts = [], changes = [], cleaned = [];
     const add = (markup, profile, defaultPause, index, paragraphIndex = 0, totalParagraphs = 1) => {
         const baseRate = config.rate_percent ?? profile.rate;
-        const parsed = parse(markup);
-        const shaped = contour(parsed.plain, baseRate, defaultPause, {
+        const parsed = parse(markup, { lecture });
+        const shaped = contour(lecture ? stripEmoji(parsed.plain) : parsed.plain, baseRate, defaultPause, {
             sectionIndex: index,
             totalSections: sections.length,
             paragraphIndex,
             totalParagraphs,
         });
         parsed.atoms.forEach((atom, position) => {
-            const source = atom.text.trim(), spoken = speak(source, config);
+            const source = atom.text.trim();
+            let spoken = speak(lecture ? stripEmoji(source).trim() : source, config);
+            if (lecture) spoken = stripEmoji(spoken).replace(/\s+/gu, ' ').trim();
             if (source !== spoken && changes.length < 100) changes.push({ section: index, before: source, after: spoken });
-            const chunks = splitChunks(spoken);
+            const chunks = lecture ? splitLectureChunks(spoken) : splitChunks(spoken);
             const last = position === parsed.atoms.length-1;
-            const pause = atom.explicit ? atom.pause_ms : last && source ? shaped.pause : 0;
+            const pause = atom.explicit ? atom.pause_ms : last && chunks.length ? shaped.pause : 0;
             if (!chunks.length) {
                 if (pause) parts.push({ text: '', rate_percent: shaped.rate, pitch_hz: 0, pause_ms: pause, speech_version: 'speech-v1' });
             } else chunks.forEach((chunk, i) => {
                 const isLastChunk = i === chunks.length - 1;
-                const chunkPause = isLastChunk ? pause : (chunk.sentenceEnd ? 120 : 0);
+                const chunkPause = isLastChunk ? pause : (!lecture && chunk.sentenceEnd ? 120 : 0);
                 parts.push({ text: chunk.text, rate_percent: shaped.rate, pitch_hz: shaped.pitch, pause_ms: chunkPause, speech_version: 'speech-v1' });
             });
         });
@@ -244,6 +296,7 @@ function plan({ introduction = '', sections, speech = {}, style = 'normal', unit
         });
         cleaned.push({ ...section, text: plain.join('\n\n'), delivery: { ...preferences, markup } });
     });
+    if (lecture && !parts.some(part => part.text)) fail('Hãy nhập nội dung có thể đọc. Emoji được bỏ qua khi tạo giọng nói.');
     if (!parts.some(part => part.text) || parts.length > 300 || cleaned.reduce((sum,section)=>sum+section.text.length,0)>250000) fail('Nội dung quá dài hoặc có quá nhiều đoạn/khoảng nghỉ.');
     const estimated_seconds = Math.round(parts.reduce((sum,part) => sum + (part.text.split(/\s+/u).filter(Boolean).length * 60 / (units_per_minute*(1+part.rate_percent/100))) + part.pause_ms/1000,0));
     const hash = crypto.createHash('sha256').update(JSON.stringify(['speech-v1',parts,config])).digest('hex');

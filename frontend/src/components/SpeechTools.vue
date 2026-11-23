@@ -3,14 +3,14 @@ import { computed, ref, watch, onBeforeUnmount } from 'vue';
 import api from '@/services/api';
 import UiIcon from './UiIcon.vue';
 import SpeechRateControl from './SpeechRateControl.vue';
-const props=defineProps({ sections:{type:Array,required:true}, introduction:{type:String,default:''}, style:{type:String,default:'normal'}, modelValue:{type:Object,required:true}, deliveries:{type:Array,required:true}, busy:Boolean, compact:Boolean, speedOnly:Boolean, autoReview:{type:Boolean,default:true}, rateHint:{type:String,default:''}, unitsPerMinute:{type:Number,default:300}, provider:{type:String,default:'edge'} });
+const props=defineProps({ sections:{type:Array,required:true}, introduction:{type:String,default:''}, style:{type:String,default:'normal'}, modelValue:{type:Object,required:true}, deliveries:{type:Array,required:true}, busy:Boolean, compact:Boolean, speedOnly:Boolean, autoReview:{type:Boolean,default:true}, rateHint:{type:String,default:''}, unitsPerMinute:{type:Number,default:300}, provider:{type:String,default:'edge'}, lecture:Boolean });
 const emit=defineEmits(['update:modelValue','update:deliveries']);
 const choices=[['auto','Theo cấu hình chung'],['natural','Tự nhiên'],['teaching','Giảng giải'],['story','Kể chuyện'],['news','Bản tin'],['relaxing','Thư giãn']];
 const working=ref(false),result=ref(null),reviewed=ref('');
 let reviewTimer, disposed=false;
 onBeforeUnmount(()=>{disposed=true;clearTimeout(reviewTimer);});
 const paragraphLists=computed(()=>props.sections.map(section=>section.text.split(/\n\s*\n/u).filter(text=>text.trim())));
-const payload=computed(()=>({introduction:props.introduction,style:props.style,speech:props.modelValue,units_per_minute:props.unitsPerMinute,provider:props.provider,
+const payload=computed(()=>({introduction:props.introduction,style:props.style,speech:props.modelValue,units_per_minute:props.unitsPerMinute,provider:props.provider,lecture:props.lecture,
  sections:props.sections.map((section,i)=>({...section,delivery:{...(props.deliveries[i]||{}),markup:section.text}}))}));
 const signature=computed(()=>JSON.stringify(payload.value));
 const ready=computed(()=>Boolean(result.value && reviewed.value===signature.value));

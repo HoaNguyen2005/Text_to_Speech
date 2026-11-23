@@ -192,7 +192,7 @@ const handleFileUpload = (event) => {
         <p class="text-muted">{{ $t('{0} / {1} ký tự',[text.length,limits.lectureChars]) }} <button v-if="text.length>=limits.lectureChars" type="button" class="text-button" @click="openUpgrade()">{{ $t('Nâng cấp gói') }}</button></p>
         <div class="editor-meta"><span><UiIcon name="document" />{{ sourceName || $t("Hỗ trợ TXT, DOCX, PDF") }}</span><span>{{ wordCount.toLocaleString($locale) }} {{ $t("từ ·") }} {{ text.length.toLocaleString($locale) }} {{ $t("ký tự") }}</span></div>
       </section>
-      <SpeechTools ref="speechTools" v-model="speechOptions" v-model:deliveries="deliveries" :sections="[{text,title:sourceName}]" :style="styleId" :provider="ttsProvider" :busy="speechBusy" auto-review />
+      <SpeechTools ref="speechTools" v-model="speechOptions" v-model:deliveries="deliveries" :sections="[{text,title:sourceName}]" :style="styleId" :provider="ttsProvider" :busy="speechBusy" lecture auto-review />
       <div v-if="previewLoading" class="notice" role="status"><span class="spinner" />{{ $t('Đang tạo đoạn nghe thử bằng giọng đã chọn…') }}</div>
       <section v-if="previewUrl" class="panel"><h2>{{ $t('Nghe thử tối đa 30 giây') }}</h2><audio controls :src="previewUrl" class="audio-player" /></section>
       <div v-if="loading" class="notice" role="status"><span class="spinner" aria-hidden="true"></span>{{ $t("Đang tạo âm thanh. Nội dung dài có thể cần thêm thời gian.") }}</div>

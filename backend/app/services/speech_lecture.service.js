@@ -33,7 +33,7 @@ async function render(user,body,preview=false) {
     if(typeof body.text!=='string'||!body.text.trim()||body.text.length>20000)throw problem(400,'Bài giảng cần từ 1 đến 20.000 ký tự.');
     if(!config.engineSecret)throw problem(503,'Chưa cấu hình kết nối Engine.');
     const provider=providers.validate(body.tts_provider);
-    const planned=speech.plan({sections:[{text:body.text,delivery:{...(body.delivery||{}),markup:body.text}}],speech:body.speech,style:body.style_id||'normal'});
+    const planned=speech.plan({lecture:true,sections:[{text:body.text,delivery:{...(body.delivery||{}),markup:body.text}}],speech:body.speech,style:body.style_id||'normal'});
     if(body.speech_plan_hash!==planned.hash)throw problem(409,'Hãy xem cách đọc sau khi thay đổi nội dung hoặc cấu hình trước khi tiếp tục.');
     if(planned.estimated_seconds>=3600 || planned.parts.length>80)throw problem(400,'Bài giảng quá dài hoặc có quá nhiều đoạn. Hãy chia thành các phần nhỏ hơn.');
     // Old lecture callers are clone-only. New catalogue choices specify the
