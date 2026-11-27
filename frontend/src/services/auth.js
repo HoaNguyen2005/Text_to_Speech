@@ -10,11 +10,12 @@ export const authError = ref('');
 export const identitySession = ref(false);
 const identityUrl = (import.meta.env.VITE_KEYCLOAK_URL || 'http://localhost:8080').replace(/\/+$/, '');
 const realm = import.meta.env.VITE_KEYCLOAK_REALM || 'tts-local';
-const keycloak = new Keycloak({
+const identityConfig = {
   url: identityUrl,
   realm,
   clientId: import.meta.env.VITE_KEYCLOAK_CLIENT_ID || 'tts-frontend',
-});
+};
+let keycloak = new Keycloak(identityConfig);
 let initialized, refreshing;
 let welcomedInMemory;
 const welcomeKey = 'text2speech.welcomed-session';
@@ -34,10 +35,12 @@ function welcomeUser(user, accountCreated) {
 }
 const redirectUri = () => new URL('/', window.location.origin).href;
 async function waitForService(url, ready) {
-  const signal = AbortSignal.timeout(90000);
+  // Keycloak on Render can take over two minutes to start after idling.
+  const signal = AbortSignal.timeout(240000);
   while (!signal.aborted) {
     try {
-      const response = await fetch(url, { cache: 'no-store', signal });
+      const attempt = AbortSignal.any([signal, AbortSignal.timeout(15000)]);
+      const response = await fetch(url, { cache: 'no-store', signal: attempt });
       if (response.ok && ready(await response.json())) return true;
     } catch { /* A sleeping service can return HTML or be temporarily unreachable. */ }
     if (!signal.aborted) await new Promise(resolve => setTimeout(resolve, 1500));
@@ -57,8 +60,10 @@ async function loadSignedInProfile(readiness = backendReady()) {
   await refreshSession();
 }
 function clearLegacyStorage() {
-  localStorage.removeItem('token');
-  localStorage.removeItem('user');
+  try {
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+  } catch { /* A browser may block persistent storage. */ }
 }
 export function invalidateSession(message = 'Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.', clearIdentity = true) {
   session.value = null;
@@ -92,16 +97,19 @@ export async function refreshSession() {
   return session.value;
 }
 export function initializeAuth() {
+  if (keycloak.authenticated) return initialized ?? Promise.resolve();
   if (!initialized) initialized = (async () => {
     authLoading.value = true;
+    authError.value = '';
     clearLegacyStorage();
-    keycloak.onAuthLogout = () => { session.value = null; identitySession.value = false; };
-    keycloak.onAuthSuccess = () => { identitySession.value = true; };
-    keycloak.onTokenExpired = () => { getAccessToken().catch(() => {}); };
     try {
       // Wake both services before the browser submits credentials or exchanges an authorization code.
       const backend = backendReady();
       if (!await keycloakReady()) throw new Error('Keycloak is unavailable');
+      if (keycloak.didInitialize) keycloak = new Keycloak(identityConfig);
+      keycloak.onAuthLogout = () => { session.value = null; identitySession.value = false; };
+      keycloak.onAuthSuccess = () => { identitySession.value = true; };
+      keycloak.onTokenExpired = () => { getAccessToken().catch(() => {}); };
       const authenticated = await keycloak.init({
         pkceMethod: 'S256', flow: 'standard',
         responseMode: 'query', checkLoginIframe: false, messageReceiveTimeout: 10000, locale: locale.value,
@@ -123,11 +131,11 @@ export function initializeAuth() {
       session.value = null;
       authError.value ||= 'Không thể kết nối dịch vụ đăng nhập. Hãy kiểm tra kết nối và thử lại.';
     } finally { authLoading.value = false; }
-  })();
+  })().finally(() => { initialized = undefined; });
   return initialized;
 }
 async function redirect(action) {
-  if (!keycloak.didInitialize || (action === 'login' && keycloak.authenticated)) return retryAuth();
+  if (!keycloak.didInitialize || authError.value || (action === 'login' && keycloak.authenticated)) return retryAuth();
   authLoading.value = true;
   authError.value = '';
   try {
@@ -161,7 +169,7 @@ export async function handleLogout() {
   }
 }
 export async function retryAuth() {
-  if (!keycloak.authenticated) return window.location.reload();
+  if (!keycloak.authenticated) return initializeAuth();
   authLoading.value = true;
   authError.value = '';
   try { await loadSignedInProfile(); }
